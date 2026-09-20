@@ -2,26 +2,29 @@ import { parseArgs, printJson, requireFlag, validateName, warn, type Globals } f
 import { generateId } from "../lib/ids.ts";
 import { ensureStore } from "../lib/paths.ts";
 import {
+  commitSkillDir,
   loadIndex,
   projection,
-  readSourceFile,
-  resolveSourceFile,
+  resolveSource,
   saveIndex,
-  writeFileAtomic,
+  stageSkillDir,
   type IndexEntry,
 } from "../lib/store.ts";
 
-export const help = `skill-library add — import a skill file into the library
+export const help = `skill-library add — import a skill into the library
 
 Required flags:
   --name <name>          lowercase-hyphen, at most 64 chars
   --description <text>   what it does + when to use it (this is what gets scored)
-  --path <file>          skill file to import (copied verbatim into the store)
+  --path <file|dir>      skill file or skill directory to import
 
-The store path of the new skill is printed (not the source path).
+A directory import copies the whole skill folder verbatim (SKILL.md plus any
+sibling scripts/data), so relative references keep working. A bare SKILL.md
+file is copied as a single-file skill. The store path of the new skill is
+printed (not the source path).
 
 Example:
-  skill-library add --name context7-mcp --description "Use when questions involve libraries, frameworks, or APIs; fetch current docs via Context7 MCP." --path ~/.agents/skills/context7-mcp/SKILL.md`;
+  skill-library add --name context7-mcp --description "Use when questions involve libraries, frameworks, or APIs; fetch current docs via Context7 MCP." --path ~/.agents/skills/context7-mcp`;
 
 export async function run(args: string[], globals: Globals): Promise<void> {
   const { values } = parseArgs(args, {
@@ -33,8 +36,7 @@ export async function run(args: string[], globals: Globals): Promise<void> {
   const sourceArg = requireFlag(values, "path");
   validateName(name);
 
-  const source = await resolveSourceFile(sourceArg);
-  const content = await readSourceFile(source);
+  const source = await resolveSource(sourceArg);
 
   await ensureStore(globals.store);
   const index = await loadIndex(globals.store);
@@ -42,18 +44,18 @@ export async function run(args: string[], globals: Globals): Promise<void> {
     warn(`name '${name}' already exists in the library (ids are unique); proceeding`);
   }
   const id = generateId(index.map((e) => e.id));
-  const contentFile = `skills/${id}.md`;
-  await writeFileAtomic(`${globals.store}/${contentFile}`, content);
+  const contentDir = await stageSkillDir(source, globals.store, id);
+  await commitSkillDir(globals.store, contentDir);
 
   const now = new Date().toISOString();
   const entry: IndexEntry = {
     id,
     name,
     description,
-    source,
+    source: source.abs,
     addedAt: now,
     updatedAt: now,
-    contentFile,
+    contentDir,
   };
   await saveIndex(globals.store, [...index, entry]);
   printJson(await projection(entry, globals), globals.pretty);

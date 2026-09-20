@@ -11,7 +11,7 @@ Three deliverables, built in this repo:
 |---|---|
 | `skill-library` | Compiled Bun/TypeScript binary — the skill library app (`query`, `list`, `add`, `update`, `remove`, `get`) |
 | `skill-library` skills | Installed into `~/.config/opencode/skills/`: the always-on gateway (run `skill-library query` before every user message, read returned files) plus one skill per subcommand (query, list, get, add, update, remove) |
-| `skill-importer` skill | Rerunnable onboarding skill: diffs skill directories against the library and imports new/changed skills via `skill-library add` / `skill-library update`, journaling every change |
+| `skill-importer` skill | Rerunnable onboarding skill: diffs skill directories against the library and imports new/changed skills (whole directories — multi-file skills included) via `skill-library add` / `skill-library update`, journaling every change |
 | `skill-importer-undo` skill | Reverses an import run (or the cutover) from its journal: removes added skills, restores prior name/description/content |
 
 Status: **implemented** (skill-library v0.1.0) — the documents below remain the build contract.

@@ -1,13 +1,12 @@
 import { CliError, parseArgs, printJson, validateName, warn, type Globals } from "../lib/cli.ts";
-import { contentFilePath } from "../lib/paths.ts";
 import {
+  commitSkillDir,
   findEntry,
   loadIndex,
   projection,
-  readSourceFile,
-  resolveSourceFile,
+  resolveSource,
   saveIndex,
-  writeFileAtomic,
+  stageSkillDir,
 } from "../lib/store.ts";
 
 export const help = `skill-library update <id> — update a skill's name, description, or content
@@ -16,11 +15,11 @@ The id never changes; only provided flags change.
 
   --name <name>          rename
   --description <text>   rewrite the description
-  --path <file>          re-import content (replaces the stored file)
+  --path <file|dir>      re-import content (replaces the stored skill dir)
 
 Examples:
   skill-library update 9f3a1c2b --description "Rewritten description front-loading trigger keywords."
-  skill-library update 9f3a1c2b --path ~/.opencode/skills/frontend-design/SKILL.md`;
+  skill-library update 9f3a1c2b --path ~/.opencode/skills/frontend-design`;
 
 export async function run(args: string[], globals: Globals): Promise<void> {
   const { positionals, values } = parseArgs(args, {
@@ -49,10 +48,11 @@ export async function run(args: string[], globals: Globals): Promise<void> {
     entry.description = values.get("description")!;
   }
   if (values.has("path")) {
-    const source = await resolveSourceFile(values.get("path")!);
-    const content = await readSourceFile(source);
-    await writeFileAtomic(contentFilePath(globals.store, entry.contentFile), content);
-    entry.source = source;
+    const source = await resolveSource(values.get("path")!);
+    const contentDir = await stageSkillDir(source, globals.store, entry.id);
+    await commitSkillDir(globals.store, contentDir, true);
+    entry.contentDir = contentDir;
+    entry.source = source.abs;
   }
 
   entry.updatedAt = new Date().toISOString();

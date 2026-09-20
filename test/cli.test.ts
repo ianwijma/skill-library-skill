@@ -69,7 +69,8 @@ describe("CRUD roundtrip", () => {
     expect(rec.id).toMatch(/^[a-z0-9]{8}$/);
     expect(rec.name).toBe("skill-a");
     expect(rec.description).toBe("Test skill A");
-    expect(rec.path).toBe(path.join(store, "skills", `${rec.id}.md`));
+    expect(rec.path).toBe(path.join(store, "skills", rec.id, "SKILL.md"));
+    expect(rec.dir).toBe(path.join(store, "skills", rec.id));
     expect(rec.content).toBeUndefined();
     expect(await fsp.readFile(rec.path, "utf8")).toBe("# Skill A\n\ncontent a");
 
@@ -99,6 +100,36 @@ describe("CRUD roundtrip", () => {
     const gone = await sli(["get", rec.id], { store });
     expect(gone.code).toBe(1);
     expect(gone.stderr).toContain("unknown skill id");
+    expect(await fsp.readdir(path.join(store, "skills"))).toEqual([]);
+  });
+
+  test("add from directory copies the whole skill dir verbatim", async () => {
+    const store = await tmpDir();
+    const skillDir = path.join(store, "src-skill");
+    await fsp.mkdir(path.join(skillDir, "scripts"), { recursive: true });
+    await fsp.writeFile(path.join(skillDir, "SKILL.md"), "# Multi\n\nrun scripts/tool.py");
+    await fsp.writeFile(path.join(skillDir, "scripts", "tool.py"), "print('hi')\n");
+    const res = await sli(["add", "--name", "multi", "--description", "Multi-file skill", "--path", skillDir], { store });
+    expect(res.code).toBe(0);
+    expect(res.stderr).toBe("");
+    const rec = jsonOf(res);
+    expect(rec.dir).toBe(path.join(store, "skills", rec.id));
+    expect(await fsp.readFile(path.join(rec.dir, "SKILL.md"), "utf8")).toBe("# Multi\n\nrun scripts/tool.py");
+    expect(await fsp.readFile(path.join(rec.dir, "scripts", "tool.py"), "utf8")).toBe("print('hi')\n");
+
+    const listed = jsonOf(await sli(["list"], { store }));
+    expect(listed.skills[0].dir).toBe(rec.dir);
+
+    const srcB = path.join(store, "src-skill-v2");
+    await fsp.mkdir(srcB, { recursive: true });
+    await fsp.writeFile(path.join(srcB, "SKILL.md"), "# Multi v2");
+    await sli(["update", rec.id, "--path", srcB], { store });
+    const refreshed = jsonOf(await sli(["get", rec.id, "--return-content"], { store }));
+    expect(refreshed.content).toBe("# Multi v2");
+    expect(await fsp.readdir(rec.dir)).toEqual(["SKILL.md"]);
+
+    const removed = jsonOf(await sli(["remove", rec.id], { store }));
+    expect(removed.files).toEqual(["SKILL.md"]);
     expect(await fsp.readdir(path.join(store, "skills"))).toEqual([]);
   });
 
@@ -211,14 +242,15 @@ describe("store health", () => {
     expect(res.stderr).toContain("index.json is corrupted");
   });
 
-  test("orphaned content file → stderr warning, exit 0", async () => {
+  test("orphaned content dir → stderr warning, exit 0", async () => {
     const store = await tmpDir();
     const src = await writeSkillFile(store, "s.md", "c");
     await sli(["add", "--name", "x", "--description", "d", "--path", src], { store });
-    await fsp.writeFile(path.join(store, "skills", "ffffffff.md"), "orphan");
+    await fsp.mkdir(path.join(store, "skills", "ffffffff"), { recursive: true });
+    await fsp.writeFile(path.join(store, "skills", "ffffffff", "SKILL.md"), "orphan");
     const res = await sli(["list"], { store });
     expect(res.code).toBe(0);
-    expect(res.stderr).toContain("orphaned content file");
+    expect(res.stderr).toContain("orphaned content dir");
     expect(jsonOf(res).skills).toHaveLength(1);
   });
 

@@ -27,7 +27,7 @@
 │   │   └── get.ts
 │   └── lib/
 │       ├── paths.ts              store dir resolution, path helpers
-│       ├── store.ts              index load/save (atomic), record projection
+│       ├── store.ts              index load/save, verbatim skill-dir import (atomic), projection
 │       ├── ids.ts                id generation + collision loop
 │       ├── typesafe.ts           HTTP client, retry/backoff, question builder
 │       └── cli.ts                arg parsing helpers, JSON output, exit codes
@@ -81,13 +81,13 @@ is bundled into the compiled binary.
 | Layer | Tool | Cases |
 |---|---|---|
 | Unit | `bun test` | id generation/collision; name validation; atomic rename semantics; record projection (`path` absolutized); partial update semantics |
-| Store | `bun test` | add→list→get→update→remove roundtrip; remove returns content; orphan detection; corrupted index → exit 2 |
+| Store | `bun test` | add→list→get→update→remove roundtrip (file and multi-file dir sources); remove returns content + file list; orphan detection; corrupted index → exit 2 |
 | Query | `bun test` + `Bun.serve` mock | request body snapshot (state/questions shape); answer mapping; threshold edge (0.699/0.7); `--top` truncation; tie-break ordering; empty store short-circuit |
 | E2E manual | real API | 5–6 probe tasks vs real catalog (M6) |
 
 ## Edge-case checklist (implementation must handle)
 
-- [ ] `add` with unreadable/missing `--path` → exit 1
+- [ ] `add` with unreadable/missing `--path` → exit 1; directory without `SKILL.md` → exit 1
 - [ ] `add` duplicate name → stderr warning, proceeds with unique id
 - [ ] `update` unknown id → exit 1; unknown id on remove/get → exit 1
 - [ ] `update` with no flags → exit 1 (nothing to do)
@@ -105,7 +105,7 @@ is bundled into the compiled binary.
 |---|---|---|
 | Jev scores unreliable for the catalog | wrong skills loaded / none loaded | calibration milestone M6; criteria wording; curated descriptions; threshold tunable |
 | TypeSafe API outage | query fails | skill fallback contract (continue unblocked); retries |
-| Multi-file skills silently broken after import | skill references dead paths | staging step in importer; documented limitation |
+| Multi-file skills silently broken after import | skill references dead paths | whole-directory imports (verbatim copy) keep relative references intact |
 | index.json corruption | catalog unreadable | atomic writes; explicit exit-2 error; backup in runbook |
 | Every-message query latency/cost | slower sessions | single parallel-questions request; ~1.5–2k tokens at catalog ~10; `--top`/`--threshold` tuning; revisit policy if it hurts |
 | Name/description drift between index and file frontmatter | confusion | documented: index is authoritative (D5) |
@@ -117,4 +117,4 @@ is bundled into the compiled binary.
 - Borderline band output (`--borderline`) for 0.3–0.7 probabilities
 - File locking if background automation ever writes concurrently
 - Per-skill usage stats (which skills actually get loaded) to prune the catalog
-- Store format v2 with bundled multi-file skills (zip/tar entries)
+- Store format v3 with bundled compressed archives (zip/tar entries) for very large skills
