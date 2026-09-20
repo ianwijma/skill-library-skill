@@ -61,7 +61,7 @@ export async function run(args: string[], globals: Globals): Promise<void> {
 
   const byId = new Map(candidates.map((e) => [e.id, e]));
   const answers = response.answers as Record<string, NoulResponse>;
-  const matches: Array<{ id: string; name: string; description: string; path: string; probability: number; content?: string }> = [];
+  const matches: Array<{ id: string; name: string; description: string; path: string; dir: string; probability: number; content?: string }> = [];
   for (const [id, answer] of Object.entries(answers)) {
     const entry = byId.get(id);
     const probability = answer && typeof answer.noul === "number" ? answer.noul : undefined;

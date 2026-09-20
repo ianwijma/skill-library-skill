@@ -33,7 +33,7 @@ that operation:
 - `skill-library-query` — scoring the catalog (thresholds, `--top`, stdin, tuning)
 - `skill-library-list` — browsing the catalog
 - `skill-library-get` — inspecting one skill / retrieving its content
-- `skill-library-add` — importing a skill file
+- `skill-library-add` — importing a skill (directory or file)
 - `skill-library-update` — renaming, rewriting descriptions, re-importing content
 - `skill-library-remove` — deleting a skill
 

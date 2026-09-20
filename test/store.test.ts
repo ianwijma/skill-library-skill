@@ -4,7 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import { validateName } from "../src/lib/cli.ts";
 import { generateId, randomId } from "../src/lib/ids.ts";
-import { loadIndex, resolveSourceFile, saveIndex, writeFileAtomic } from "../src/lib/store.ts";
+import {
+  loadIndex,
+  resolveSource,
+  saveIndex,
+  writeFileAtomic,
+} from "../src/lib/store.ts";
 
 async function tmpDir(): Promise<string> {
   return fsp.mkdtemp(path.join(os.tmpdir(), "sli-unit-"));
@@ -76,7 +81,7 @@ describe("index", () => {
       source: "/tmp/src",
       addedAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
-      contentFile: "skills/9f3a1c2b.md",
+      contentDir: "skills/9f3a1c2b",
     };
     await saveIndex(store, [entry]);
     expect(await loadIndex(store)).toEqual([entry]);
@@ -91,20 +96,32 @@ describe("index", () => {
   });
 });
 
-describe("resolveSourceFile", () => {
+describe("resolveSource", () => {
   test("resolves an existing file to an absolute path", async () => {
     const dir = await tmpDir();
     const file = path.join(dir, "SKILL.md");
     await fsp.writeFile(file, "content");
-    expect(await resolveSourceFile(file)).toBe(file);
+    const src = await resolveSource(file);
+    expect(src.kind).toBe("file");
+    expect(src.abs).toBe(file);
+  });
+
+  test("resolves a skill directory containing SKILL.md", async () => {
+    const dir = await tmpDir();
+    const skill = path.join(dir, "my-skill");
+    await fsp.mkdir(skill);
+    await fsp.writeFile(path.join(skill, "SKILL.md"), "content");
+    const src = await resolveSource(skill);
+    expect(src.kind).toBe("dir");
+    expect(src.abs).toBe(skill);
   });
 
   test("missing file exits 1", async () => {
     const dir = await tmpDir();
-    expect(resolveSourceFile(path.join(dir, "nope.md"))).rejects.toThrow("--path not found");
+    expect(resolveSource(path.join(dir, "nope.md"))).rejects.toThrow("--path not found");
   });
 
-  test("directory exits 1", async () => {
-    expect(resolveSourceFile(await tmpDir())).rejects.toThrow("--path not found");
+  test("directory without SKILL.md exits 1", async () => {
+    expect(resolveSource(await tmpDir())).rejects.toThrow("no readable SKILL.md");
   });
 });

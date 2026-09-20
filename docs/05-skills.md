@@ -58,7 +58,7 @@ that operation:
 - `skill-library-query` — scoring the catalog (thresholds, `--top`, stdin, tuning)
 - `skill-library-list` — browsing the catalog
 - `skill-library-get` — inspecting one skill / retrieving its content
-- `skill-library-add` — importing a skill file
+- `skill-library-add` — importing a skill (directory or file)
 - `skill-library-update` — renaming, rewriting descriptions, re-importing content
 - `skill-library-remove` — deleting a skill
 
@@ -88,7 +88,7 @@ description: Use when scoring the skill catalog for a task or tuning query resul
 
 Asks the TypeSafe Jev model which cataloged skills are needed for a task. One
 positional: the task description (quote it). Output: JSON
-`{"matches":[{id,name,description,path,probability}...]}`, sorted by
+`{"matches":[{id,name,description,path,dir,probability}...]}`, sorted by
 probability descending.
 
 ```sh
@@ -146,14 +146,14 @@ stores). Orphaned store files trigger a stderr warning.
 ```markdown
 ---
 name: skill-library-get
-description: Use when inspecting a single cataloged skill or retrieving its full content without reading the file by path. Takes one positional skill id; supports --return-content.
+description: Use when inspecting a single cataloged skill or retrieving its full SKILL.md content without reading the file by path. Takes one positional skill id; supports --return-content.
 ---
 
 # skill-library get
 
 ```sh
-skill-library get <id>                  # {id,name,description,path}
-skill-library get <id> --return-content # adds the full skill text
+skill-library get <id>                  # {id,name,description,path,dir}
+skill-library get <id> --return-content # adds the full SKILL.md text
 ```
 
 Use cases: pre-add review, refresh checks, content retrieval. Unknown id →
@@ -162,25 +162,28 @@ exit 1 (`error: unknown skill id '<id>'`).
 
 ---
 
-## `skill-library-add` — import a skill file
+## `skill-library-add` — import a skill
 
 ```markdown
 ---
 name: skill-library-add
-description: Use when importing a skill file into the library for the first time — onboarding new skills or registering a skill just written. Requires --name, --description, and --path; the description is what gets machine-matched, so curate it.
+description: Use when importing a skill into the library for the first time — onboarding new skills or registering a skill just written. Requires --name, --description, and --path (a skill directory or a SKILL.md file); the description is what gets machine-matched, so curate it.
 ---
 
 # skill-library add
 
-Copies a skill file verbatim into the store and registers it:
+Copies a skill verbatim into the store and registers it. `--path` takes a skill
+**directory** (copied wholesale — SKILL.md plus sibling scripts/data, so
+relative references keep working) or a bare `SKILL.md` file:
 
 ```sh
-skill-library add --name <name> --description "<desc>" --path <file>
+skill-library add --name <name> --description "<desc>" --path <skill-dir-or-file>
 ```
 
 - `--name` lowercase-hyphen, ≤64 chars; duplicate names warn on stderr but
   proceed (ids stay unique)
-- The returned `path` is the STORE copy, not the source
+- The returned `path` is the STORE copy of SKILL.md, not the source; `dir` is
+  the skill's directory root
 - Description quality drives matching — front-load trigger keywords, third
   person ("Use when…"), what it does + when to use it, ≤ 2 sentences
 ```
@@ -192,17 +195,18 @@ skill-library add --name <name> --description "<desc>" --path <file>
 ```markdown
 ---
 name: skill-library-update
-description: Use when editing an existing cataloged skill — renaming it, rewriting a weak description for better matching, or re-importing changed content from its source file. Only provided flags change; the id never changes.
+description: Use when editing an existing cataloged skill — renaming it, rewriting a weak description for better matching, or re-importing changed content from its source directory. Only provided flags change; the id never changes.
 ---
 
 # skill-library update
 
 ```sh
-skill-library update <id> [--name <n>] [--description <d>] [--path <file>]
+skill-library update <id> [--name <n>] [--description <d>] [--path <skill-dir-or-file>]
 ```
 
 - `--description` — the main lever on query matching quality; rewrite weak ones
-- `--path` — re-imports content (replaces the stored file verbatim)
+- `--path` — re-imports content verbatim (replaces the stored skill dir,
+  siblings included)
 - `--name` — rename; the id stays stable across renames
 
 Unknown id → exit 1; no flags → exit 1 (nothing to do).
@@ -215,7 +219,7 @@ Unknown id → exit 1; no flags → exit 1 (nothing to do).
 ```markdown
 ---
 name: skill-library-remove
-description: Use when permanently deleting a skill from the library. Prints the deleted record including its full content so it stays recoverable from the transcript; confirm with the user before deleting.
+description: Use when permanently deleting a skill from the library. Prints the deleted record including its full SKILL.md content and imported file list so it stays recoverable from the transcript; confirm with the user before deleting.
 ---
 
 # skill-library remove
@@ -224,8 +228,9 @@ description: Use when permanently deleting a skill from the library. Prints the 
 skill-library remove <id>
 ```
 
-- Output: `{id, name, description, content}` — the deleted skill, recoverable
-  from the transcript
+- Output: `{id, name, description, content, files}` — the deleted skill
+  (SKILL.md text + every imported relative file path), recoverable from the
+  transcript
 - No interactive prompt; confirm with the user before running (deletion safety)
 - Unknown id → exit 1
 ```
@@ -240,7 +245,7 @@ cutover completion. **Stays quiet** on ordinary task work.
 ```markdown
 ---
 name: skill-importer
-description: Use when the user asks to import, onboard, sync, refresh, or bulk-add skills into the skill library, or to complete the cutover from auto-loaded skills. Rerunnable at any time — it diffs new or changed skill files against the library and imports only the differences via skill-library add/update, writing an undo journal so every change can be reversed.
+description: Use when the user asks to import, onboard, sync, refresh, or bulk-add skills into the skill library, or to complete the cutover from auto-loaded skills. Rerunnable at any time — it diffs new or changed skill directories against the library and imports only the differences (whole directories, multi-file skills included) via skill-library add/update, writing an undo journal so every change can be reversed.
 ---
 
 # Skill Importer
@@ -254,19 +259,18 @@ later (see the `skill-importer-undo` skill).
 1. **Sources** — default dirs: `~/.config/opencode/skills/*`,
    `~/.opencode/skills/*`, `~/.agents/skills/*`, `~/.claude/skills/*` (any
    subdir containing `SKILL.md`), or user-supplied paths/dirs.
-2. **Discover** — Glob `**/SKILL.md` across the sources.
+2. **Discover** — Glob `**/SKILL.md` across the sources; the skill's directory is
+   the `SKILL.md`'s parent.
 3. **Diff** — run `skill-library list`, then compare by `name`:
-   - name not in library → plan `skill-library add`
-   - name in library: compare the source file bytes against
+   - name not in library → plan `skill-library add --path <skill dir>`
+   - name in library: compare the source SKILL.md bytes against
      `skill-library get <id> --return-content` → differ → plan
-     `skill-library update <id> --path <file>`
+     `skill-library update <id> --path <skill dir>`
    - identical → skip
-4. **Multi-file skills** — if a skill's content references sibling files/scripts
-   (e.g. `ui-ux-pro-max` calls `scripts/search.py`): copy the **whole** source dir
-   to `<store>/staging/<name>/` first, rewrite relative asset references in the
-   SKILL.md to the staged absolute paths, then point `--path` at the staged
-   SKILL.md. The library manages the markdown; staged assets stay where the
-   skill's own references expect them.
+4. **Multi-file skills are just imports** — pass the skill **directory** to
+   `--path`; the whole folder (scripts, data, everything except junk like
+   `__pycache__`) is copied verbatim into the store, so relative references keep
+   working with no rewriting.
 5. **Curate descriptions** — for each skill being imported or updated, ensure the
    description is machine-matchable: front-loaded trigger keywords, third person
    ("Use when…"), what it does + when to use it, ≤ 2 sentences. Plan a
@@ -277,7 +281,7 @@ later (see the `skill-importer-undo` skill).
    `<store>/imports/<yyyy-MM-ddTHH-mm-ss>/journal.json`. For each planned update,
    first capture the current record (`skill-library get <id> --return-content`):
    prior `name`/`description` go into the journal entry, prior content is written
-   to `prior-<id>.md` in the same run dir. Adds need no prior state. Journal
+   to the staged prior skill dir `prior-<id>/` in the same run dir. Adds need no prior state. Journal
    format:
    ```json
    {
@@ -286,7 +290,7 @@ later (see the `skill-importer-undo` skill).
      "actions": [
        { "op": "add", "name": "frontend-design", "id": null, "done": false },
        { "op": "update", "id": "9f3a1c2b", "name": "frontend-design",
-         "prior": { "name": "…", "description": "…", "content": "prior-9f3a1c2b.md" },
+         "prior": { "name": "…", "description": "…", "content": "prior-9f3a1c2b" },
          "done": false }
      ]
    }
@@ -298,7 +302,7 @@ later (see the `skill-importer-undo` skill).
    `skill-library get <id> --return-content` matches the source byte-for-byte.
    Report the final catalog and the journal path.
 
-The store dir is the parent of the `skills/` dir in any returned `path`
+The store dir is the parent of the `skills/` dir in any returned `dir`
 (default `~/.local/share/skill-library`; override via `SKILL_LIBRARY_DIR` or
 `--store`).
 
@@ -308,7 +312,8 @@ The store dir is the parent of the `skills/` dir in any returned `path`
 - Never delete anything: importing only adds and updates. Deletions are
   `skill-library remove` (user-confirmed) or cutover (explicitly confirmed).
 - Rerun-safe: identical skills are skipped, so a rerun picks up only differences.
-- Multi-file skills are staged, never referenced from the original location.
+- Multi-file skills are imported whole (directory in, directory stored) — never
+  referenced from the original location.
 - If a run fails mid-way, stop and tell the user; the journal records exactly
   what was executed, and `skill-importer-undo` can reverse it.
 
@@ -356,14 +361,14 @@ undone without the user's explicit confirmation of the reversal plan.
      transcript
    - `update` → plan `skill-library update <id>` with the journal's prior
      values: `--name` and/or `--description` when captured, and
-     `--path <run>/prior-<id>.md` when prior content was captured
+     `--path <run>/prior-<id>/` when prior content was captured
    - `id: null` adds and `done: false` entries were never executed → nothing
      to undo for them
 3. **Confirm** — show the remove/update list and get explicit approval.
 4. **Execute** — in reverse journal order (read the `skill-library-remove` and
    `skill-library-update` skills for the exact contracts).
 5. **Verify** — `skill-library list`; spot-check restored skills with
-   `skill-library get <id> --return-content` against the `prior-<id>.md` copies.
+   `skill-library get <id> --return-content` against the staged prior copies.
 6. **Report** — what was removed and what was restored; journals stay on disk.
 
 Re-running undo on the same journal is safe: already-removed ids fail with
@@ -394,5 +399,5 @@ See docs/06-cutover-runbook.md § Rollback for the human runbook.
 | Reversibility | Every import journals prior state before mutating (D16); undo replays the journal in reverse |
 | Description quality | Curated at import time; this is the main lever on Jev matching quality |
 | Skill file reads | Use the `path` from library output — never reconstruct store paths by hand |
-| Multi-file caveat | Handled by staging (importer step 4) — a known v1 limitation, not silent breakage |
+| Multi-file skills | Imported whole via directory `--path`; run sibling scripts from the record's `dir` |
 | Gateway leanness | Only the gateway is relevant to every message; command skills stay out of the per-message path |

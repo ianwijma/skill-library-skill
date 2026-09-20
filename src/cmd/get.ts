@@ -3,8 +3,8 @@ import { findEntry, loadIndex, projection } from "../lib/store.ts";
 
 export const help = `skill-library get <id> — print one skill
 
-Output: the record {id,name,description,path}; add --return-content to
-include the full skill text.
+Output: the record {id,name,description,path,dir}; add --return-content to
+include the full SKILL.md text.
 
 Example: skill-library get 9f3a1c2b --return-content`;
 

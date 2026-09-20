@@ -29,19 +29,19 @@ powered by TypeSafe's Jev model (typed probabilities, not generated text).
                         │  - 1 × POST /v1/systemone  │────▶ api.typesafe.ai (jev-latest)
                         │  - threshold + sort        │     1 noul question per skill
                         └─────────────┬──────────────┘
-                                      │ {"matches":[{id,name,description,path,probability}]}
+                                      │ {"matches":[{id,name,description,path,dir,probability}]}
                                       ▼
                         ┌────────────────────────────┐
-                        │ LLM Reads matched files    │  ~/.local/share/skill-library/skills/<id>.md
+                        │ LLM Reads matched files    │  ~/.local/share/skill-library/skills/<id>/SKILL.md
                         └────────────────────────────┘
 ```
 
 Management flow (LLM- or user-driven, and the importer skill):
 
 ```
- source skill dirs ──▶ skill-library add/update ──▶ managed store (verbatim file copy + index)
-                        skill-library list/get      ◀─ diff source for rerunnable imports
-                        skill-library remove
+ source skill dirs ──▶ skill-library add/update ──▶ managed store (verbatim dir copy + index)
+                         skill-library list/get      ◀─ diff source for rerunnable imports
+                         skill-library remove
 ```
 
 ## Components
@@ -53,7 +53,7 @@ Management flow (LLM- or user-driven, and the importer skill):
 | `skill-importer` skill | Rerunnable onboarding: discover → diff → journal → import → curate descriptions → (optional, confirmed) cleanup of auto-load dirs. |
 | `skill-importer-undo` skill | Reverses an import run or the cutover from its journal: removes added skills, restores prior name/description/content. |
 | `install.sh` | Removed. Installation is manual (README) or via `npx skills add ianwijma/skill-library-skill` for the skill files; the binary is built with `bun run build` and copied onto `PATH` by hand. |
-| Managed store | `~/.local/share/skill-library/`: `index.json` + `skills/<id>.md` files. |
+| Managed store | `~/.local/share/skill-library/`: `index.json` + one verbatim directory per skill (`skills/<id>/` with `SKILL.md` plus any sibling assets). |
 
 ## Decision log
 
@@ -64,7 +64,7 @@ Management flow (LLM- or user-driven, and the importer skill):
 | D3 | Query on **every user message** | User decision; avoids stale-skill bugs at the cost of a small per-message latency/tokens |
 | D4 | Import = LLM composing primitives (`list` + `add`/`update`) | Keeps the app minimal; diffing is trivial for the LLM; flow is rerunnable by nature |
 | D5 | Record model keyed by generated `id`; name/description are explicit `add` args | IDs stay stable across renames; no frontmatter parsing needed in the app |
-| D6 | Skills stored as verbatim file copies (`<id>.md`) | Store is self-contained; survives deletion of originals during cutover |
+| D6 | Skills stored as verbatim directory copies (`skills/<id>/`) | Multi-file skills (scripts, data) keep working — relative references resolve inside the store; survives deletion of originals during cutover |
 | D7 | One Noul question per skill, single API call | Multiple skills can apply; questions evaluate in parallel; scales with catalog size |
 | D8 | Threshold default 0.7 | Matches TypeSafe docs' calibration examples; tunable via flag |
 | D9 | `install-skill` subcommand dropped | installation is manual (README) or via `npx skills add` for skill files; app stays a pure library |
@@ -78,7 +78,7 @@ Management flow (LLM- or user-driven, and the importer skill):
 
 ## Non-goals (v1)
 
-- No skill versioning/history, no multi-file asset management (documented limitation, see docs 05/06)
+- No skill versioning/history
 - No daemon/server; every command is a short-lived process
 - No editing skill content through the CLI (content changes via `update --path` re-import)
 - No automatic scheduling of imports; the importer skill runs when invoked

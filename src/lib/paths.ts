@@ -21,8 +21,12 @@ export function skillsDir(store: string): string {
   return path.join(store, "skills");
 }
 
-export function contentFilePath(store: string, contentFile: string): string {
-  return path.resolve(store, contentFile);
+export function skillDirPath(store: string, contentDir: string): string {
+  return path.resolve(store, contentDir);
+}
+
+export function entryFilePath(store: string, contentDir: string): string {
+  return path.join(skillDirPath(store, contentDir), "SKILL.md");
 }
 
 export async function ensureStore(store: string): Promise<void> {

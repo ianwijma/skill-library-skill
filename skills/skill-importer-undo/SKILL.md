@@ -20,16 +20,18 @@ undone without the user's explicit confirmation of the reversal plan.
    - `add` (with an `id`) → plan `skill-library remove <id>` — its output
      returns the deleted content, so the removal stays recoverable from the
      transcript
-   - `update` → plan `skill-library update <id>` with the journal's prior
-     values: `--name` and/or `--description` when captured, and
-     `--path <run>/prior-<id>.md` when prior content was captured
+    - `update` → plan `skill-library update <id>` with the journal's prior
+      values: `--name` and/or `--description` when captured, and
+      `--path <run>/prior-<id>/` when prior content was captured (a staged copy
+      of the prior skill directory)
    - `id: null` adds and `done: false` entries were never executed → nothing
      to undo for them
 3. **Confirm** — show the remove/update list and get explicit approval.
 4. **Execute** — in reverse journal order (read the `skill-library-remove` and
    `skill-library-update` skills for the exact contracts).
 5. **Verify** — `skill-library list`; spot-check restored skills with
-   `skill-library get <id> --return-content` against the `prior-<id>.md` copies.
+   `skill-library get <id> --return-content` against the prior copies staged in
+   the run dir.
 6. **Report** — what was removed and what was restored; journals stay on disk.
 
 Re-running undo on the same journal is safe: already-removed ids fail with

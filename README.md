@@ -12,7 +12,7 @@ The agent reads only the skills that matter.
 |---|---|
 | `skill-library` | Binary. Commands: `query`, `list`, `add`, `update`, `remove`, `get` |
 | `skill-library` skills | The gateway. Plus one skill per command |
-| `skill-importer` | Skill. Imports new and changed skills. Journals every change |
+| `skill-importer` | Skill. Imports new and changed skills — whole directories, multi-file skills included. Journals every change |
 | `skill-importer-undo` | Skill. Reverses an import or the cutover |
 
 Status: **implemented** (v0.1.0). Docs below are the build contract.

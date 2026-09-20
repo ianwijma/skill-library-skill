@@ -7,7 +7,7 @@ description: Use when scoring the skill catalog for a task or tuning query resul
 
 Asks the TypeSafe Jev model which cataloged skills are needed for a task. One
 positional: the task description (quote it). Output: JSON
-`{"matches":[{id,name,description,path,probability}...]}`, sorted by
+`{"matches":[{id,name,description,path,dir,probability}...]}`, sorted by
 probability descending.
 
 ```sh

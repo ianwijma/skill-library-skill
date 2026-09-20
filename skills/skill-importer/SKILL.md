@@ -1,6 +1,6 @@
 ---
 name: skill-importer
-description: Use when the user asks to import, onboard, sync, refresh, or bulk-add skills into the skill library, or to complete the cutover from auto-loaded skills. Rerunnable at any time — it diffs new or changed skill files against the library and imports only the differences via skill-library add/update, writing an undo journal so every change can be reversed.
+description: Use when the user asks to import, onboard, sync, refresh, or bulk-add skills into the skill library, or to complete the cutover from auto-loaded skills. Rerunnable at any time — it diffs new or changed skill directories against the library and imports only the differences (whole directories, multi-file skills included) via skill-library add/update, writing an undo journal so every change can be reversed.
 ---
 
 # Skill Importer
@@ -14,19 +14,18 @@ later (see the `skill-importer-undo` skill).
 1. **Sources** — default dirs: `~/.config/opencode/skills/*`,
    `~/.opencode/skills/*`, `~/.agents/skills/*`, `~/.claude/skills/*` (any
    subdir containing `SKILL.md`), or user-supplied paths/dirs.
-2. **Discover** — Glob `**/SKILL.md` across the sources.
+2. **Discover** — Glob `**/SKILL.md` across the sources; the skill's directory is
+   the `SKILL.md`'s parent.
 3. **Diff** — run `skill-library list`, then compare by `name`:
-   - name not in library → plan `skill-library add`
-   - name in library: compare the source file bytes against
+   - name not in library → plan `skill-library add --path <skill dir>`
+   - name in library: compare the source SKILL.md bytes against
      `skill-library get <id> --return-content` → differ → plan
-     `skill-library update <id> --path <file>`
+     `skill-library update <id> --path <skill dir>`
    - identical → skip
-4. **Multi-file skills** — if a skill's content references sibling files/scripts
-   (e.g. `ui-ux-pro-max` calls `scripts/search.py`): copy the **whole** source dir
-   to `<store>/staging/<name>/` first, rewrite relative asset references in the
-   SKILL.md to the staged absolute paths, then point `--path` at the staged
-   SKILL.md. The library manages the markdown; staged assets stay where the
-   skill's own references expect them.
+4. **Multi-file skills are just imports** — pass the skill **directory** to
+   `--path`; the whole folder (scripts, data, everything except junk like
+   `__pycache__`) is copied verbatim into the store, so relative references keep
+   working with no rewriting.
 5. **Curate descriptions** — for each skill being imported or updated, ensure the
    description is machine-matchable: front-loaded trigger keywords, third person
    ("Use when…"), what it does + when to use it, ≤ 2 sentences. Plan a
@@ -37,7 +36,7 @@ later (see the `skill-importer-undo` skill).
    `<store>/imports/<yyyy-MM-ddTHH-mm-ss>/journal.json`. For each planned update,
    first capture the current record (`skill-library get <id> --return-content`):
    prior `name`/`description` go into the journal entry, prior content is written
-   to `prior-<id>.md` in the same run dir. Adds need no prior state. Journal
+   to the staged prior skill dir `prior-<id>/` in the same run dir. Adds need no prior state. Journal
    format:
    ```json
    {
@@ -46,7 +45,7 @@ later (see the `skill-importer-undo` skill).
      "actions": [
        { "op": "add", "name": "frontend-design", "id": null, "done": false },
        { "op": "update", "id": "9f3a1c2b", "name": "frontend-design",
-         "prior": { "name": "…", "description": "…", "content": "prior-9f3a1c2b.md" },
+         "prior": { "name": "…", "description": "…", "content": "prior-9f3a1c2b" },
          "done": false }
      ]
    }
@@ -58,7 +57,7 @@ later (see the `skill-importer-undo` skill).
    `skill-library get <id> --return-content` matches the source byte-for-byte.
    Report the final catalog and the journal path.
 
-The store dir is the parent of the `skills/` dir in any returned `path`
+The store dir is the parent of the `skills/` dir in any returned `dir`
 (default `~/.local/share/skill-library`; override via `SKILL_LIBRARY_DIR` or
 `--store`).
 
@@ -68,7 +67,8 @@ The store dir is the parent of the `skills/` dir in any returned `path`
 - Never delete anything: importing only adds and updates. Deletions are
   `skill-library remove` (user-confirmed) or cutover (explicitly confirmed).
 - Rerun-safe: identical skills are skipped, so a rerun picks up only differences.
-- Multi-file skills are staged, never referenced from the original location.
+- Multi-file skills are imported whole (directory in, directory stored) — never
+  referenced from the original location.
 - If a run fails mid-way, stop and tell the user; the journal records exactly
   what was executed, and `skill-importer-undo` can reverse it.
 
