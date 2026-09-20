@@ -31,6 +31,9 @@ Status: **implemented** (v0.1.0). Docs below are the build contract.
 
 ## Quick start
 
+Requires: [bun](https://bun.sh) >= 1.3 — it builds the binary. `query` also
+needs `TYPESAFE_API_KEY`.
+
 A skill is one file: `SKILL.md`.
 The files for this repo live under `skills/`.
 Installing a skill = putting its file in your agent's skills folder.
@@ -103,5 +106,3 @@ skill-library query "fix a failing next.js build"
 ```
 
 Restart your agent so the skills load.
-
-Needs: `bun >= 1.3` to build. `TYPESAFE_API_KEY` for `query`.
