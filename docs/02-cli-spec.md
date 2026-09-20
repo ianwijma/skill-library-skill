@@ -1,6 +1,6 @@
 # 02 — CLI Specification
 
-`sli` — the skill library CLI. Single compiled binary (Bun/TypeScript). All
+`skill-library` — the skill library CLI. Single compiled binary (Bun/TypeScript). All
 commands print results as JSON on **stdout**; all errors as plain text on
 **stderr**. Exit codes signal outcome class.
 
@@ -20,7 +20,7 @@ commands print results as JSON on **stdout**; all errors as plain text on
   output contract.
 - **Exit codes**: `0` success · `1` usage/validation error (bad args, unknown id, missing file) · `2` runtime failure (network, TypeSafe API, filesystem IO).
 
-## `sli query "<task text>"` — score the catalog for a task
+## `skill-library query "<task text>"` — score the catalog for a task
 
 The core command. Asks Jev which cataloged skills are needed for the described task.
 
@@ -35,15 +35,15 @@ The core command. Asks Jev which cataloged skills are needed for the described t
 Examples:
 
 ```sh
-sli query "fix a failing Next.js production build"
+skill-library query "fix a failing Next.js production build"
 # {"matches":[{"id":"9f3a1c2b","name":"nextjs-build","description":"…","path":"/home/ian/.local/share/skill-library/skills/9f3a1c2b.md","probability":0.91}]}
 
-sli query --threshold 0.8 --top 3 "design a dark dashboard with charts"
-cat task.md | sli query -
-sli query --return-content "review this PR for accessibility issues"
+skill-library query --threshold 0.8 --top 3 "design a dark dashboard with charts"
+cat task.md | skill-library query -
+skill-library query --return-content "review this PR for accessibility issues"
 ```
 
-## `sli list` — the catalog
+## `skill-library list` — the catalog
 
 | | |
 |---|---|
@@ -52,11 +52,11 @@ sli query --return-content "review this PR for accessibility issues"
 | Use | The LLM's diff source for rerunnable imports; cheap orientation |
 
 ```sh
-sli list
-sli list --return-content
+skill-library list
+skill-library list --return-content
 ```
 
-## `sli add --name <n> --description <d> --path <file>` — create
+## `skill-library add --name <n> --description <d> --path <file>` — create
 
 | | |
 |---|---|
@@ -66,10 +66,10 @@ sli list --return-content
 | Output | The created record (plus `content` with `--return-content`) |
 
 ```sh
-sli add --name context7-mcp --description "Use when questions involve libraries, frameworks, or APIs; fetch current docs via Context7 MCP." --path ~/.agents/skills/context7-mcp/SKILL.md
+skill-library add --name context7-mcp --description "Use when questions involve libraries, frameworks, or APIs; fetch current docs via Context7 MCP." --path ~/.agents/skills/context7-mcp/SKILL.md
 ```
 
-## `sli update <id> --name <n> --description <d> --path <file>` — update
+## `skill-library update <id> --name <n> --description <d> --path <file>` — update
 
 | | |
 |---|---|
@@ -79,11 +79,11 @@ sli add --name context7-mcp --description "Use when questions involve libraries,
 | Output | The updated record (plus `content` with `--return-content`) |
 
 ```sh
-sli update 9f3a1c2b --description "Rewritten description front-loading trigger keywords."
-sli update 9f3a1c2b --path ~/.opencode/skills/frontend-design/SKILL.md
+skill-library update 9f3a1c2b --description "Rewritten description front-loading trigger keywords."
+skill-library update 9f3a1c2b --path ~/.opencode/skills/frontend-design/SKILL.md
 ```
 
-## `sli remove <id>` — delete
+## `skill-library remove <id>` — delete
 
 | | |
 |---|---|
@@ -92,7 +92,7 @@ sli update 9f3a1c2b --path ~/.opencode/skills/frontend-design/SKILL.md
 | Output | `{"id":…, "name":…, "description":…, "content":…}` — the deleted skill, recoverable from the transcript |
 | Edge cases | Unknown id → exit 1 |
 
-## `sli get <id>` — inspect one skill
+## `skill-library get <id>` — inspect one skill
 
 | | |
 |---|---|
@@ -113,5 +113,5 @@ error: typesafe api 429 after 3 retries — try again shortly
 
 ## Help text
 
-`sli --help` lists the six commands with one-line summaries and the global flags;
-each command also accepts `sli <cmd> --help`.
+`skill-library --help` lists the six commands with one-line summaries and the global flags;
+each command also accepts `skill-library <cmd> --help`.

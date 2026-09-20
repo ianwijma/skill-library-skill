@@ -6,13 +6,16 @@
 /
 ├── README.md                     index + quickstart
 ├── docs/                         this doc set (01–07)
-├── install.sh                    build → ~/.local/bin/sli (+skill-library alias);
+├── install.sh                    build → ~/.local/bin/skill-library (+sli alias);
 │                                 copy skills/ → ~/.config/opencode/skills/
 ├── package.json                  (bun) scripts: build, test, typecheck
 ├── tsconfig.json
 ├── skills/
-│   ├── skill-library/SKILL.md    wrapper skill 1 (verbatim from doc 05)
-│   └── skill-importer/SKILL.md   wrapper skill 2 (verbatim from doc 05)
+│   ├── skill-library/SKILL.md            gateway (verbatim from doc 05)
+│   ├── skill-library-{query,list,get,    one skill per subcommand
+│   │   add,update,remove}/SKILL.md
+│   ├── skill-importer/SKILL.md           onboarding, journals every change
+│   └── skill-importer-undo/SKILL.md      reverses an import run / cutover
 ├── src/
 │   ├── index.ts                  arg parsing → command dispatch, global flags
 │   ├── cmd/
@@ -34,9 +37,10 @@
     └── query.test.ts
 ```
 
-Zero runtime dependencies planned: native `fetch`, hand-rolled arg parsing, no
-YAML/frontmatter parsing needed (D5). Keeps the compiled binary small and the
-attack surface minimal.
+One runtime dependency: the official [`@typesafe-ai/sdk`](https://docs.typesafe.ai/sdk/javascript)
+(D15) carries the System One call — retries, per-attempt timeout, and typed errors.
+Arg parsing stays hand-rolled; no YAML/frontmatter parsing needed (D5). The SDK
+is bundled into the compiled binary.
 
 ## Milestones
 
@@ -52,9 +56,9 @@ attack surface minimal.
   429/529 retry honored (Retry-After + backoff); threshold/top correctness
 
 ### M3 — Binary + install
-- `bun build --compile` → `dist/sli`; `install.sh` (binary, `skill-library`
+- `bun build --compile` → `dist/skill-library`; `install.sh` (binary, `sli`
   alias, skills copy, store dir creation, restart reminder)
-- Acceptance: `sli --version` works from a clean shell without bun on PATH
+- Acceptance: `skill-library --version` works from a clean shell without bun on PATH
   (static binary); `install.sh` idempotent
 
 ### M4 — Wrapper skills
@@ -108,7 +112,7 @@ attack surface minimal.
 
 ## Future work (explicitly out of v1)
 
-- `sli rebuild` (regenerate index from content files if metadata lost — needs
+- `skill-library rebuild` (regenerate index from content files if metadata lost — needs
   metadata embedded in files, revisit with frontmatter rewriting)
 - Borderline band output (`--borderline`) for 0.3–0.7 probabilities
 - File locking if background automation ever writes concurrently
