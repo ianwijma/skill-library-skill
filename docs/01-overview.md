@@ -52,7 +52,7 @@ Management flow (LLM- or user-driven, and the importer skill):
 | `skill-library` skills | Always-on gateway (query workflow) + one skill per subcommand (query/list/get/add/update/remove), per D14. No import logic, no skill installation logic. |
 | `skill-importer` skill | Rerunnable onboarding: discover → diff → journal → import → curate descriptions → (optional, confirmed) cleanup of auto-load dirs. |
 | `skill-importer-undo` skill | Reverses an import run or the cutover from its journal: removes added skills, restores prior name/description/content. |
-| `install.sh` | Build, install binary + alias, copy the two skill files. Plain bash — the app itself has no install command. |
+| `install.sh` | Removed. Installation is manual (README) or via `npx skills add ianwijma/skill-library-skill` for the skill files; the binary is built with `bun run build` and copied onto `PATH` by hand. |
 | Managed store | `~/.local/share/skill-library/`: `index.json` + `skills/<id>.md` files. |
 
 ## Decision log
@@ -67,7 +67,7 @@ Management flow (LLM- or user-driven, and the importer skill):
 | D6 | Skills stored as verbatim file copies (`<id>.md`) | Store is self-contained; survives deletion of originals during cutover |
 | D7 | One Noul question per skill, single API call | Multiple skills can apply; questions evaluate in parallel; scales with catalog size |
 | D8 | Threshold default 0.7 | Matches TypeSafe docs' calibration examples; tunable via flag |
-| D9 | `install-skill` subcommand dropped | install.sh handles installation; app stays a pure library |
+| D9 | `install-skill` subcommand dropped | installation is manual (README) or via `npx skills add` for skill files; app stays a pure library |
 | D10 | `remove` returns full record incl. content | Deleted skill recoverable from the transcript |
 | D11 | `--return-content` flag on read-type commands | Lets the LLM trade one roundtrip for larger output when convenient |
 | D12 | Build now, migrate later | Old skills keep auto-loading until cutover is explicitly run (see doc 06) |
