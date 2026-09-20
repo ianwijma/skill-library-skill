@@ -4,10 +4,8 @@
 
 ```
 /
-├── README.md                     index + quickstart
+├── README.md                     index + quickstart (manual install steps)
 ├── docs/                         this doc set (01–07)
-├── install.sh                    build → ~/.local/bin/skill-library (+sli alias);
-│                                 copy skills/ → ~/.config/opencode/skills/
 ├── package.json                  (bun) scripts: build, test, typecheck
 ├── tsconfig.json
 ├── skills/
@@ -56,13 +54,14 @@ is bundled into the compiled binary.
   429/529 retry honored (Retry-After + backoff); threshold/top correctness
 
 ### M3 — Binary + install
-- `bun build --compile` → `dist/skill-library`; `install.sh` (binary, `sli`
-  alias, skills copy, store dir creation, restart reminder)
+- `bun build --compile` → `dist/skill-library`; README documents manual install
+  (binary onto `PATH`, optional `sli` alias) and `npx skills add` for skill files
 - Acceptance: `skill-library --version` works from a clean shell without bun on PATH
-  (static binary); `install.sh` idempotent
+  (static binary)
 
 ### M4 — Wrapper skills
-- Finalize both SKILL.md drafts (doc 05) as real files; install via install.sh
+- Finalize both SKILL.md drafts (doc 05) as real files; install via the README
+  steps or `npx skills add`
 - Acceptance: after restart, both skills appear in session; `skill-library`
   description triggers on arbitrary tasks
 
