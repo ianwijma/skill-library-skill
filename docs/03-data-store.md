@@ -100,4 +100,5 @@ sequentially. Atomic renames prevent corruption; last-writer-wins is acceptable.
   silently rebuild, since name/description exist nowhere else).
 - Orphaned skill dirs (no index entry) are ignored by readers; `list` prints a
   stderr warning when it detects any.
-- Backups: cutover runbook (doc 06) tars originals before any deletion.
+- Backups: the importer stages every source it removes into the run dir
+  (`imports/<run>/removed-<name>/`) before deleting it (doc 06).

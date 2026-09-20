@@ -12,8 +12,8 @@ The agent reads only the skills that matter.
 |---|---|
 | `skill-library` | Binary. Commands: `query`, `list`, `add`, `update`, `remove`, `get` |
 | `skill-library` skills | The gateway. Plus one skill per command |
-| `skill-importer` | Skill. Imports new and changed skills — whole directories, multi-file skills included. Journals every change |
-| `skill-importer-undo` | Skill. Reverses an import or the cutover |
+| `skill-importer` | Skill. Imports new and changed skills — whole directories, multi-file skills included — and removes their sources from the auto-load dirs. Journals every change |
+| `skill-importer-undo` | Skill. Reverses an import run |
 
 Status: **implemented** (v0.1.0). Docs below are the build contract.
 
@@ -26,7 +26,7 @@ Status: **implemented** (v0.1.0). Docs below are the build contract.
 | [03 — data store](docs/03-data-store.md) | Store layout, index schema, atomicity |
 | [04 — query](docs/04-typesafe-query.md) | Jev integration, retries, thresholds |
 | [05 — skills](docs/05-skills.md) | Skill behavior + full SKILL.md drafts |
-| [06 — cutover runbook](docs/06-cutover-runbook.md) | Import flows, rollback |
+| [06 — import runbook](docs/06-import-runbook.md) | Import flows, rollback |
 | [07 — implementation plan](docs/07-implementation-plan.md) | Repo layout, milestones, tests |
 
 ## Quick start

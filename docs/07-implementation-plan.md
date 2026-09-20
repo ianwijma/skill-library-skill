@@ -12,8 +12,8 @@
 │   ├── skill-library/SKILL.md            gateway (verbatim from doc 05)
 │   ├── skill-library-{query,list,get,    one skill per subcommand
 │   │   add,update,remove}/SKILL.md
-│   ├── skill-importer/SKILL.md           onboarding, journals every change
-│   └── skill-importer-undo/SKILL.md      reverses an import run / cutover
+│   ├── skill-importer/SKILL.md           onboarding + source removal, journals every change
+│   └── skill-importer-undo/SKILL.md      reverses an import run
 ├── src/
 │   ├── index.ts                  arg parsing → command dispatch, global flags
 │   ├── cmd/

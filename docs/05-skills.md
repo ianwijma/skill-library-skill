@@ -4,8 +4,8 @@ Nine small skills ship as files in this repo under `skills/`. They are installed
 either with the skills CLI (`npx skills add ianwijma/skill-library-skill`, which
 installs for any agent and copies only the skill files) or by copying the files
 into the agent's skills folder by hand — the `skill-library` app has no
-install command (D9). After cutover they are the only project skills that
-auto-load.
+install command (D9). Once the importer has run, these are the only project
+skills that auto-load: importing removes every other skill's source.
 
 The gateway (`skill-library`) is the only skill relevant to every message; it
 stays lean so the per-message token floor stays small. Every subcommand gets its
@@ -240,19 +240,21 @@ skill-library remove <id>
 ## `skill-importer` — rerunnable onboarding
 
 **Triggers**: "import/onboard/sync/refresh/add skills", bulk skill migration,
-cutover completion. **Stays quiet** on ordinary task work.
+"complete the cutover" (importing now removes the sources itself). **Stays
+quiet** on ordinary task work.
 
 ```markdown
 ---
 name: skill-importer
-description: Use when the user asks to import, onboard, sync, refresh, or bulk-add skills into the skill library, or to complete the cutover from auto-loaded skills. Rerunnable at any time — it diffs new or changed skill directories against the library and imports only the differences (whole directories, multi-file skills included) via skill-library add/update, writing an undo journal so every change can be reversed.
+description: Use when the user asks to import, onboard, sync, refresh, or bulk-add skills into the skill library, or to complete the cutover from auto-loaded skills. Rerunnable at any time — it diffs skill directories against the library, imports only the differences (whole directories, multi-file skills included) via skill-library add/update, then removes the imported skills' sources from the auto-load dirs, writing an undo journal so every change can be reversed.
 ---
 
 # Skill Importer
 
 Rerunnable onboarding flow. Safe to run repeatedly; each run picks up exactly the
-new and changed skills. Every mutation is journaled, so any run can be reversed
-later (see the `skill-importer-undo` skill).
+new and changed skills, then removes the sources of everything it has safely in
+the library, so imported skills stop auto-loading. Every mutation is journaled,
+so any run can be reversed later (see the `skill-importer-undo` skill).
 
 ## Flow
 
@@ -268,7 +270,7 @@ later (see the `skill-importer-undo` skill).
    - name in library: compare the source SKILL.md bytes against
      `skill-library get <id> --return-content` → differ → plan
      `skill-library update <id> --path <skill dir>`
-   - identical → skip
+   - identical → skip the import; the library already holds this exact skill
 4. **Multi-file skills are just imports** — pass the skill **directory** to
    `--path`; the whole folder (scripts, data, everything except junk like
    `__pycache__`) is copied verbatim into the store, so relative references keep
@@ -277,14 +279,18 @@ later (see the `skill-importer-undo` skill).
    description is machine-matchable: front-loaded trigger keywords, third person
    ("Use when…"), what it does + when to use it, ≤ 2 sentences. Plan a
    `skill-library update <id> --description "…"` for weak ones.
-6. **Plan & confirm** — show the user the add/update/skip list before executing.
-   Never mutate anything before explicit approval.
+6. **Plan & confirm** — show the user the add/update/skip list plus the source
+   removals that follow every skill ending the run safely in the library
+   (added, updated, or verified-identical). Never mutate anything before
+   explicit approval.
 7. **Journal** — before the first mutation, create the undo journal:
    `<store>/imports/<yyyy-MM-ddTHH-mm-ss>/journal.json`. For each planned update,
    first capture the current record (`skill-library get <id> --return-content`):
    prior `name`/`description` go into the journal entry, prior content is written
-   to the staged prior skill dir `prior-<id>/` in the same run dir. Adds need no prior state. Journal
-   format:
+   to the staged prior skill dir `prior-<id>/` in the same run dir. Adds need no prior state. For each
+   planned removal, `src` is the original skill dir and `backup` names the staged
+   full copy `removed-<name>/` in the same run dir, created in step 10 right
+   before deletion. Journal format:
    ```json
    {
      "run": "<dir name>",
@@ -293,7 +299,10 @@ later (see the `skill-importer-undo` skill).
        { "op": "add", "name": "frontend-design", "id": null, "done": false },
        { "op": "update", "id": "9f3a1c2b", "name": "frontend-design",
          "prior": { "name": "…", "description": "…", "content": "prior-9f3a1c2b" },
-         "done": false }
+         "done": false },
+       { "op": "remove-source", "name": "frontend-design",
+         "src": "/home/me/.opencode/skills/frontend-design",
+         "backup": "removed-frontend-design", "done": false }
      ]
    }
    ```
@@ -302,7 +311,17 @@ later (see the `skill-importer-undo` skill).
    per entry after it succeeds.
 9. **Verify** — `skill-library list`; for each update, confirm
    `skill-library get <id> --return-content` matches the source byte-for-byte.
-   Report the final catalog and the journal path.
+   A skill that fails verification keeps its source: its removal entry is not
+   executed.
+10. **Remove sources** — for every skill that was added, updated, or verified
+    identical and discovered in the default auto-load dirs: stage a full copy
+    into the run dir (`cp -a <src> <run>/removed-<name>/`), then delete `<src>`.
+    Sources from user-supplied paths outside the auto-load dirs are removed only
+    if the user explicitly included them in the confirmed plan. Never remove
+    excluded skills. Set `done: true` per entry as it completes.
+11. **Report** — `skill-library list` summary, the journal path, and remind the
+    user to quit and restart opencode (skills/config are not hot-reloaded);
+    removed skills now load on demand via `skill-library query`.
 
 The store dir is the parent of the `skills/` dir in any returned `dir`
 (default `~/.local/share/skill-library`; override via `SKILL_LIBRARY_DIR` or
@@ -311,7 +330,7 @@ The store dir is the parent of the `skills/` dir in any returned `dir`
 ## Excluded skills
 
 Library infrastructure — these skills run the library and must keep living in
-the auto-load dirs. They are never imported, updated, or touched by cutover.
+the auto-load dirs. They are never imported, updated, or removed.
 Match on the frontmatter `name` (or directory name), exact match:
 
 - `skill-library`
@@ -326,34 +345,29 @@ Match on the frontmatter `name` (or directory name), exact match:
 
 ## Safety rules
 
-- Plan & confirm first; journal before the first mutation.
-- Never delete anything: importing only adds and updates. Deletions are
-  `skill-library remove` (user-confirmed) or cutover (explicitly confirmed).
+- Plan & confirm first (adds, updates, and source removals); journal before the
+  first mutation.
+- Sources are deleted only after their import succeeded and verified; a failed
+  or unverified import never removes its source. Removals are staged
+  (`removed-<name>/` in the run dir) before deletion.
+- Library records are never deleted by this flow: `skill-library remove` stays
+  a separate, user-confirmed operation.
 - Library infrastructure is out of scope: every skill in the "Excluded skills"
-  list is skipped in every phase — diff, import, and cutover removal.
-- Rerun-safe: identical skills are skipped, so a rerun picks up only differences.
+  list is skipped in every phase — diff, import, and source removal.
+- Rerun-safe: adds/updates are planned only for differences; a rerun over an
+  already-imported set plans only the leftover source removals.
 - Multi-file skills are imported whole (directory in, directory stored) — never
   referenced from the original location.
 - If a run fails mid-way, stop and tell the user; the journal records exactly
-  what was executed, and `skill-importer-undo` can reverse it.
+  what was executed, and `skill-importer-undo` can reverse it — including
+  restoring removed sources.
 
-## Cutover completion (optional, destructive)
-
-Only after the user **explicitly confirms**:
-
-1. Back up the source dirs: `tar -czf ~/skill-sources-backup-$(date +%F).tar.gz <src dirs>`
-2. Remove the originals from the auto-load dirs, **except** the excluded skills
-   ("Excluded skills" list) — those must keep living in the auto-load dirs or
-   the library becomes unmanageable.
-3. Remind the user to quit and restart opencode (skills/config are not hot-reloaded).
-
-Never delete originals without confirmation. See docs/06-cutover-runbook.md for
-the full runbook; the `skill-importer-undo` skill reverses this too.
+See docs/06-import-runbook.md for the human runbook.
 ```
 
 ---
 
-## `skill-importer-undo` — reverse an import or cutover
+## `skill-importer-undo` — reverse an import run
 
 **Triggers**: "undo/reverse the import", "restore skills to their previous
 state", "put the skills back", "roll back the cutover".
@@ -361,13 +375,13 @@ state", "put the skills back", "roll back the cutover".
 ```markdown
 ---
 name: skill-importer-undo
-description: Use when the user asks to undo or reverse an import, restore skills to their previous state, or roll back the cutover from auto-loaded skills. Replays the latest import journal in reverse — removes skills that were added, restores the prior name, description, and content of skills that were updated — after showing the reversal plan and getting explicit confirmation.
+description: Use when the user asks to undo or reverse an import, restore skills to their previous state, put removed skills back into their auto-load dirs, or roll back the cutover from auto-loaded skills. Replays the latest import journal in reverse — removes skills that were added, restores the prior name, description, and content of skills that were updated, and restores source skills that were removed from the auto-load dirs — after showing the reversal plan and getting explicit confirmation.
 ---
 
 # Skill Importer Undo
 
-Reverses a previous import run (or a cutover) using its journal. Nothing is
-undone without the user's explicit confirmation of the reversal plan.
+Reverses a previous import run using its journal. Nothing is undone without the
+user's explicit confirmation of the reversal plan.
 
 ## Undo an import run
 
@@ -383,31 +397,28 @@ undone without the user's explicit confirmation of the reversal plan.
      transcript
    - `update` → plan `skill-library update <id>` with the journal's prior
      values: `--name` and/or `--description` when captured, and
-     `--path <run>/prior-<id>/` when prior content was captured
+     `--path <run>/prior-<id>/` when prior content was captured (a staged copy
+     of the prior skill directory)
+   - `remove-source` → plan restoring the staged copy back to its original
+     path: `mkdir -p "$(dirname <src>)" && cp -a <run>/<backup> <src>` (the
+     journal entry carries the original `src` path and the `backup` dir name)
    - `id: null` adds and `done: false` entries were never executed → nothing
      to undo for them
-3. **Confirm** — show the remove/update list and get explicit approval.
+3. **Confirm** — show the remove/update/restore list and get explicit approval.
 4. **Execute** — in reverse journal order (read the `skill-library-remove` and
    `skill-library-update` skills for the exact contracts).
 5. **Verify** — `skill-library list`; spot-check restored skills with
-   `skill-library get <id> --return-content` against the staged prior copies.
-6. **Report** — what was removed and what was restored; journals stay on disk.
+   `skill-library get <id> --return-content` against the prior copies staged in
+   the run dir; for restored sources, confirm `<src>/SKILL.md` exists.
+6. **Report** — what was removed, what was restored, and remind the user to
+   restart opencode; journals stay on disk.
 
 Re-running undo on the same journal is safe: already-removed ids fail with
-`unknown skill id` (skip them), and re-applied prior values are no-ops.
+`unknown skill id` (skip them), re-applied prior values are no-ops, and an
+already-restored source exists again — skip removal entries whose `src` dir
+already exists (copying into it would only nest a duplicate).
 
-## Undo the cutover
-
-Puts the original skill dirs back into the auto-load locations:
-
-1. Locate the backup: `ls -t ~/skill-sources-backup-*.tar.gz`
-2. Inspect it first (`tar -tzf`), then restore: `tar -xzf <backup> -C ~/`
-3. Remind the user to restart opencode — originals auto-load again; the library
-   keeps working in parallel (duplicate guidance is harmless temporarily)
-4. Optionally remove the corresponding library records — only with explicit
-   confirmation, via `skill-library remove <id>`
-
-See docs/06-cutover-runbook.md § Rollback for the human runbook.
+See docs/06-import-runbook.md § Rollback for the human runbook.
 ```
 
 ---

@@ -50,8 +50,8 @@ Management flow (LLM- or user-driven, and the importer skill):
 |---|---|
 | `skill-library` binary | Store CRUD + Jev scoring. No import logic, no skill installation logic. |
 | `skill-library` skills | Always-on gateway (query workflow) + one skill per subcommand (query/list/get/add/update/remove), per D14. No import logic, no skill installation logic. |
-| `skill-importer` skill | Rerunnable onboarding: discover → diff → journal → import → curate descriptions → (optional, confirmed) cleanup of auto-load dirs. |
-| `skill-importer-undo` skill | Reverses an import run or the cutover from its journal: removes added skills, restores prior name/description/content. |
+| `skill-importer` skill | Rerunnable onboarding: discover → diff → journal → import → curate descriptions → remove verified sources from the auto-load dirs. |
+| `skill-importer-undo` skill | Reverses an import run from its journal: removes added skills, restores prior name/description/content, restores removed sources. |
 | `install.sh` | Removed. Installation is manual (README) or via `npx skills add ianwijma/skill-library-skill` for the skill files; the binary is built with `bun run build` and copied onto `PATH` by hand. |
 | Managed store | `~/.local/share/skill-library/`: `index.json` + one verbatim directory per skill (`skills/<id>/` with `SKILL.md` plus any sibling assets). |
 
@@ -64,13 +64,13 @@ Management flow (LLM- or user-driven, and the importer skill):
 | D3 | Query on **every user message** | User decision; avoids stale-skill bugs at the cost of a small per-message latency/tokens |
 | D4 | Import = LLM composing primitives (`list` + `add`/`update`) | Keeps the app minimal; diffing is trivial for the LLM; flow is rerunnable by nature |
 | D5 | Record model keyed by generated `id`; name/description are explicit `add` args | IDs stay stable across renames; no frontmatter parsing needed in the app |
-| D6 | Skills stored as verbatim directory copies (`skills/<id>/`) | Multi-file skills (scripts, data) keep working — relative references resolve inside the store; survives deletion of originals during cutover |
+| D6 | Skills stored as verbatim directory copies (`skills/<id>/`) | Multi-file skills (scripts, data) keep working — relative references resolve inside the store; survives the importer removing the originals from the auto-load dirs |
 | D7 | One Noul question per skill, single API call | Multiple skills can apply; questions evaluate in parallel; scales with catalog size |
 | D8 | Threshold default 0.7 | Matches TypeSafe docs' calibration examples; tunable via flag |
 | D9 | `install-skill` subcommand dropped | installation is manual (README) or via `npx skills add` for skill files; app stays a pure library |
 | D10 | `remove` returns full record incl. content | Deleted skill recoverable from the transcript |
 | D11 | `--return-content` flag on read-type commands | Lets the LLM trade one roundtrip for larger output when convenient |
-| D12 | Build now, migrate later | Old skills keep auto-loading until cutover is explicitly run (see doc 06) |
+| D12 | Cutover built into import | Every import removes the sources it verified, so imported skills never keep auto-loading in parallel (see doc 06) |
 | D13 | Permanent `skill-importer` skill | Onboarding is recurring (new skills appear over time); user preference |
 | D14 | One skill per subcommand (7 + importer) | Gateway stays lean for the per-message loop; every library capability gets a focused, triggerable description |
 | D15 | Official `@typesafe-ai/sdk` for the System One call | Retries, timeouts, and typed errors battle-tested upstream; hand-rolled HTTP client dropped |
@@ -89,4 +89,4 @@ Management flow (LLM- or user-driven, and the importer skill):
 2. For a representative task, `skill-library query` returns the right skill(s) with probability ≥ 0.7 and no false positives above threshold.
 3. Query roundtrip adds < ~2s and < ~2k input tokens at catalog size ~10.
 4. Importer rerun after adding a new skill file picks up exactly the new/changed skills.
-5. Cutover (originals removed from auto-load dirs) loses nothing: all 4 existing skills importable and retrievable from the store.
+5. Import-and-remove loses nothing: all 4 existing skills importable and retrievable from the store, originals removed from the auto-load dirs and restorable from the journal.
