@@ -21,10 +21,10 @@ powered by TypeSafe's Jev model (typed probabilities, not generated text).
  user message ────────▶ │ skill-library skill        │  (always loaded, ~1 KB)
                         │ "query before every msg"   │
                         └─────────────┬──────────────┘
-                                      │ sli query "<task text>"
+                                      │ skill-library query "<task text>"
                                       ▼
                         ┌────────────────────────────┐
-                        │ sli (compiled binary)      │
+                        │ skill-library (binary)     │
                         │  - read index.json         │
                         │  - 1 × POST /v1/systemone  │────▶ api.typesafe.ai (jev-latest)
                         │  - threshold + sort        │     1 noul question per skill
@@ -39,18 +39,19 @@ powered by TypeSafe's Jev model (typed probabilities, not generated text).
 Management flow (LLM- or user-driven, and the importer skill):
 
 ```
- source skill dirs ──▶ sli add/update ──▶ managed store (verbatim file copy + index)
-                        sli list/get      ◀─ diff source for rerunnable imports
-                        sli remove
+ source skill dirs ──▶ skill-library add/update ──▶ managed store (verbatim file copy + index)
+                        skill-library list/get      ◀─ diff source for rerunnable imports
+                        skill-library remove
 ```
 
 ## Components
 
 | Component | Responsibility |
 |---|---|
-| `sli` binary | Store CRUD + Jev scoring. No import logic, no skill installation logic. |
-| `skill-library` skill | Always-on workflow: query → read matches → work. Plus CRUD reference and fallback behavior. |
-| `skill-importer` skill | Rerunnable onboarding: discover → diff → import → curate descriptions → (optional, confirmed) cleanup of auto-load dirs. |
+| `skill-library` binary | Store CRUD + Jev scoring. No import logic, no skill installation logic. |
+| `skill-library` skills | Always-on gateway (query workflow) + one skill per subcommand (query/list/get/add/update/remove), per D14. No import logic, no skill installation logic. |
+| `skill-importer` skill | Rerunnable onboarding: discover → diff → journal → import → curate descriptions → (optional, confirmed) cleanup of auto-load dirs. |
+| `skill-importer-undo` skill | Reverses an import run or the cutover from its journal: removes added skills, restores prior name/description/content. |
 | `install.sh` | Build, install binary + alias, copy the two skill files. Plain bash — the app itself has no install command. |
 | Managed store | `~/.local/share/skill-library/`: `index.json` + `skills/<id>.md` files. |
 
@@ -59,7 +60,7 @@ Management flow (LLM- or user-driven, and the importer skill):
 | # | Decision | Rationale |
 |---|---|---|
 | D1 | Compiled standalone binary (`bun build --compile`) | No runtime deps; stable absolute path the skill can reference |
-| D2 | Binary named `sli`, alias `skill-library` | Short name typed by the LLM hundreds of times |
+| D2 | Binary named `skill-library`, alias `sli` | Typed by the LLM hundreds of times; the verbose name is unambiguous and self-documenting |
 | D3 | Query on **every user message** | User decision; avoids stale-skill bugs at the cost of a small per-message latency/tokens |
 | D4 | Import = LLM composing primitives (`list` + `add`/`update`) | Keeps the app minimal; diffing is trivial for the LLM; flow is rerunnable by nature |
 | D5 | Record model keyed by generated `id`; name/description are explicit `add` args | IDs stay stable across renames; no frontmatter parsing needed in the app |
@@ -71,6 +72,9 @@ Management flow (LLM- or user-driven, and the importer skill):
 | D11 | `--return-content` flag on read-type commands | Lets the LLM trade one roundtrip for larger output when convenient |
 | D12 | Build now, migrate later | Old skills keep auto-loading until cutover is explicitly run (see doc 06) |
 | D13 | Permanent `skill-importer` skill | Onboarding is recurring (new skills appear over time); user preference |
+| D14 | One skill per subcommand (7 + importer) | Gateway stays lean for the per-message loop; every library capability gets a focused, triggerable description |
+| D15 | Official `@typesafe-ai/sdk` for the System One call | Retries, timeouts, and typed errors battle-tested upstream; hand-rolled HTTP client dropped |
+| D16 | Imports write an undo journal (`<store>/imports/<run>/`) | Prior name/description/content captured before mutation; `skill-importer-undo` replays it in reverse |
 
 ## Non-goals (v1)
 
@@ -81,8 +85,8 @@ Management flow (LLM- or user-driven, and the importer skill):
 
 ## Success criteria
 
-1. A fresh session loads only `skill-library` (+ `skill-importer`) instead of all skills.
-2. For a representative task, `sli query` returns the right skill(s) with probability ≥ 0.7 and no false positives above threshold.
+1. A fresh session loads only the `skill-library` skills (gateway + per-command) and `skill-importer` instead of all skills.
+2. For a representative task, `skill-library query` returns the right skill(s) with probability ≥ 0.7 and no false positives above threshold.
 3. Query roundtrip adds < ~2s and < ~2k input tokens at catalog size ~10.
 4. Importer rerun after adding a new skill file picks up exactly the new/changed skills.
 5. Cutover (originals removed from auto-load dirs) loses nothing: all 4 existing skills importable and retrievable from the store.

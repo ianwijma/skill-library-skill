@@ -5,10 +5,18 @@
 ```
 ~/.local/share/skill-library/        (XDG data dir; override: SKILL_LIBRARY_DIR / --store)
 ├── index.json                       metadata — authoritative for name/description
-└── skills/
-    ├── 9f3a1c2b.md                  skill content, verbatim copy, named by id
-    └── 7d0e4f11.md
+├── skills/
+│   ├── 9f3a1c2b.md                  skill content, verbatim copy, named by id
+│   └── 7d0e4f11.md
+├── imports/                         undo journals (importer skill only)
+│   └── <yyyy-MM-ddTHH-mm-ss>/       one dir per import run
+│       ├── journal.json             executed adds/updates + prior name/description
+│       └── prior-<id>.md            prior content of updated skills
+└── staging/                         multi-file skill assets staged by the importer
 ```
+
+- The `imports/` and `staging/` subdirectories are created and consumed by the
+  importer/undo skills, not by the app; all app commands ignore them.
 
 - Content files are named `<id>.md` regardless of the source filename; the
   original filename is irrelevant (the LLM reads content, not filenames).

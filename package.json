@@ -1,0 +1,19 @@
+{
+  "name": "skill-library",
+  "version": "0.1.0",
+  "description": "Skill library CLI: managed skill store + TypeSafe (Jev) catalog scoring",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun build --compile src/index.ts --outfile dist/skill-library",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "^0.6.0"
+  }
+}

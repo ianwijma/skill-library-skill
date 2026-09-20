@@ -1,8 +1,14 @@
 # 04 — TypeSafe Query Integration
 
-`sli query` uses TypeSafe's System One API (flagship model **Jev**) to score the
+`skill-library query` uses TypeSafe's System One API (flagship model **Jev**) to score the
 skill catalog against a task. Jev returns typed probabilities — one **Noul**
 (yes/no) question per skill — instead of generated text.
+
+Implementation: the official [`@typesafe-ai/sdk`](https://docs.typesafe.ai/sdk/javascript)
+client sends the request below. Retry/timeout policy is configured on the client:
+max 3 retries, 1s initial backoff doubling, `Retry-After` honored (capped at 30s),
+30s per-attempt timeout, connection failures retried. Error classes (401/422/429,
+connection, timeout) map to the CLI behaviors in "Failure handling".
 
 ## Endpoint
 
@@ -21,7 +27,7 @@ Content-Type: application/json
 
 ```json
 {
-  "state": { "task": "<the task text passed to sli query>" },
+  "state": { "task": "<the task text passed to skill-library query>" },
   "model": "jev-latest",
   "questions": {
     "9f3a1c2b": {
@@ -107,6 +113,6 @@ per query; expect ~1–3s roundtrip.
 ## Calibration checklist (during build)
 
 1. Craft 5–6 probe tasks (frontend, library docs, opencode config, UI database, none-of-the-above).
-2. Run `sli query` against the real 4-skill catalog; verify intended skills ≥ 0.7 and noise < 0.3.
+2. Run `skill-library query` against the real 4-skill catalog; verify intended skills ≥ 0.7 and noise < 0.3.
 3. If borderline scores cluster 0.5–0.7: tighten `criteria` wording before touching the threshold.
 4. Log `usage` behind a `--verbose` flag (stderr) for cost visibility during development.
