@@ -260,7 +260,12 @@ later (see the `skill-importer-undo` skill).
    `~/.opencode/skills/*`, `~/.agents/skills/*`, `~/.claude/skills/*` (any
    subdir containing `SKILL.md`), or user-supplied paths/dirs.
 2. **Discover** — Glob `**/SKILL.md` across the sources; the skill's directory is
-   the `SKILL.md`'s parent.
+   the `SKILL.md`'s parent. **Skip library infrastructure**: any skill whose
+   frontmatter `name` (or directory name) is `skill-library` or starts with
+   `skill-library-` (e.g. `skill-library-add`, `skill-library-query`), plus the
+   importer's own skills `skill-importer` and `skill-importer-undo`. These run
+   the library and must stay in the auto-load dirs — never import them, never
+   plan changes for them.
 3. **Diff** — run `skill-library list`, then compare by `name`:
    - name not in library → plan `skill-library add --path <skill dir>`
    - name in library: compare the source SKILL.md bytes against
@@ -311,6 +316,9 @@ The store dir is the parent of the `skills/` dir in any returned `dir`
 - Plan & confirm first; journal before the first mutation.
 - Never delete anything: importing only adds and updates. Deletions are
   `skill-library remove` (user-confirmed) or cutover (explicitly confirmed).
+- Library infrastructure is out of scope: `skill-library`, `skill-library-*`,
+  `skill-importer`, and `skill-importer-undo` are skipped in every phase —
+  diff, import, and cutover removal.
 - Rerun-safe: identical skills are skipped, so a rerun picks up only differences.
 - Multi-file skills are imported whole (directory in, directory stored) — never
   referenced from the original location.
@@ -322,7 +330,10 @@ The store dir is the parent of the `skills/` dir in any returned `dir`
 Only after the user **explicitly confirms**:
 
 1. Back up the source dirs: `tar -czf ~/skill-sources-backup-$(date +%F).tar.gz <src dirs>`
-2. Remove the originals from the auto-load dirs.
+2. Remove the originals from the auto-load dirs, **except** the library
+   infrastructure (`skill-library`, `skill-library-*`, `skill-importer`,
+   `skill-importer-undo`) — those must keep living in the auto-load dirs or the
+   library becomes unmanageable.
 3. Remind the user to quit and restart opencode (skills/config are not hot-reloaded).
 
 Never delete originals without confirmation. See docs/06-cutover-runbook.md for
