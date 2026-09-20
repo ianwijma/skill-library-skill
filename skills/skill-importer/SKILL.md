@@ -15,7 +15,9 @@ later (see the `skill-importer-undo` skill).
    `~/.opencode/skills/*`, `~/.agents/skills/*`, `~/.claude/skills/*` (any
    subdir containing `SKILL.md`), or user-supplied paths/dirs.
 2. **Discover** — Glob `**/SKILL.md` across the sources; the skill's directory is
-   the `SKILL.md`'s parent.
+   the `SKILL.md`'s parent. **Skip every skill in the "Excluded skills" list
+   below** — library infrastructure that runs the library itself; it must stay
+   in the auto-load dirs: never import it, never plan changes for it.
 3. **Diff** — run `skill-library list`, then compare by `name`:
    - name not in library → plan `skill-library add --path <skill dir>`
    - name in library: compare the source SKILL.md bytes against
@@ -61,11 +63,29 @@ The store dir is the parent of the `skills/` dir in any returned `dir`
 (default `~/.local/share/skill-library`; override via `SKILL_LIBRARY_DIR` or
 `--store`).
 
+## Excluded skills
+
+Library infrastructure — these skills run the library and must keep living in
+the auto-load dirs. They are never imported, updated, or touched by cutover.
+Match on the frontmatter `name` (or directory name), exact match:
+
+- `skill-library`
+- `skill-library-add`
+- `skill-library-get`
+- `skill-library-list`
+- `skill-library-query`
+- `skill-library-remove`
+- `skill-library-update`
+- `skill-importer`
+- `skill-importer-undo`
+
 ## Safety rules
 
 - Plan & confirm first; journal before the first mutation.
 - Never delete anything: importing only adds and updates. Deletions are
   `skill-library remove` (user-confirmed) or cutover (explicitly confirmed).
+- Library infrastructure is out of scope: every skill in the "Excluded skills"
+  list is skipped in every phase — diff, import, and cutover removal.
 - Rerun-safe: identical skills are skipped, so a rerun picks up only differences.
 - Multi-file skills are imported whole (directory in, directory stored) — never
   referenced from the original location.
@@ -77,7 +97,9 @@ The store dir is the parent of the `skills/` dir in any returned `dir`
 Only after the user **explicitly confirms**:
 
 1. Back up the source dirs: `tar -czf ~/skill-sources-backup-$(date +%F).tar.gz <src dirs>`
-2. Remove the originals from the auto-load dirs.
+2. Remove the originals from the auto-load dirs, **except** the excluded skills
+   ("Excluded skills" list) — those must keep living in the auto-load dirs or
+   the library becomes unmanageable.
 3. Remind the user to quit and restart opencode (skills/config are not hot-reloaded).
 
 Never delete originals without confirmation. See docs/06-cutover-runbook.md for
