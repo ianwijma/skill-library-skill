@@ -44,4 +44,6 @@ All commands output JSON on stdout, errors on stderr; exit codes 0/1/2.
 
 If `skill-library` is missing or exits 2: tell the user the skill library is
 unavailable and continue with built-in knowledge — never block the task on the
-library.
+library. If the binary is missing because the skills were installed without it
+(e.g. via `npx skills add`), tell the user to build and install it — the README
+at https://github.com/ianwijma/skill-library-skill has the exact commands.

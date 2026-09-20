@@ -1,40 +1,107 @@
 # Skill Library (skill-library)
 
-Replace always-loaded skills with a single on-demand gateway: one tiny skill that
-routes the LLM into a skill library app, which scores the catalog against the
-current task with [TypeSafe](https://docs.typesafe.ai)'s Jev model and returns the
-paths of the skills worth reading.
+Skills on demand — not always loaded.
 
-Three deliverables, built in this repo:
+One tiny gateway skill checks what a task needs. The `skill-library` binary
+scores the catalog with [TypeSafe](https://docs.typesafe.ai)'s Jev model.
+The agent reads only the skills that matter.
+
+## What you get
 
 | Deliverable | What it is |
 |---|---|
-| `skill-library` | Compiled Bun/TypeScript binary — the skill library app (`query`, `list`, `add`, `update`, `remove`, `get`) |
-| `skill-library` skills | Installed into `~/.config/opencode/skills/`: the always-on gateway (run `skill-library query` before every user message, read returned files) plus one skill per subcommand (query, list, get, add, update, remove) |
-| `skill-importer` skill | Rerunnable onboarding skill: diffs skill directories against the library and imports new/changed skills (whole directories — multi-file skills included) via `skill-library add` / `skill-library update`, journaling every change |
-| `skill-importer-undo` skill | Reverses an import run (or the cutover) from its journal: removes added skills, restores prior name/description/content |
+| `skill-library` | Binary. Commands: `query`, `list`, `add`, `update`, `remove`, `get` |
+| `skill-library` skills | The gateway. Plus one skill per command |
+| `skill-importer` | Skill. Imports new and changed skills — whole directories, multi-file skills included. Journals every change |
+| `skill-importer-undo` | Skill. Reverses an import or the cutover |
 
-Status: **implemented** (skill-library v0.1.0) — the documents below remain the build contract.
+Status: **implemented** (v0.1.0). Docs below are the build contract.
 
-## Document index
+## Docs
 
 | Doc | Contents |
 |---|---|
-| [docs/01-overview.md](docs/01-overview.md) | Problem, goals, architecture, decision log, data flow |
-| [docs/02-cli-spec.md](docs/02-cli-spec.md) | Full CLI contract: every command, flags, JSON shapes, exit codes |
-| [docs/03-data-store.md](docs/03-data-store.md) | Store layout, index schema, ID generation, atomicity |
-| [docs/04-typesafe-query.md](docs/04-typesafe-query.md) | Jev integration: request/response shapes, question design, retries, thresholds |
-| [docs/05-skills.md](docs/05-skills.md) | The two wrapper skills: behavior + full SKILL.md drafts |
-| [docs/06-cutover-runbook.md](docs/06-cutover-runbook.md) | Rerunnable import flows, cutover completion, rollback |
-| [docs/07-implementation-plan.md](docs/07-implementation-plan.md) | Repo layout, milestones, test plan, risks, future work |
+| [01 — overview](docs/01-overview.md) | Problem, goals, architecture |
+| [02 — CLI spec](docs/02-cli-spec.md) | Commands, flags, JSON, exit codes |
+| [03 — data store](docs/03-data-store.md) | Store layout, index schema, atomicity |
+| [04 — query](docs/04-typesafe-query.md) | Jev integration, retries, thresholds |
+| [05 — skills](docs/05-skills.md) | Skill behavior + full SKILL.md drafts |
+| [06 — cutover runbook](docs/06-cutover-runbook.md) | Import flows, rollback |
+| [07 — implementation plan](docs/07-implementation-plan.md) | Repo layout, milestones, tests |
 
-## Quick start (planned)
+## Quick start
+
+A skill is one file: `SKILL.md`.
+The files for this repo live under `skills/`.
+Installing a skill = putting its file in your agent's skills folder.
+The `skill-library` binary behind them is built from `src/`.
+
+### 1. Install the skills
+
+**Option 1: `npx skills add`. Preferred.**
 
 ```sh
-./install.sh                 # build binary → ~/.local/bin/skill-library (+ sli alias),
-                             # install the two skills into ~/.config/opencode/skills/
-skill-library list                     # browse the catalog
+npx skills add ianwijma/skill-library-skill
+```
+
+Pick skills and agent when asked.
+
+No prompts? Use this:
+
+```sh
+npx skills add ianwijma/skill-library-skill -g -a opencode -s '*' -y
+```
+
+**Option 2: ask your agent.**
+
+Paste this into any agent (Claude Code, opencode, Cursor, …):
+
+```text
+Install the skill-library skills.
+
+Run: npx skills add ianwijma/skill-library-skill --skill '*'
+Select my agent when asked.
+
+If npx is unavailable: save the SKILL.md files from
+https://raw.githubusercontent.com/ianwijma/skill-library-skill/HEAD/skills/skill-library/SKILL.md
+and the 8 companion skills at the same paths into my agent's skills folder.
+Companions: skill-library-query, skill-library-list, skill-library-get,
+skill-library-add, skill-library-update, skill-library-remove,
+skill-importer, skill-importer-undo.
+Use one method.
+
+Then build the skill-library binary:
+
+git clone https://github.com/ianwijma/skill-library-skill
+cd skill-library-skill
+bun install && bun run build
+install -m 755 dist/skill-library ~/.local/bin/skill-library
+
+Restart the agent.
+Use the skill-library skill before every user message.
+```
+
+### 2. Build the binary
+
+The skills drive the `skill-library` binary. Build it:
+
+```sh
+git clone https://github.com/ianwijma/skill-library-skill
+cd skill-library-skill
+bun install
+bun run build
+install -m 755 dist/skill-library ~/.local/bin/skill-library
+```
+
+`~/.local/bin` must be on your `PATH`.
+
+### 3. Try it
+
+```sh
+skill-library list
 skill-library query "fix a failing next.js build"
 ```
 
-Environment: `bun >= 1.3` to build; `TYPESAFE_API_KEY` for `skill-library query`.
+Restart your agent so the skills load.
+
+Needs: `bun >= 1.3` to build. `TYPESAFE_API_KEY` for `query`.

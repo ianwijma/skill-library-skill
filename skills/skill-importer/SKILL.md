@@ -11,9 +11,9 @@ later (see the `skill-importer-undo` skill).
 
 ## Flow
 
-1. **Sources** — default dirs: `~/.opencode/skills/*`, `~/.agents/skills/*`,
-   `~/.claude/skills/*` (any subdir containing `SKILL.md`), or user-supplied
-   paths/dirs.
+1. **Sources** — default dirs: `~/.config/opencode/skills/*`,
+   `~/.opencode/skills/*`, `~/.agents/skills/*`, `~/.claude/skills/*` (any
+   subdir containing `SKILL.md`), or user-supplied paths/dirs.
 2. **Discover** — Glob `**/SKILL.md` across the sources; the skill's directory is
    the `SKILL.md`'s parent.
 3. **Diff** — run `skill-library list`, then compare by `name`:

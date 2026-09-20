@@ -1,7 +1,9 @@
 # 05 — Wrapper Skills
 
-Nine small skills ship as files in this repo under `skills/` and are copied into
-`~/.config/opencode/skills/` by `install.sh` — the `skill-library` app has no
+Nine small skills ship as files in this repo under `skills/`. They are installed
+either with the skills CLI (`npx skills add ianwijma/skill-library-skill`, which
+installs for any agent and copies only the skill files) or by copying the files
+into the agent's skills folder by hand — the `skill-library` app has no
 install command (D9). After cutover they are the only project skills that
 auto-load.
 
@@ -67,7 +69,9 @@ All commands output JSON on stdout, errors on stderr; exit codes 0/1/2.
 
 If `skill-library` is missing or exits 2: tell the user the skill library is
 unavailable and continue with built-in knowledge — never block the task on the
-library.
+library. If the binary is missing because the skills were installed without it
+(e.g. via `npx skills add`), tell the user to build and install it — the README
+at https://github.com/ianwijma/skill-library-skill has the exact commands.
 ```
 
 ---
@@ -252,9 +256,9 @@ later (see the `skill-importer-undo` skill).
 
 ## Flow
 
-1. **Sources** — default dirs: `~/.opencode/skills/*`, `~/.agents/skills/*`,
-   `~/.claude/skills/*` (any subdir containing `SKILL.md`), or user-supplied
-   paths/dirs.
+1. **Sources** — default dirs: `~/.config/opencode/skills/*`,
+   `~/.opencode/skills/*`, `~/.agents/skills/*`, `~/.claude/skills/*` (any
+   subdir containing `SKILL.md`), or user-supplied paths/dirs.
 2. **Discover** — Glob `**/SKILL.md` across the sources; the skill's directory is
    the `SKILL.md`'s parent.
 3. **Diff** — run `skill-library list`, then compare by `name`:
@@ -390,7 +394,7 @@ See docs/06-cutover-runbook.md § Rollback for the human runbook.
 
 | Concern | Contract |
 |---|---|
-| Fallback | `skill-library` missing/exit 2 → say the library is unavailable, continue unblocked |
+| Fallback | `skill-library` missing/exit 2 → say the library is unavailable, continue unblocked; skills-only installs (`npx skills add`) → point at the repo README to build the binary |
 | Deletion safety | `skill-library remove` and any file deletion only after user confirmation (importer/undo step) |
 | Reversibility | Every import journals prior state before mutating (D16); undo replays the journal in reverse |
 | Description quality | Curated at import time; this is the main lever on Jev matching quality |
