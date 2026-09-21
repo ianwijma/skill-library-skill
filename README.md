@@ -75,8 +75,11 @@ Use one method.
 
 Then build the skill-library binary:
 
-git clone https://github.com/ianwijma/skill-library-skill
-cd skill-library-skill
+If ~/.config/skill-library-skill already exists, cd into it and pull it
+(git pull) instead of cloning.
+
+git clone https://github.com/ianwijma/skill-library-skill ~/.config/skill-library-skill
+cd ~/.config/skill-library-skill
 bun install && bun run build
 install -m 755 dist/skill-library ~/.local/bin/skill-library
 
