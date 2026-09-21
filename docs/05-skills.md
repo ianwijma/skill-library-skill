@@ -7,8 +7,9 @@ into the agent's skills folder by hand — the `skill-library` app has no
 install command (D9). Once the importer has run, these are the only project
 skills that auto-load: importing removes every other skill's source.
 
-The gateway (`skill-library`) is the only skill relevant to every message; it
-stays lean so the per-message token floor stays small. Every subcommand gets its
+The gateway (`skill-library`) is the only skill relevant to (almost) every
+message — it triggers whenever a skill might help; the LLM is told to err on
+the side of querying. It stays lean so the per-message token floor stays small. Every subcommand gets its
 own skill (D14) so each library capability has a focused, triggerable
 description — a command skill's body is read only when that operation is needed.
 Imports are reversible (D16): the importer journals every mutation, and
@@ -19,13 +20,14 @@ copies them verbatim.
 
 ## `skill-library` — the always-on gateway
 
-**Triggers**: every user message (per D3); also any skill-management request.
-**Does not trigger**: never — this is the one skill that is always relevant.
+**Triggers**: whenever a skill might help — which is very often (per D3); also
+any skill-management request.
+**Does not trigger**: never — erring on the side of querying is the default.
 
 ```markdown
 ---
 name: skill-library
-description: MUST be used before working on every user message. Skills are not loaded into context automatically; this skill queries the skill library (skill-library CLI) to discover and read the skills relevant to the current task. Always relevant, for every task and every message.
+description: Use whenever a task might benefit from a skill — query often, erring on the side of querying. Skills are not loaded into context automatically; this skill queries the skill library (skill-library CLI) to discover and read the skills relevant to the current task.
 ---
 
 # Skill Library
@@ -33,22 +35,26 @@ description: MUST be used before working on every user message. Skills are not l
 Skills are NOT loaded into context automatically. They live in a managed library
 and must be loaded on demand, per task.
 
-## Workflow — every user message
+## Workflow — query whenever a skill might help
 
-1. Summarize the user's message into a 1–3 sentence task description (include key
-   technologies, file types, and the goal), then run:
+1. Whenever you think a skill might be needed — before starting a task, when the
+   work shifts into new territory, or when unsure — summarize the task into a
+   1–3 sentence description (include key technologies, file types, and the goal),
+   then run:
 
    ```sh
    skill-library query "<task description>"
    ```
 
+   This fires very often, and that is fine: a query is cheap; a missed skill is
+   not.
+
 2. If matches are returned: Read each returned `path` (absolute paths to skill
    markdown files) and absorb the instructions **before** working on the task.
 3. If `matches` is empty, proceed on your own judgment.
-4. Re-run the query for each new user message — different messages need different
-   skills. (For a rapid follow-up that trivially continues the same task with the
-   same context, reusing the skills already read is acceptable; when in doubt,
-   re-query.)
+4. For a rapid follow-up that trivially continues the same task with the same
+   context, reusing the skills already read is acceptable; when in doubt,
+   re-query.
 
 ## Managing skills
 
@@ -81,7 +87,7 @@ at https://github.com/ianwijma/skill-library-skill has the exact commands.
 ```markdown
 ---
 name: skill-library-query
-description: Use when scoring the skill catalog for a task or tuning query results — thresholds, result caps, stdin input, or embedding skill content in the query output. The skill-library gateway runs this on every user message; read this skill when results need adjusting or the task text is long or multiline.
+description: Use when scoring the skill catalog for a task or tuning query results — thresholds, result caps, stdin input, or embedding skill content in the query output. The skill-library gateway runs this whenever a skill might help; read this skill when results need adjusting or the task text is long or multiline.
 ---
 
 # skill-library query
@@ -433,4 +439,4 @@ See docs/06-import-runbook.md § Rollback for the human runbook.
 | Description quality | Curated at import time; this is the main lever on Jev matching quality |
 | Skill file reads | Use the `path` from library output — never reconstruct store paths by hand |
 | Multi-file skills | Imported whole via directory `--path`; run sibling scripts from the record's `dir` |
-| Gateway leanness | Only the gateway is relevant to every message; command skills stay out of the per-message path |
+| Gateway leanness | Only the gateway is relevant to (almost) every message; command skills stay out of the per-message path |

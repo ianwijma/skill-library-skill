@@ -1,6 +1,6 @@
 ---
 name: skill-library
-description: MUST be used before working on every user message. Skills are not loaded into context automatically; this skill queries the skill library (skill-library CLI) to discover and read the skills relevant to the current task. Always relevant, for every task and every message.
+description: Use whenever a task might benefit from a skill — query often, erring on the side of querying. Skills are not loaded into context automatically; this skill queries the skill library (skill-library CLI) to discover and read the skills relevant to the current task.
 ---
 
 # Skill Library
@@ -8,22 +8,26 @@ description: MUST be used before working on every user message. Skills are not l
 Skills are NOT loaded into context automatically. They live in a managed library
 and must be loaded on demand, per task.
 
-## Workflow — every user message
+## Workflow — query whenever a skill might help
 
-1. Summarize the user's message into a 1–3 sentence task description (include key
-   technologies, file types, and the goal), then run:
+1. Whenever you think a skill might be needed — before starting a task, when the
+   work shifts into new territory, or when unsure — summarize the task into a
+   1–3 sentence description (include key technologies, file types, and the goal),
+   then run:
 
    ```sh
    skill-library query "<task description>"
    ```
 
+   This fires very often, and that is fine: a query is cheap; a missed skill is
+   not.
+
 2. If matches are returned: Read each returned `path` (absolute paths to skill
    markdown files) and absorb the instructions **before** working on the task.
 3. If `matches` is empty, proceed on your own judgment.
-4. Re-run the query for each new user message — different messages need different
-   skills. (For a rapid follow-up that trivially continues the same task with the
-   same context, reusing the skills already read is acceptable; when in doubt,
-   re-query.)
+4. For a rapid follow-up that trivially continues the same task with the same
+   context, reusing the skills already read is acceptable; when in doubt,
+   re-query.
 
 ## Managing skills
 

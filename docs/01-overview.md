@@ -10,16 +10,18 @@ per-message token floor permanently.
 ## Goal
 
 A skill library: skills live in a managed store **outside** opencode's auto-scan
-paths. A single tiny always-loaded skill teaches the LLM to ask the library which
-skills matter for the current task, and read only those. Matching is semantic,
-powered by TypeSafe's Jev model (typed probabilities, not generated text).
+paths. A single tiny always-loaded skill teaches the LLM to ask the library —
+whenever a skill might help — which skills matter for the current task, and read
+only those. Matching is semantic, powered by TypeSafe's Jev model (typed
+probabilities, not generated text).
 
 ## Architecture
 
 ```
                         ┌────────────────────────────┐
  user message ────────▶ │ skill-library skill        │  (always loaded, ~1 KB)
-                        │ "query before every msg"   │
+                        │ "query when a skill might  │
+                        │  help"                     │
                         └─────────────┬──────────────┘
                                       │ skill-library query "<task text>"
                                       ▼
@@ -61,7 +63,7 @@ Management flow (LLM- or user-driven, and the importer skill):
 |---|---|---|
 | D1 | Compiled standalone binary (`bun build --compile`) | No runtime deps; stable absolute path the skill can reference |
 | D2 | Binary named `skill-library`, alias `sli` | Typed by the LLM hundreds of times; the verbose name is unambiguous and self-documenting |
-| D3 | Query on **every user message** | User decision; avoids stale-skill bugs at the cost of a small per-message latency/tokens |
+| D3 | Query **whenever a skill might help** (query often; originally "every user message", loosened) | Frequent querying avoids stale-skill bugs; a query is cheap, a missed skill is not |
 | D4 | Import = LLM composing primitives (`list` + `add`/`update`) | Keeps the app minimal; diffing is trivial for the LLM; flow is rerunnable by nature |
 | D5 | Record model keyed by generated `id`; name/description are explicit `add` args | IDs stay stable across renames; no frontmatter parsing needed in the app |
 | D6 | Skills stored as verbatim directory copies (`skills/<id>/`) | Multi-file skills (scripts, data) keep working — relative references resolve inside the store; survives the importer removing the originals from the auto-load dirs |
@@ -72,7 +74,7 @@ Management flow (LLM- or user-driven, and the importer skill):
 | D11 | `--return-content` flag on read-type commands | Lets the LLM trade one roundtrip for larger output when convenient |
 | D12 | Cutover built into import | Every import removes the sources it verified, so imported skills never keep auto-loading in parallel (see doc 06) |
 | D13 | Permanent `skill-importer` skill | Onboarding is recurring (new skills appear over time); user preference |
-| D14 | One skill per subcommand (7 + importer) | Gateway stays lean for the per-message loop; every library capability gets a focused, triggerable description |
+| D14 | One skill per subcommand (7 + importer) | Gateway stays lean for the query loop; every library capability gets a focused, triggerable description |
 | D15 | Official `@typesafe-ai/sdk` for the System One call | Retries, timeouts, and typed errors battle-tested upstream; hand-rolled HTTP client dropped |
 | D16 | Imports write an undo journal (`<store>/imports/<run>/`) | Prior name/description/content captured before mutation; `skill-importer-undo` replays it in reverse |
 
