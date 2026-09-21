@@ -81,7 +81,7 @@ bun install && bun run build
 install -m 755 dist/skill-library ~/.local/bin/skill-library
 
 Restart the agent.
-Use the skill-library skill before every user message.
+Use the skill-library skill whenever a skill might help — query often.
 ```
 
 ### 2. Build the binary

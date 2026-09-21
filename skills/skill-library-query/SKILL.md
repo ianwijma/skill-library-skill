@@ -1,6 +1,6 @@
 ---
 name: skill-library-query
-description: Use when scoring the skill catalog for a task or tuning query results — thresholds, result caps, stdin input, or embedding skill content in the query output. The skill-library gateway runs this on every user message; read this skill when results need adjusting or the task text is long or multiline.
+description: Use when scoring the skill catalog for a task or tuning query results — thresholds, result caps, stdin input, or embedding skill content in the query output. The skill-library gateway runs this whenever a skill might help; read this skill when results need adjusting or the task text is long or multiline.
 ---
 
 # skill-library query

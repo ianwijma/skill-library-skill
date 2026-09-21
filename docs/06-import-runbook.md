@@ -31,8 +31,8 @@ State: 4 skills auto-load on every session (frontend-design, typesafe-ai,
 5. Restart opencode. Expected session skills: `skill-library` (gateway) + its six
    per-command skills, `skill-importer`, `skill-importer-undo`,
    built-in `customize-opencode` (built-in, cannot be removed).
-6. Smoke test: any user message → `skill-library query` runs → matched skill content read →
-   task work informed by it.
+6. Smoke test: give the agent a task → `skill-library query` runs → matched skill
+   content read → task work informed by it.
 
 ## Ongoing runs (rerunnable sync)
 

@@ -88,7 +88,7 @@ Mapping to CLI output: each answer id → its skill record; `noul` → `probabil
 
 Rationale for 0.7: TypeSafe's own rerank/duplicate examples threshold at 0.7.
 False positives cost more than false negatives here (loading an irrelevant skill
-pollutes context for every message; missing one is recoverable with a re-query at
+pollutes context for every query; missing one is recoverable with a re-query at
 a lower threshold). Sort desc; `--top n` truncates after sorting.
 
 ## Failure handling
