@@ -73,11 +73,29 @@ All commands output JSON on stdout, errors on stderr; exit codes 0/1/2.
 
 ## Fallback
 
-If `skill-library` is missing or exits 2: tell the user the skill library is
-unavailable and continue with built-in knowledge — never block the task on the
-library. If the binary is missing because the skills were installed without it
-(e.g. via `npx skills add`), tell the user to build and install it — the README
-at https://github.com/ianwijma/skill-library-skill has the exact commands.
+Run the command before declaring a failure. If it fails, use its stderr and
+exit code to explain the specific cause briefly:
+
+- Binary missing: check `command -v skill-library` and `PATH`. Installing via
+  `npx skills add` installs the skills only; build and install the binary using
+  the [README](https://github.com/ianwijma/skill-library-skill).
+- Missing `TYPESAFE_API_KEY` or HTTP 401: query needs a valid key in the agent's
+  environment. Never print the key.
+- Connection error or timeout: online scoring could not reach TypeSafe. Check
+  network/DNS, proxy settings, and agent sandbox restrictions. This does not
+  establish that the service is down; there is no local daemon to start. If the
+  environment reports restricted networking, retry through its supported
+  network-permission mechanism when allowed. Respect denials and use the local
+  fallback when network access is unavailable.
+- Other exit-2 errors: report the actual diagnostic (for example, an unreadable
+  store), rather than labeling every runtime failure a service outage.
+
+When online scoring fails, run `skill-library list` (with the same `--store`, if
+used). It needs neither network access nor an API key. Select relevant skills
+from the returned names and descriptions, then read their `path` files before
+continuing. If the local catalog also fails or has no relevant skills, continue
+with available guidance. Never block the user's task on the library, and avoid
+repeating a known failing query during the same task unless conditions change.
 ```
 
 ---
@@ -117,8 +135,13 @@ skill-library query "<task text>"
 - `--threshold 0.8` (stricter) or `--threshold 0.5` (broader recall)
 - Empty `matches` → proceed on your own judgment; a re-query at a lower
   threshold recovers misses
-- Missing `TYPESAFE_API_KEY` → exit 2; per the gateway fallback, continue
-  unblocked and tell the user
+- Exit 2 → explain the stderr diagnostic. Missing `TYPESAFE_API_KEY` or HTTP 401
+  means credentials need attention; a connection error can come from network,
+  DNS, proxy, or sandbox restrictions and does not prove a service outage.
+- When scoring fails, run `skill-library list` with the same store, select
+  relevant names/descriptions locally, and read their returned `path` files.
+  This needs no network or API key. If the local catalog also fails, continue
+  with available guidance; avoid repeating the failed query until conditions change.
 ```
 
 ---
@@ -433,7 +456,7 @@ See docs/06-import-runbook.md § Rollback for the human runbook.
 
 | Concern | Contract |
 |---|---|
-| Fallback | `skill-library` missing/exit 2 → say the library is unavailable, continue unblocked; skills-only installs (`npx skills add`) → point at the repo README to build the binary |
+| Fallback | Run the command and report the specific diagnostic; query failure → local `list`, select relevant skills, read returned paths; missing binary → README build instructions; continue unblocked if local lookup also fails |
 | Deletion safety | `skill-library remove` and any file deletion only after user confirmation (importer/undo step) |
 | Reversibility | Every import journals prior state before mutating (D16); undo replays the journal in reverse |
 | Description quality | Curated at import time; this is the main lever on Jev matching quality |

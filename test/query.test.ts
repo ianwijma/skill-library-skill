@@ -271,5 +271,8 @@ describe("failure handling", () => {
     const res = await sli(["query", "task"], { store, apiBase: "http://127.0.0.1:1" });
     expect(res.code).toBe(2);
     expect(res.stderr).toContain("unreachable after 3 retries");
+    expect(res.stderr).toContain("agent sandbox restrictions");
+    expect(res.stderr).toContain("skill-library list");
+    expect(res.stdout).toBe("");
   });
 });

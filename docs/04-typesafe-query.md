@@ -98,9 +98,16 @@ a lower threshold). Sort desc; `--top n` truncates after sorting.
 | `401 Unauthorized` | exit 2, stderr: check `TYPESAFE_API_KEY` |
 | `422 Unprocessable Entity` | exit 2 with response body (indicates a bug in question construction) |
 | `429 Too Many Requests` / `529 Overloaded` | retry with exponential backoff: 1s, 2s, 4s (+jitter), max 3 retries; honor `Retry-After` header when present; then exit 2 |
-| Network error / timeout (30s per attempt) | treated like a retryable failure |
+| Network error / timeout (30s per attempt) | retry, then exit 2 with network/DNS/proxy/sandbox hint and local `list` fallback; does not establish a service outage |
 | Empty catalog | skip the API call entirely, return `{"matches":[]}` |
 | Skill with empty description | exclude from the request; warn on stderr |
+
+When scoring fails, the gateway reports the specific stderr diagnostic and
+uses `skill-library list` to select skills locally, then reads their returned
+paths. Local catalog commands require neither network access nor an API key.
+In a restricted agent environment, a permitted retry through its supported
+network-permission mechanism can distinguish sandbox blocking from a remote
+failure. There is no local daemon to start.
 
 ## Cost & latency budget
 

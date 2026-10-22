@@ -83,7 +83,13 @@ export async function callSystemOne(
 
 function toCliError(err: unknown, maxRetries: number): CliError {
   if (err instanceof APITimeoutError || err instanceof APIConnectionError) {
-    return new CliError(2, `typesafe api unreachable after ${maxRetries} retries: ${msgOf(err)}`);
+    return new CliError(
+      2,
+      `typesafe api unreachable after ${maxRetries} retries: ${msgOf(err)}. ` +
+        "Check network access, DNS, proxy settings, and agent sandbox restrictions; " +
+        "a connection failure does not establish a service outage. " +
+        "Use 'skill-library list' to browse the local catalog without network access.",
+    );
   }
   if (err instanceof AuthenticationError) {
     return new CliError(2, "typesafe api returned 401 unauthorized — check TYPESAFE_API_KEY");
