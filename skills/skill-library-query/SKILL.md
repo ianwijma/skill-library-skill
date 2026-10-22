@@ -30,5 +30,10 @@ skill-library query "<task text>"
 - `--threshold 0.8` (stricter) or `--threshold 0.5` (broader recall)
 - Empty `matches` → proceed on your own judgment; a re-query at a lower
   threshold recovers misses
-- Missing `TYPESAFE_API_KEY` → exit 2; per the gateway fallback, continue
-  unblocked and tell the user
+- Exit 2 → explain the stderr diagnostic. Missing `TYPESAFE_API_KEY` or HTTP 401
+  means credentials need attention; a connection error can come from network,
+  DNS, proxy, or sandbox restrictions and does not prove a service outage.
+- When scoring fails, run `skill-library list` with the same store, select
+  relevant names/descriptions locally, and read their returned `path` files.
+  This needs no network or API key. If the local catalog also fails, continue
+  with available guidance; avoid repeating the failed query until conditions change.

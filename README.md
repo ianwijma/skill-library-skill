@@ -101,7 +101,20 @@ install -m 755 dist/skill-library ~/.local/bin/skill-library
 
 `~/.local/bin` must be on your `PATH`.
 
-### 3. Try it
+### 3. Configure online scoring
+
+Set your TypeSafe API key in the environment that launches your agent:
+
+```sh
+export TYPESAFE_API_KEY='<your TypeSafe API key>'
+```
+
+`query` sends the task text and cataloged skill names/descriptions to TypeSafe.
+It needs outbound HTTPS access to `api.typesafe.ai`. An agent's sandbox can
+block this even when the command works in your terminal. The other commands
+use the local store and need neither an API key nor network access.
+
+### 4. Try it
 
 ```sh
 skill-library list
@@ -109,3 +122,20 @@ skill-library query "fix a failing next.js build"
 ```
 
 Restart your agent so the skills load.
+
+## Troubleshooting query failures
+
+The gateway's “unavailable” message is a fallback, not a diagnosis. Run
+`skill-library query "<task>"` and inspect stderr for the actual failure:
+
+| Diagnostic | What to check |
+|---|---|
+| Command not found | Build the binary and put `~/.local/bin` on the agent's `PATH`; `npx skills add` installs only the skills |
+| Missing `TYPESAFE_API_KEY` / HTTP 401 | Set a valid key in the environment that launches the agent |
+| Connection error / timeout | Network access, DNS, proxy settings, and sandbox restrictions; use the agent's supported permission flow if available |
+| Store error | Follow the reported store diagnostic; this is independent of TypeSafe |
+
+There is no local service or daemon to start. A failed connection alone does
+not establish a TypeSafe outage. If online scoring remains unavailable, run
+`skill-library list`, select relevant skills by name/description, and read the
+returned `path` files. Pass the same `--store` if you used a store override.
