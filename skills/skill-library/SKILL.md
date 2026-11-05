@@ -49,8 +49,8 @@ All commands output JSON on stdout, errors on stderr; exit codes 0/1/2.
 Run the command before declaring a failure. If it fails, use its stderr and
 exit code to explain the specific cause briefly:
 
-- Binary missing: check `command -v skill-library` and `PATH`. Installing via
-  `npx skills add` installs the skills only; build and install the binary using
+- CLI missing: check `command -v skill-library` and `PATH`. Installing via
+  `npx skills add` installs the skills only; build and install the CLI using
   the [README](https://github.com/ianwijma/skill-library-skill).
 - Missing `TYPESAFE_API_KEY` or HTTP 401: query needs a valid key in the agent's
   environment. Never print the key.

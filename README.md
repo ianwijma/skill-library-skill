@@ -2,7 +2,7 @@
 
 Skills on demand — not always loaded.
 
-One tiny gateway skill checks what a task needs. The `skill-library` binary
+One tiny gateway skill checks what a task needs. The `skill-library` CLI
 scores the catalog with [TypeSafe](https://docs.typesafe.ai)'s Jev model.
 The agent reads only the skills that matter.
 
@@ -10,7 +10,7 @@ The agent reads only the skills that matter.
 
 | Deliverable | What it is |
 |---|---|
-| `skill-library` | Binary. Commands: `query`, `list`, `add`, `update`, `remove`, `get` |
+| `skill-library` | CLI. Commands: `query`, `list`, `add`, `update`, `remove`, `get` |
 | `skill-library` skills | The gateway. Plus one skill per command |
 | `skill-importer` | Skill. Imports new and changed skills — whole directories, multi-file skills included — and removes their sources from the auto-load dirs. Journals every change |
 | `skill-importer-undo` | Skill. Reverses an import run |
@@ -31,13 +31,13 @@ Status: **implemented** (v0.1.0). Docs below are the build contract.
 
 ## Quick start
 
-Requires: [bun](https://bun.sh) >= 1.3 — it builds the binary. `query` also
-needs `TYPESAFE_API_KEY`.
+Requires: [Node.js](https://nodejs.org) >= 22.18 (ships with npm). `query`
+also needs `TYPESAFE_API_KEY`.
 
 A skill is one file: `SKILL.md`.
 The files for this repo live under `skills/`.
 Installing a skill = putting its file in your agent's skills folder.
-The `skill-library` binary behind them is built from `src/`.
+The `skill-library` CLI behind them is built from `src/`.
 
 ### 1. Install the skills
 
@@ -73,33 +73,38 @@ skill-library-add, skill-library-update, skill-library-remove,
 skill-importer, skill-importer-undo.
 Use one method.
 
-Then build the skill-library binary:
+Then build the skill-library CLI (needs Node.js >= 22.18):
 
 If ~/.config/skill-library-skill already exists, cd into it and pull it
 (git pull) instead of cloning.
 
 git clone https://github.com/ianwijma/skill-library-skill ~/.config/skill-library-skill
 cd ~/.config/skill-library-skill
-bun install && bun run build
+npm install && npm run build
 install -m 755 dist/skill-library ~/.local/bin/skill-library
 
 Restart the agent.
 Use the skill-library skill whenever a skill might help — query often.
 ```
 
-### 2. Build the binary
+### 2. Build the CLI
 
-The skills drive the `skill-library` binary. Build it:
+The skills drive the `skill-library` CLI. Build it:
 
 ```sh
 git clone https://github.com/ianwijma/skill-library-skill
 cd skill-library-skill
-bun install
-bun run build
+npm install
+npm run build
 install -m 755 dist/skill-library ~/.local/bin/skill-library
 ```
 
-`~/.local/bin` must be on your `PATH`.
+`~/.local/bin` must be on your `PATH`. The build is a single bundled file
+(`dist/skill-library`) with no runtime dependencies besides Node.js, so it
+keeps working after you delete the clone.
+
+Prefer npm's own bin directory? Run `npm install -g .` from the clone instead
+of the `install` step.
 
 ### 3. Configure online scoring
 
@@ -123,6 +128,16 @@ skill-library query "fix a failing next.js build"
 
 Restart your agent so the skills load.
 
+## Development
+
+```sh
+npm install
+npm test            # vitest
+npm run typecheck   # tsc --noEmit
+npm run build       # esbuild bundle -> dist/skill-library
+npm start -- list   # run from source (Node strips the TypeScript types)
+```
+
 ## Troubleshooting query failures
 
 The gateway's “unavailable” message is a fallback, not a diagnosis. Run
@@ -130,7 +145,7 @@ The gateway's “unavailable” message is a fallback, not a diagnosis. Run
 
 | Diagnostic | What to check |
 |---|---|
-| Command not found | Build the binary and put `~/.local/bin` on the agent's `PATH`; `npx skills add` installs only the skills |
+| Command not found | Build the CLI and put `~/.local/bin` on the agent's `PATH`; `npx skills add` installs only the skills |
 | Missing `TYPESAFE_API_KEY` / HTTP 401 | Set a valid key in the environment that launches the agent |
 | Connection error / timeout | Network access, DNS, proxy settings, and sandbox restrictions; use the agent's supported permission flow if available |
 | Store error | Follow the reported store diagnostic; this is independent of TypeSafe |

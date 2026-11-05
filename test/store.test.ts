@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -90,9 +90,9 @@ describe("index", () => {
   test("corrupted index throws exit-2 error, never rebuilds", async () => {
     const store = await tmpDir();
     await fsp.writeFile(path.join(store, "index.json"), "{not json");
-    expect(loadIndex(store)).rejects.toThrow("corrupted");
+    await expect(loadIndex(store)).rejects.toThrow("corrupted");
     await fsp.writeFile(path.join(store, "index.json"), '{"not":"an array"}');
-    expect(loadIndex(store)).rejects.toThrow("corrupted");
+    await expect(loadIndex(store)).rejects.toThrow("corrupted");
   });
 });
 
@@ -118,10 +118,10 @@ describe("resolveSource", () => {
 
   test("missing file exits 1", async () => {
     const dir = await tmpDir();
-    expect(resolveSource(path.join(dir, "nope.md"))).rejects.toThrow("--path not found");
+    await expect(resolveSource(path.join(dir, "nope.md"))).rejects.toThrow("--path not found");
   });
 
   test("directory without SKILL.md exits 1", async () => {
-    expect(resolveSource(await tmpDir())).rejects.toThrow("no readable SKILL.md");
+    await expect(resolveSource(await tmpDir())).rejects.toThrow("no readable SKILL.md");
   });
 });

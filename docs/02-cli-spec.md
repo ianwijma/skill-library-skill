@@ -1,6 +1,6 @@
 # 02 — CLI Specification
 
-`skill-library` — the skill library CLI. Single compiled binary (Bun/TypeScript). All
+`skill-library` — the skill library CLI. Single bundled Node.js CLI (TypeScript, built with esbuild). All
 commands print results as JSON on **stdout**; all errors as plain text on
 **stderr**. Exit codes signal outcome class.
 

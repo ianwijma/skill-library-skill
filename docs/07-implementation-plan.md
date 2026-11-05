@@ -6,7 +6,7 @@
 /
 ├── README.md                     index + quickstart (manual install steps)
 ├── docs/                         this doc set (01–07)
-├── package.json                  (bun) scripts: build, test, typecheck
+├── package.json                  (npm) scripts: build, start, test, typecheck
 ├── tsconfig.json
 ├── skills/
 │   ├── skill-library/SKILL.md            gateway (verbatim from doc 05)
@@ -38,7 +38,7 @@
 One runtime dependency: the official [`@typesafe-ai/sdk`](https://docs.typesafe.ai/sdk/javascript)
 (D15) carries the System One call — retries, per-attempt timeout, and typed errors.
 Arg parsing stays hand-rolled; no YAML/frontmatter parsing needed (D5). The SDK
-is bundled into the compiled binary.
+is bundled into the single-file CLI by esbuild.
 
 ## Milestones
 
@@ -50,14 +50,15 @@ is bundled into the compiled binary.
 ### M2 — Query
 - `typesafe.ts` client + question builder; `query` command with
   threshold/sort/top; retry policy; empty-catalog and missing-key paths
-- Acceptance: golden request bodies against a local mock `Bun.serve` endpoint;
+- Acceptance: golden request bodies against a local mock `node:http` endpoint;
   429/529 retry honored (Retry-After + backoff); threshold/top correctness
 
-### M3 — Binary + install
-- `bun build --compile` → `dist/skill-library`; README documents manual install
-  (binary onto `PATH`, optional `sli` alias) and `npx skills add` for skill files
-- Acceptance: `skill-library --version` works from a clean shell without bun on PATH
-  (static binary)
+### M3 — CLI build + install
+- `esbuild --bundle` → `dist/skill-library` (single file, `#!/usr/bin/env node`);
+  README documents manual install (CLI onto `PATH`, optional `sli` alias) and
+  `npx skills add` for skill files
+- Acceptance: `skill-library --version` works from a clean shell with only
+  Node.js >= 22.18 on PATH (no `node_modules` needed)
 
 ### M4 — Wrapper skills
 - Finalize both SKILL.md drafts (doc 05) as real files; install via the README
@@ -69,7 +70,7 @@ is bundled into the compiled binary.
 - Unit: ids, atomic writes, projection, validation (name rules, missing files)
 - Integration: CLI subprocess tests on temp stores (full CRUD, exit codes, JSON
   shapes); mock API for query
-- Typecheck + `bun test` green; `--help` output finalized
+- Typecheck + `npm test` green; `--help` output finalized
 
 ### M6 — Real-world calibration (doc 04 checklist)
 - Import the 4 existing skills (dry-run by hand), probe queries, tune
@@ -79,9 +80,9 @@ is bundled into the compiled binary.
 
 | Layer | Tool | Cases |
 |---|---|---|
-| Unit | `bun test` | id generation/collision; name validation; atomic rename semantics; record projection (`path` absolutized); partial update semantics |
-| Store | `bun test` | add→list→get→update→remove roundtrip (file and multi-file dir sources); remove returns content + file list; orphan detection; corrupted index → exit 2 |
-| Query | `bun test` + `Bun.serve` mock | request body snapshot (state/questions shape); answer mapping; threshold edge (0.699/0.7); `--top` truncation; tie-break ordering; empty store short-circuit |
+| Unit | `vitest` | id generation/collision; name validation; atomic rename semantics; record projection (`path` absolutized); partial update semantics |
+| Store | `vitest` | add→list→get→update→remove roundtrip (file and multi-file dir sources); remove returns content + file list; orphan detection; corrupted index → exit 2 |
+| Query | `vitest` + `node:http` mock | request body snapshot (state/questions shape); answer mapping; threshold edge (0.699/0.7); `--top` truncation; tie-break ordering; empty store short-circuit |
 | E2E manual | real API | 5–6 probe tasks vs real catalog (M6) |
 
 ## Edge-case checklist (implementation must handle)
