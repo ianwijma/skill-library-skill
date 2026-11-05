@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Skill Library">
+  <title>Skill Library</title>
+  <!-- tile -->
+  <rect width="64" height="64" rx="14" fill="#1e1b4b"/>
+  <!-- shelf -->
+  <rect x="8" y="50" width="48" height="4" rx="2" fill="#a5b4fc"/>
+  <!-- resting skills -->
+  <rect x="11" y="25" width="8" height="25" rx="2" fill="#6366f1"/>
+  <rect x="21" y="21" width="8" height="29" rx="2" fill="#818cf8"/>
+  <path d="M43 50 L51 50 L56.5 28.5 Q57 27 55.5 26.6 L50.5 25.4 Q49 25 48.6 26.5 Z" fill="#6366f1"/>
+  <!-- the skill pulled on demand -->
+  <rect x="31" y="9" width="10" height="33" rx="2" fill="#fbbf24"/>
+  <rect x="33.5" y="14" width="5" height="2.2" rx="1.1" fill="#92400e"/>
+  <rect x="33.5" y="18.5" width="5" height="2.2" rx="1.1" fill="#92400e"/>
+  <!-- spark -->
+  <path d="M21 5 L22.6 9.4 L27 11 L22.6 12.6 L21 17 L19.4 12.6 L15 11 L19.4 9.4 Z" fill="#fde68a"/>
+</svg>
