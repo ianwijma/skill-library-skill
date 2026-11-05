@@ -1,15 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { runNode, type RunResult } from "./spawn.ts";
 
-const SRC = path.join(import.meta.dir, "..", "src", "index.ts");
-
-interface RunResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
+const SRC = path.join(import.meta.dirname, "..", "src", "index.ts");
 
 interface SliOpts {
   store: string;
@@ -30,18 +25,7 @@ async function sli(args: string[], opts: SliOpts): Promise<RunResult> {
     if (v === undefined) delete env[k];
     else env[k] = v;
   }
-  const proc = Bun.spawn([process.execPath, SRC, ...args], {
-    env,
-    stdin: opts.stdin !== undefined ? new Blob([opts.stdin]) : "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { code, stdout, stderr };
+  return runNode(SRC, args, env, opts.stdin);
 }
 
 async function tmpDir(): Promise<string> {

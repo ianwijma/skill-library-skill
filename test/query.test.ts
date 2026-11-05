@@ -1,9 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { runNode } from "./spawn.ts";
 
-const SRC = path.join(import.meta.dir, "..", "src", "index.ts");
+const SRC = path.join(import.meta.dirname, "..", "src", "index.ts");
 
 interface SliOpts {
   store: string;
@@ -12,7 +15,7 @@ interface SliOpts {
   extraArgs?: string[];
 }
 
-async function sli(args: string[], opts: SliOpts): Promise<{ code: number; stdout: string; stderr: string }> {
+async function sli(args: string[], opts: SliOpts): ReturnType<typeof runNode> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v !== undefined) env[k] = v;
@@ -21,18 +24,7 @@ async function sli(args: string[], opts: SliOpts): Promise<{ code: number; stdou
   env.TYPESAFE_API_KEY = "test-key";
   env.TYPESAFE_API_BASE = opts.apiBase;
   env.SLI_RETRY_BASE_MS = "10";
-  const proc = Bun.spawn([process.execPath, SRC, ...args], {
-    env,
-    stdin: opts.stdin !== undefined ? new Blob([opts.stdin]) : "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { code, stdout, stderr };
+  return runNode(SRC, args, env, opts.stdin);
 }
 
 interface MockServer {
@@ -41,16 +33,26 @@ interface MockServer {
   stop: () => void;
 }
 
-function startMock(handler: (body: any, call: number) => Response): MockServer {
+async function startMock(handler: (body: any, call: number) => Response): Promise<MockServer> {
   const bodies: any[] = [];
-  const server = Bun.serve({
-    port: 0,
-    async fetch(req) {
-      bodies.push(await req.json());
-      return handler(bodies[bodies.length - 1], bodies.length - 1);
-    },
+  const server = http.createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    bodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+    const reply = handler(bodies[bodies.length - 1], bodies.length - 1);
+    res.writeHead(reply.status, Object.fromEntries(reply.headers));
+    res.end(Buffer.from(await reply.arrayBuffer()));
   });
-  return { url: `http://127.0.0.1:${server.port}`, bodies, stop: () => server.stop(true) };
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}`,
+    bodies,
+    stop: () => {
+      server.closeAllConnections();
+      server.close();
+    },
+  };
 }
 
 function ok(answers: Record<string, { type: string; noul: number }>, usage = { input_tokens: 535, output_tokens: 58 }): Response {
@@ -95,7 +97,7 @@ async function seedCatalog(): Promise<Catalog> {
 describe("query request shape", () => {
   test("one request, one noul question per skill, exact template", async () => {
     const { store, idA, idB } = await seedCatalog();
-    const mock = startMock(() => ok({}));
+    const mock = await startMock(() => ok({}));
     const res = await sli(["query", "fix the buttons"], { store, apiBase: mock.url });
     mock.stop();
     expect(res.code).toBe(0);
@@ -118,7 +120,7 @@ describe("query request shape", () => {
 
   test("task text from stdin via '-'", async () => {
     const { store } = await seedCatalog();
-    const mock = startMock(() => ok({}));
+    const mock = await startMock(() => ok({}));
     const res = await sli(["query", "-"], { store, apiBase: mock.url, stdin: "task from stdin\n" });
     mock.stop();
     expect(res.code).toBe(0);
@@ -127,7 +129,7 @@ describe("query request shape", () => {
 
   test("positional wins over stdin '-'", async () => {
     const { store } = await seedCatalog();
-    const mock = startMock(() => ok({}));
+    const mock = await startMock(() => ok({}));
     const res = await sli(["query", "positional task", "-"], { store, apiBase: mock.url, stdin: "stdin task" });
     mock.stop();
     expect(res.code).toBe(0);
@@ -142,7 +144,7 @@ describe("query request shape", () => {
       (await sli(["add", "--name", "a-skill", "--description", "Skill A", "--path", f1], { store, apiBase: "http://unused.invalid" })).stdout,
     );
     await sli(["add", "--name", "empty-desc", "--description", "", "--path", f2], { store, apiBase: "http://unused.invalid" });
-    const mock = startMock(() => ok({}));
+    const mock = await startMock(() => ok({}));
     const res = await sli(["query", "task"], { store, apiBase: mock.url });
     mock.stop();
     expect(res.code).toBe(0);
@@ -154,7 +156,7 @@ describe("query request shape", () => {
 describe("answer mapping", () => {
   test("probability mapped, below-threshold excluded", async () => {
     const { store, idA, idB } = await seedCatalog();
-    const mock = startMock(() => ok({ [idA]: { type: "noul", noul: 0.91 }, [idB]: { type: "noul", noul: 0.03 } }));
+    const mock = await startMock(() => ok({ [idA]: { type: "noul", noul: 0.91 }, [idB]: { type: "noul", noul: 0.03 } }));
     const res = await sli(["query", "task"], { store, apiBase: mock.url });
     mock.stop();
     expect(res.code).toBe(0);
@@ -168,12 +170,12 @@ describe("answer mapping", () => {
 
   test("threshold edge: 0.7 included at default, 0.699 excluded", async () => {
     const { store, idA } = await seedCatalog();
-    const mock = startMock(() => ok({ [idA]: { type: "noul", noul: 0.7 } }));
+    const mock = await startMock(() => ok({ [idA]: { type: "noul", noul: 0.7 } }));
     const res = await sli(["query", "task"], { store, apiBase: mock.url });
     mock.stop();
     expect(JSON.parse(res.stdout).matches).toHaveLength(1);
 
-    const mock2 = startMock(() => ok({ [idA]: { type: "noul", noul: 0.699 } }));
+    const mock2 = await startMock(() => ok({ [idA]: { type: "noul", noul: 0.699 } }));
     const res2 = await sli(["query", "task"], { store, apiBase: mock2.url });
     mock2.stop();
     expect(JSON.parse(res2.stdout).matches).toHaveLength(0);
@@ -181,13 +183,13 @@ describe("answer mapping", () => {
 
   test("sort desc by probability, tie-break name asc", async () => {
     const { store, idA, idB } = await seedCatalog();
-    const mock = startMock(() => ok({ [idA]: { type: "noul", noul: 0.5 }, [idB]: { type: "noul", noul: 0.9 } }));
+    const mock = await startMock(() => ok({ [idA]: { type: "noul", noul: 0.5 }, [idB]: { type: "noul", noul: 0.9 } }));
     const res = await sli(["query", "--threshold", "0.4", "task"], { store, apiBase: mock.url });
     mock.stop();
     let matches = JSON.parse(res.stdout).matches;
     expect(matches.map((m: any) => m.id)).toEqual([idB, idA]);
 
-    const mock2 = startMock(() => ok({ [idA]: { type: "noul", noul: 0.5 }, [idB]: { type: "noul", noul: 0.5 } }));
+    const mock2 = await startMock(() => ok({ [idA]: { type: "noul", noul: 0.5 }, [idB]: { type: "noul", noul: 0.5 } }));
     const res2 = await sli(["query", "--threshold", "0.4", "task"], { store, apiBase: mock2.url });
     mock2.stop();
     matches = JSON.parse(res2.stdout).matches;
@@ -196,7 +198,7 @@ describe("answer mapping", () => {
 
   test("--top truncates after sorting", async () => {
     const { store, idA, idB } = await seedCatalog();
-    const mock = startMock(() => ok({ [idA]: { type: "noul", noul: 0.9 }, [idB]: { type: "noul", noul: 0.8 } }));
+    const mock = await startMock(() => ok({ [idA]: { type: "noul", noul: 0.9 }, [idB]: { type: "noul", noul: 0.8 } }));
     const res = await sli(["query", "--top", "1", "task"], { store, apiBase: mock.url });
     mock.stop();
     const matches = JSON.parse(res.stdout).matches;
@@ -206,7 +208,7 @@ describe("answer mapping", () => {
 
   test("--return-content embeds content", async () => {
     const { store, idA } = await seedCatalog();
-    const mock = startMock(() => ok({ [idA]: { type: "noul", noul: 0.9 } }));
+    const mock = await startMock(() => ok({ [idA]: { type: "noul", noul: 0.9 } }));
     const res = await sli(["query", "--return-content", "task"], { store, apiBase: mock.url });
     mock.stop();
     expect(JSON.parse(res.stdout).matches[0].content).toBe("content a");
@@ -214,7 +216,7 @@ describe("answer mapping", () => {
 
   test("--verbose logs usage to stderr", async () => {
     const { store } = await seedCatalog();
-    const mock = startMock(() => ok({}, { input_tokens: 535, output_tokens: 58 }));
+    const mock = await startMock(() => ok({}, { input_tokens: 535, output_tokens: 58 }));
     const res = await sli(["query", "--verbose", "task"], { store, apiBase: mock.url });
     mock.stop();
     expect(res.code).toBe(0);
@@ -225,7 +227,7 @@ describe("answer mapping", () => {
 describe("failure handling", () => {
   test("401 → exit 2, check key hint", async () => {
     const { store } = await seedCatalog();
-    const mock = startMock(() => new Response("nope", { status: 401 }));
+    const mock = await startMock(() => new Response("nope", { status: 401 }));
     const res = await sli(["query", "task"], { store, apiBase: mock.url });
     mock.stop();
     expect(res.code).toBe(2);
@@ -234,7 +236,7 @@ describe("failure handling", () => {
 
   test("422 → exit 2 with response body", async () => {
     const { store } = await seedCatalog();
-    const mock = startMock(() => new Response("bad question construction", { status: 422 }));
+    const mock = await startMock(() => new Response("bad question construction", { status: 422 }));
     const res = await sli(["query", "task"], { store, apiBase: mock.url });
     mock.stop();
     expect(res.code).toBe(2);
@@ -244,7 +246,7 @@ describe("failure handling", () => {
   test("429 honors Retry-After then succeeds", async () => {
     const { store, idA } = await seedCatalog();
     let calls = 0;
-    const mock = startMock(() => {
+    const mock = await startMock(() => {
       calls++;
       if (calls <= 2) return new Response("slow down", { status: 429, headers: { "Retry-After": "0" } });
       return ok({ [idA]: { type: "noul", noul: 0.95 } });
@@ -258,7 +260,7 @@ describe("failure handling", () => {
 
   test("429 exhausts 3 retries → exit 2", async () => {
     const { store } = await seedCatalog();
-    const mock = startMock(() => new Response("overloaded", { status: 429 }));
+    const mock = await startMock(() => new Response("overloaded", { status: 429 }));
     const res = await sli(["query", "task"], { store, apiBase: mock.url });
     mock.stop();
     expect(res.code).toBe(2);

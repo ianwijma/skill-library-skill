@@ -82,7 +82,13 @@ async function taskText(positionals: string[]): Promise<string> {
   if (process.stdin.isTTY) {
     throw new CliError(1, "task text is empty (pass it as a quoted argument, or pipe via '-')");
   }
-  return clean(await Bun.stdin.text());
+  return clean(await readStdin());
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function clean(raw: string): string {

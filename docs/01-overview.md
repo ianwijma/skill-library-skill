@@ -50,18 +50,18 @@ Management flow (LLM- or user-driven, and the importer skill):
 
 | Component | Responsibility |
 |---|---|
-| `skill-library` binary | Store CRUD + Jev scoring. No import logic, no skill installation logic. |
+| `skill-library` CLI | Store CRUD + Jev scoring. No import logic, no skill installation logic. |
 | `skill-library` skills | Always-on gateway (query workflow) + one skill per subcommand (query/list/get/add/update/remove), per D14. No import logic, no skill installation logic. |
 | `skill-importer` skill | Rerunnable onboarding: discover → diff → journal → import → curate descriptions → remove verified sources from the auto-load dirs. |
 | `skill-importer-undo` skill | Reverses an import run from its journal: removes added skills, restores prior name/description/content, restores removed sources. |
-| `install.sh` | Removed. Installation is manual (README) or via `npx skills add ianwijma/skill-library-skill` for the skill files; the binary is built with `bun run build` and copied onto `PATH` by hand. |
+| `install.sh` | Removed. Installation is manual (README) or via `npx skills add ianwijma/skill-library-skill` for the skill files; the CLI is built with `npm run build` and copied onto `PATH` by hand (or installed with `npm install -g .`). |
 | Managed store | `~/.local/share/skill-library/`: `index.json` + one verbatim directory per skill (`skills/<id>/` with `SKILL.md` plus any sibling assets). |
 
 ## Decision log
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | Compiled standalone binary (`bun build --compile`) | No runtime deps; stable absolute path the skill can reference |
+| D1 | Single bundled Node.js CLI file (`esbuild --bundle` → `dist/skill-library`) | Only runtime dep is Node.js (installed almost everywhere, unlike Bun); no `node_modules` at runtime; stable absolute path the skill can reference. Originally a `bun build --compile` binary |
 | D2 | Binary named `skill-library`, alias `sli` | Typed by the LLM hundreds of times; the verbose name is unambiguous and self-documenting |
 | D3 | Query **whenever a skill might help** (query often; originally "every user message", loosened) | Frequent querying avoids stale-skill bugs; a query is cheap, a missed skill is not |
 | D4 | Import = LLM composing primitives (`list` + `add`/`update`) | Keeps the app minimal; diffing is trivial for the LLM; flow is rerunnable by nature |
