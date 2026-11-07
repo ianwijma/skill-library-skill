@@ -1,119 +1,70 @@
-# 02 — CLI Specification
+# 02 — CLI spec
 
-`skill-library` — the skill library CLI. Single bundled Node.js CLI (TypeScript, built with esbuild). All
-commands print results as JSON on **stdout**; all errors as plain text on
-**stderr**. Exit codes signal outcome class.
+`skill-library` follows the vercel-labs/skills v1.7.6 command contract. Differences
+are marked **(differs)**. Global options anywhere on the line: `--store <dir>`
+(or `SKILL_LIBRARY_DIR`), `--verbose`.
 
-## Conventions
+## Scope
 
-- **Global flags** (accepted by every command):
-  - `--return-content` — include the skill's full text as a `content` field in each returned record
-  - `--store <dir>` — override the store directory (default `~/.local/share/skill-library`; env `SKILL_LIBRARY_DIR` takes precedence over the default, flag over both)
-  - `--pretty` — pretty-print JSON (2-space indent). Default is compact single-line (primary consumer is the LLM; compact saves context tokens)
-  - `--help`, `--version`
-- **Record shape** (wherever a skill is returned):
-  ```json
-  { "id": "9f3a1c2b", "name": "frontend-design", "description": "…", "path": "/home/ian/.local/share/skill-library/skills/9f3a1c2b/SKILL.md", "dir": "/home/ian/.local/share/skill-library/skills/9f3a1c2b" }
-  ```
-  `path` is the skill's `SKILL.md` (what the LLM should Read); `dir` is the
-  skill's directory root (multi-file skills keep their siblings there).
-  `--return-content` adds `"content": "…"` (the full `SKILL.md` text). Extra
-  internal metadata (`source`, `addedAt`, `updatedAt`) lives in `index.json` only
-  and is **not** part of the output contract.
-- **Exit codes**: `0` success · `1` usage/validation error (bad args, unknown id, missing file) · `2` runtime failure (network, TypeSafe API, filesystem IO).
+- **Project** (default): the nearest ancestor of the working directory with a
+  `skill-library.json`, else the working directory itself. In `$HOME` without a
+  manifest, project commands act as `-g` and print `No project here; using global scope.`
+- **Global** (`-g`): the whole library.
 
-## `skill-library query "<task text>"` — score the catalog for a task
+## Commands
 
-The core command. Asks Jev which cataloged skills are needed for the described task.
+| Command | Aliases | Flags | Behaviour |
+|---|---|---|---|
+| `add <source>` | `a`, `install <source>`, `i <source>` | `-g/--global`, `-a/--agent <agents…>`, `-s/--skill <skills…>`, `-l/--list`, `-y/--yes`, `--all`, `--full-depth`, `--json`, `--copy` | Fetch, discover skills, write them to the library and (project scope) to `skill-library.json`; then place the gateway. `--all` = `-s '*' -a '*' -y`. `--copy` has no effect. **(differs)** no agent prompt: only `-a` records agents (default: all). |
+| `install` | `i`, `experimental_install` | `--dry-run`, `--force`, `--frozen-lockfile`, `--no-frozen-lockfile`, `-a` | Restore the project's skills at their pinned versions, verifying content hashes. `--force` repairs versions whose content no longer matches. `-a` is accepted and ignored. |
+| `list` | `ls` | `-g`, `-a <agents…>`, `--json` | Project: its skills (`installed` / `missing`). `-g`: the whole library; skills only a project used are tagged `(not global)`. |
+| `remove [skills…]` | `rm`, `r` | `-g`, `-a <agents…>`, `-s <skills…>`, `-y`, `--all` | Project: drop the reference (the skill stays in the library, unusable). `-g`: delete from the library. `-a` removes agents from the skill's list. No match exits 0. |
+| `update [skills…]` | `upgrade` | `-g`, `-p/--project`, `-y` | Pull the newest content from each skill's source. Project: moves this project's pin. `-g`: moves `current`. Local sources are skipped. |
+| `check [skills…]` | | `-g`, `-p`, `-y` | Report updates (compares the skill folder's git tree, so commits to other skills in a monorepo don't count). Writes nothing; exit 1 if any update or failure. |
+| `find [query]` | `search`, `f`, `s` | `--owner <name>` | Search skills.sh (`SKILLS_API_URL`). With a query: print results. Without: interactive picker on a TTY. |
+| `init [name]` | | | Create `<name>/SKILL.md` or `./SKILL.md`. |
+| `use <source>[@skill]` | | `-s <skill>`, `-a <claude-code\|codex\|sarvam-code>`, `--full-depth` | Print a prompt for one skill (pipe it into an agent), or start the agent with `-a`. Writes nothing to the library. Unknown options are errors. |
+| `query "<task>" \| -` | | `-a <agent>`, `--threshold <0..1>`, `--top <n>`, `--json` | Add-on. See [04](04-typesafe-query.md). |
 
-| | |
-|---|---|
-| Args | Task description as one positional string. Use `-` to read the task text from stdin (long/multiline descriptions). If both are given, positional wins. |
-| Flags | `--threshold <0..1>` (default `0.7`) · `--top <n>` (cap number of matches) |
-| Behavior | Load index → one `POST /v1/systemone` call with one Noul question per skill → filter by threshold → sort by probability desc (tie-break by name asc) → apply `--top` |
-| Output | `{"matches": [record…, "probability": <n>]}` — each match is the record shape plus `"probability"` |
-| Edge cases | Empty store → `{"matches":[]}` · missing `TYPESAFE_API_KEY` → exit 2 with hint · skill with empty description → excluded from scoring, warning on stderr |
+Scope rules for `update`/`check`: `-g -p` = both; no flag → project if
+`skill-library.json` has entries, else global; named skills → both **(differs**:
+vercel's named-skill path is global-first).
 
-Examples:
+## Common behaviour
 
-```sh
-skill-library query "fix a failing Next.js production build"
-# {"matches":[{"id":"9f3a1c2b","name":"nextjs-build","description":"…","path":"/home/ian/.local/share/skill-library/skills/9f3a1c2b/SKILL.md","dir":"/home/ian/.local/share/skill-library/skills/9f3a1c2b","probability":0.91}]}
+- Inside a detected agent (Claude Code, Codex, Cursor agent, …), `add` and
+  `remove` behave as with `-y`. The detected agent is not recorded.
+- Without a TTY and without `-y`, commands that would prompt fail with vercel's
+  "Interactive prompt required but stdin is not a TTY" message.
+- Unknown options print one warning and are ignored **(differs**: vercel ignores
+  them silently), except for `use`, which errors like vercel.
+- Invalid agents: `Invalid agents: x` / `Valid agents: …`, exit 1.
+- Unknown command: `Unknown command: x` / `Run skill-library --help for usage.` on stdout, exit 1.
+- `--version`/`-v` prints the bare version. No arguments prints the banner, exit 0.
+- The logo shows only for `add`, `install`, `find`, `init` on a TTY outside agents.
+- `--json` modes print exactly one JSON value on stdout; every notice goes to stderr.
 
-skill-library query --threshold 0.8 --top 3 "design a dark dashboard with charts"
-cat task.md | skill-library query -
-skill-library query --return-content "review this PR for accessibility issues"
-```
+## JSON
 
-## `skill-library list` — the catalog
+`list --json` — array of
+`{name, path, scope, agents, source, sourceUrl, sourceType, status, id}`.
+`path` is the version folder (or the in-place folder); `agents` are display
+names; `status` is `tracked`, `untracked` (in the library but unusable here) or
+`missing` (`path: null`).
 
-| | |
-|---|---|
-| Args | none |
-| Output | `{"skills": [record…]}` — stable order (name asc) |
-| Use | The LLM's diff source for rerunnable imports; cheap orientation |
+`add --json` — array of `{id, name, status, source, ref, hash, path, scope, agents}`,
+`status` = `installed` | `skipped` | `failed` (+ `error`). Exit 1 if any failed.
 
-```sh
-skill-library list
-skill-library list --return-content
-```
+## Supported sources (0.1.0)
 
-## `skill-library add --name <n> --description <d> --path <file|dir>` — create
+GitHub shorthand (`owner/repo`, `owner/repo@skill`, `owner/repo/path`, `#ref`,
+`github:`), GitHub URLs (incl. `/tree/<ref>/<path>`), any https/ssh/scp-style git
+URL, `file://` repositories, local folders and `.md` files. Well-known endpoints,
+archives, skills.sh packs, Notion and GitLab `/-/tree/` URLs print
+`… not supported by skill-library yet` and exit 1. Private GitHub repos use
+`GITHUB_TOKEN` / `GH_TOKEN` (sent only to github.com, never on the command line).
 
-| | |
-|---|---|
-| Args | All three flags required: explicit name, description, and path to the skill file or directory to import |
-| Behavior | Generate a fresh 8-char `id` → copy the source verbatim into the store as `skills/<id>/` (a directory is copied wholesale — `SKILL.md` plus sibling scripts/data, junk like `__pycache__` skipped; a bare file becomes `skills/<id>/SKILL.md`) → append record to index (atomic writes). `path` in the returned record is the **store** path, not the source. |
-| Validation | `--path` must exist: a readable file, or a directory containing a readable `SKILL.md` (else exit 1) · `name` must be non-empty, lowercase-hyphen, ≤64 chars (else exit 1) · duplicate name → warning on stderr, still proceeds (IDs are unique) |
-| Output | The created record (plus `content` with `--return-content`) |
+## Exit codes
 
-```sh
-skill-library add --name context7-mcp --description "Use when questions involve libraries, frameworks, or APIs; fetch current docs via Context7 MCP." --path ~/.agents/skills/context7-mcp
-```
-
-## `skill-library update <id> --name <n> --description <d> --path <file|dir>` — update
-
-| | |
-|---|---|
-| Args | `id` positional + any of the three flags; only provided fields change. The `id` never changes. |
-| Behavior | With `--name`/`--description`: rewrite index fields. With `--path`: re-import verbatim, **replacing** the store skill dir atomically (old dir swapped out and deleted). `updatedAt` refreshed on any change. |
-| Validation | Unknown id → exit 1 · `--path` unreadable / dir without `SKILL.md` → exit 1 |
-| Output | The updated record (plus `content` with `--return-content`) |
-
-```sh
-skill-library update 9f3a1c2b --description "Rewritten description front-loading trigger keywords."
-skill-library update 9f3a1c2b --path ~/.opencode/skills/frontend-design
-```
-
-## `skill-library remove <id>` — delete
-
-| | |
-|---|---|
-| Args | `id` positional |
-| Behavior | Read the record **and its SKILL.md plus the imported file list**, delete the skill dir, remove the index entry (atomic writes). No interactive prompt. |
-| Output | `{"id":…, "name":…, "description":…, "content":…, "files":[…]}` — the deleted skill (entry content + every imported relative file path), recoverable from the transcript |
-| Edge cases | Unknown id → exit 1 |
-
-## `skill-library get <id>` — inspect one skill
-
-| | |
-|---|---|
-| Args | `id` positional |
-| Output | The record (plus `content` with `--return-content`) |
-| Use | Pre-`add` review, refresh checks, content retrieval without reading via path |
-
-## Error output format
-
-Plain text on stderr, one line, actionable where possible:
-
-```
-error: unknown skill id 'deadbeef'
-error: --path not found: /nope
-error: TYPESAFE_API_KEY is not set (required for query). Export it and retry.
-error: typesafe api 429 after 3 retries — try again shortly
-```
-
-## Help text
-
-`skill-library --help` lists the six commands with one-line summaries and the global flags;
-each command also accepts `skill-library <cmd> --help`.
+vercel's for the vercel commands (`remove` with no match → 0, `check` with updates → 1,
+`add` with a failed skill → 1). `query`: 0 ok · 1 usage · 2 runtime.

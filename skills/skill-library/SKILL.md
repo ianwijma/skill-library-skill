@@ -13,59 +13,73 @@ and must be loaded on demand, per task.
 1. Whenever you think a skill might be needed — before starting a task, when the
    work shifts into new territory, or when unsure — summarize the task into a
    1–3 sentence description (include key technologies, file types, and the goal),
-   then run:
+   then run, passing your own agent id:
 
    ```sh
-   skill-library query "<task description>"
+   skill-library query -a <your-agent-id> "<task description>"
    ```
+
+   Agent ids look like `claude-code`, `codex`, `opencode`, `cursor`,
+   `gemini-cli`. If you pass an id the CLI doesn't know, it prints
+   `Invalid agents: …` followed by `Valid agents: …` — pick yours from that list
+   and run the query again.
 
    This fires very often, and that is fine: a query is cheap; a missed skill is
    not.
 
-2. If matches are returned: Read each returned `path` (absolute paths to skill
-   markdown files) and absorb the instructions **before** working on the task.
-3. If `matches` is empty, proceed on your own judgment.
+2. The output lists matching skills, each followed by a `└ <path>` line. Read
+   every listed `SKILL.md` path **before** working on the task and follow it.
+3. `No matching skills. Continue without one.` → proceed on your own judgment.
 4. For a rapid follow-up that trivially continues the same task with the same
    context, reusing the skills already read is acceptable; when in doubt,
    re-query.
 
+## Query options
+
+- Long or multiline task text: `skill-library query -a <id> - <<'EOF' … EOF`
+  (`-` reads the task from stdin).
+- `--threshold <0..1>` — minimum probability (default 0.7). Use `0.8` to be
+  stricter, `0.5` to recover misses.
+- `--top <n>` — cap the number of matches.
+- `--json` — `{"matches":[{id,name,description,path,probability,scope}]}`.
+- A stderr line `N project skills are not installed — run skill-library install`
+  means the project's `skill-library.json` references skills this machine
+  doesn't have yet; run that command when you are allowed to.
+
 ## Managing skills
 
-Each subcommand has its own skill with the full contract — read it when doing
-that operation:
+`skill-library` follows the vercel-labs/skills command contract: `add`, `list`,
+`remove`, `update`, `check`, `install`, `find`, `init`, `use`. Skills you add are
+stored in the library, never in agent skill folders. Run
+`skill-library --help` for the commands and flags.
 
-- `skill-library-query` — scoring the catalog (thresholds, `--top`, stdin, tuning)
-- `skill-library-list` — browsing the catalog
-- `skill-library-get` — inspecting one skill / retrieving its content
-- `skill-library-add` — importing a skill (directory or file)
-- `skill-library-update` — renaming, rewriting descriptions, re-importing content
-- `skill-library-remove` — deleting a skill
+## When the query fails
 
-All commands output JSON on stdout, errors on stderr; exit codes 0/1/2.
-`skill-library --help` for the overview.
+Run the command before declaring a failure. If it fails, use its stderr and exit
+code to explain the specific cause briefly:
 
-## Fallback
-
-Run the command before declaring a failure. If it fails, use its stderr and
-exit code to explain the specific cause briefly:
-
-- CLI missing: check `command -v skill-library` and `PATH`. Installing via
-  `npx skills add` installs the skills only; build and install the CLI using
-  the [README](https://github.com/ianwijma/skill-library-skill).
-- Missing `TYPESAFE_API_KEY` or HTTP 401: query needs a valid key in the agent's
-  environment. Never print the key.
+- CLI missing: check `command -v skill-library` and `PATH`; install it with
+  `npm i -g skill-library`.
+- Missing `SKILL_LIBRARY_TYPESAFE_API_KEY` or HTTP 401: query needs a valid
+  TypeSafe key in the agent's environment. Never print the key.
 - Connection error or timeout: online scoring could not reach TypeSafe. Check
   network/DNS, proxy settings, and agent sandbox restrictions. This does not
-  establish that the service is down; there is no local daemon to start. If the
-  environment reports restricted networking, retry through its supported
-  network-permission mechanism when allowed. Respect denials and use the local
-  fallback when network access is unavailable.
+  establish that the service is down. If the environment reports restricted
+  networking, retry through its supported network-permission mechanism when
+  allowed. Respect denials and use the offline fallback below.
 - Other exit-2 errors: report the actual diagnostic (for example, an unreadable
   store), rather than labeling every runtime failure a service outage.
 
-When online scoring fails, run `skill-library list` (with the same `--store`, if
-used). It needs neither network access nor an API key. Select relevant skills
-from the returned names and descriptions, then read their `path` files before
-continuing. If the local catalog also fails or has no relevant skills, continue
-with available guidance. Never block the user's task on the library, and avoid
-repeating a known failing query during the same task unless conditions change.
+**Offline fallback** (needs neither network nor an API key): run
+
+```sh
+skill-library list --json -a <your-agent-id>
+skill-library list -g --json -a <your-agent-id>
+```
+
+Ignore rows whose `status` is `untracked` or `missing`. When a project row and a
+global row share a `name`, use the project row. Pick the relevant skills from the
+names, then read `<path>/SKILL.md` for each before continuing. If the local
+catalog also fails or has nothing relevant, continue with available guidance.
+Never block the user's task on the library, and avoid repeating a known failing
+query during the same task unless conditions change.

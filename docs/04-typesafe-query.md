@@ -14,7 +14,7 @@ connection, timeout) map to the CLI behaviors in "Failure handling".
 
 ```http
 POST https://api.typesafe.ai/v1/systemone
-Authorization: Bearer $TYPESAFE_API_KEY
+Authorization: Bearer $SKILL_LIBRARY_TYPESAFE_API_KEY
 Content-Type: application/json
 ```
 
@@ -30,7 +30,7 @@ Content-Type: application/json
   "state": { "task": "<the task text passed to skill-library query>" },
   "model": "jev-latest",
   "questions": {
-    "9f3a1c2b": {
+    "s0": {
       "type": "noul",
       "instructions": {
         "skill": {
@@ -44,7 +44,7 @@ Content-Type: application/json
         "false": "The skill is unrelated, redundant, or would not meaningfully help"
       }
     },
-    "7d0e4f11": { "…same shape, next skill…" : null }
+    "s1": { "…same shape, next skill…" : null }
   }
 }
 ```
@@ -55,8 +55,10 @@ Design notes (grounded in TypeSafe's docs):
   up-to-date" — each would dilute the probability's meaning.
 - **Phrased so a high value means yes.** Never invert ("is the skill
   unnecessary…") — downstream code would read it backwards.
-- **Question ids are skill ids.** Ids are for code only; the model never sees
-  them, so all meaning lives in `instructions`/`criteria`.
+- **Question keys are opaque (`s0…sN`).** They are mapped back to skills locally;
+  skill ids (which can contain local paths such as `home://…`) never leave the
+  machine. The model never sees the keys, so all meaning lives in
+  `instructions`/`criteria`.
 - **Structured instructions** carry each skill's name/description; the template
   question text stays identical across skills (code-built, like TypeSafe's
   duplicate-detection example).
@@ -69,14 +71,44 @@ Design notes (grounded in TypeSafe's docs):
 {
   "model": "jev-1.13.0",
   "answers": {
-    "9f3a1c2b": { "type": "noul", "noul": 0.91 },
-    "7d0e4f11": { "type": "noul", "noul": 0.03 }
+    "s0": { "type": "noul", "noul": 0.91 },
+    "s1": { "type": "noul", "noul": 0.03 }
   },
   "usage": { "input_tokens": 535, "output_tokens": 58 }
 }
 ```
 
-Mapping to CLI output: each answer id → its skill record; `noul` → `probability`.
+Mapping to CLI output: each answer key → its skill; `noul` → `probability`.
+
+## Candidates
+
+Inside a project, `query` scores the project's skills (pinned versions from
+`skill-library.json` and `local://` folders read in place) plus the global
+library (each skill's `current` version). Selection order:
+
+1. Collect the three groups.
+2. Shadow by name: `local://` > referenced > global. A lower-priority skill with
+   the same name is dropped even when the winner is missing or filtered out.
+   Different ids at the same priority are both kept.
+3. Drop project skills that are not installed (one stderr note).
+4. `-a <agent>`: keep skills whose agent list is `all` or contains the agent.
+   Jev never sees the agent; filtering happens before the call.
+5. Skip empty descriptions (warning).
+
+Each candidate is scored on the name and description of the version that will
+be printed.
+
+## Output
+
+```
+Read these skill files before continuing with the task:
+
+frontend-design (91%)
+└ /home/ian/.local/share/skill-library/skills/frontend-design-3f9c1a2e/8e01b7a4c2f9/SKILL.md
+```
+
+`--json` prints `{"matches":[{id,name,description,path,probability,scope}]}`.
+Exit codes: 0 ok · 1 usage (incl. invalid agent) · 2 runtime (key, network, lock).
 
 ## Threshold policy
 
@@ -95,16 +127,16 @@ a lower threshold). Sort desc; `--top n` truncates after sorting.
 
 | Condition | Behavior |
 |---|---|
-| `401 Unauthorized` | exit 2, stderr: check `TYPESAFE_API_KEY` |
+| `401 Unauthorized` | exit 2, stderr: check `SKILL_LIBRARY_TYPESAFE_API_KEY` |
 | `422 Unprocessable Entity` | exit 2 with response body (indicates a bug in question construction) |
 | `429 Too Many Requests` / `529 Overloaded` | retry with exponential backoff: 1s, 2s, 4s (+jitter), max 3 retries; honor `Retry-After` header when present; then exit 2 |
 | Network error / timeout (30s per attempt) | retry, then exit 2 with network/DNS/proxy/sandbox hint and local `list` fallback; does not establish a service outage |
-| Empty catalog | skip the API call entirely, return `{"matches":[]}` |
+| No candidates | skip the API call entirely; print `No matching skills. Continue without one.` |
 | Skill with empty description | exclude from the request; warn on stderr |
 
 When scoring fails, the gateway reports the specific stderr diagnostic and
-uses `skill-library list` to select skills locally, then reads their returned
-paths. Local catalog commands require neither network access nor an API key.
+uses `skill-library list --json` and `list -g --json` to select skills locally,
+then reads their returned paths. Local catalog commands require neither network access nor an API key.
 In a restricted agent environment, a permitted retry through its supported
 network-permission mechanism can distinguish sandbox blocking from a remote
 failure. There is no local daemon to start.
