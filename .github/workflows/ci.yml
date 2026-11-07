@@ -22,13 +22,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Every supported release line (https://nodejs.org/en/about/previous-releases),
-          # plus 22.0.0: the oldest Node the package supports (engines: >=22).
+          # Every supported release line (https://nodejs.org/en/about/previous-releases).
+          # 22 is tested as 22.0.0, the oldest Node the package supports (engines: >=22).
           # The dev tools (vitest's rolldown) need 22.12+ to install, so install
           # with the latest 22, then run everything on 22.0.0.
           - node: "22.0.0"
-            install-node: "22"
-          - node: "22"
             install-node: "22"
           - node: "24"
             install-node: "24"
