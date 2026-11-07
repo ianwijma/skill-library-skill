@@ -23,7 +23,7 @@ describe("root commands", () => {
     expect((await run(sb, ["rm", "-h"])).stdout).toContain("skill-library remove [skills...]");
   });
 
-  test("unknown command on stdout, exit 1; sync is dropped", async () => {
+  test("unknown command on stdout, exit 1; sync needs init", async () => {
     const sb = await sandbox();
     const r = await run(sb, ["frobnicate"]);
     expect(r.code).toBe(1);

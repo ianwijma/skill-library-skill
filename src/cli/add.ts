@@ -9,6 +9,7 @@ import { placeGateway } from "../lib/gateway.ts";
 import { loadProject } from "../lib/manifest.ts";
 import type { AgentsValue } from "../lib/store.ts";
 import { parseFlags } from "./args.ts";
+import { afterGlobalChange } from "./sync.ts";
 import { showLogo } from "./ui.ts";
 import type { GlobalOpts } from "./index.ts";
 
@@ -161,6 +162,9 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
     if (gw.updated.length > 0) note(`Updated skill-library gateway for ${gw.updated.join(", ")}`);
     for (const e of gw.errors) note(`gateway: ${e}`);
   }
+
+  const addedGlobal = result.scope === "global" && !result.cancelled ? result.skills.filter((r) => r.status === "installed").map((r) => r.id) : [];
+  if (addedGlobal.length > 0) await afterGlobalChange({ added: addedGlobal }, g);
 
   if (json) {
     console.log(JSON.stringify(result.skills.map(jsonRow), null, 2));

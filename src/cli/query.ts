@@ -1,4 +1,6 @@
 import { querySkills } from "../core/query.ts";
+import { maybeStartBackgroundSync } from "../core/sync.ts";
+import { resolveStore } from "../lib/paths.ts";
 import { CliError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { parseFlags } from "./args.ts";
 import type { GlobalOpts } from "./index.ts";
@@ -37,6 +39,8 @@ export async function runQuery(args: string[], g: GlobalOpts): Promise<number> {
     task = await readStdin();
   }
   if (task.trim() === "") throw new CliError(1, "task text is empty");
+  const syncNotice = maybeStartBackgroundSync(resolveStore(g.store));
+  if (syncNotice) note(syncNotice);
   const res = await querySkills(task, {
     cwd: g.cwd,
     ...(g.store ? { store: g.store } : {}),
