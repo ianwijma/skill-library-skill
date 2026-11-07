@@ -16,7 +16,7 @@ into your agents' skills folders.
 
 ## Quick start
 
-Requires [Node.js](https://nodejs.org) >= 22.18 and `git` (for remote sources).
+Requires [Node.js](https://nodejs.org) >= 22 and `git` (for remote sources).
 
 ```sh
 npm i -g skill-library            # or run it with npx skill-library …
@@ -109,6 +109,10 @@ If online scoring is unavailable, `skill-library list --json` and
 | [08 — vercel parity plan](docs/08-vercel-parity-plan.md) | The design behind this version |
 
 ## Development
+
+Working on the repository needs Node.js >= 22.18: `npm start` runs the TypeScript
+source directly, and vitest needs 22.12+. The published package itself runs on any
+Node.js 22 or newer; CI tests it on 22.0.0, the latest 22 and the latest 24.
 
 ```sh
 npm install

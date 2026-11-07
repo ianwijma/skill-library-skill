@@ -23,7 +23,7 @@
   "author": "Ian Wijma",
   "type": "module",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22"
   },
   "main": "dist/index.js",
   "types": "dist/api.d.ts",
