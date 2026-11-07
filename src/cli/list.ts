@@ -25,8 +25,8 @@ export async function runList(args: string[], g: GlobalOpts): Promise<number> {
   } catch (err) {
     if (err instanceof CliError) {
       // vercel prints the invalid-agents diagnostic on stdout; runtime errors go to stderr.
-      if (err.exitCode === 1) console.log(formatError(err));
-      else console.error(`Error: ${formatError(err)}`);
+      if (err.exitCode === 1 && !json) console.log(formatError(err));
+      else console.error(json ? formatError(err) : `Error: ${formatError(err)}`);
       if (json) console.log("[]");
       return err.exitCode;
     }

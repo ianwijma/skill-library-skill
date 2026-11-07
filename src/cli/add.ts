@@ -108,13 +108,17 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
       ...(skills ? { skills } : {}),
       fullDepth: f.booleans.has("fullDepth"),
       list: f.booleans.has("list"),
-      confirm: async (picked, scope) => {
+      confirm: async (picked, scope, kind) => {
         if (yes) return true;
         if (!process.stdin.isTTY) {
           throw new CliError(1, "Interactive prompt required but stdin is not a TTY. Nothing was installed. Use -y to run non-interactively.");
         }
         spinner?.stop(`Found ${picked.length} skill(s)`);
-        const ok = await p.confirm({ message: `Add ${picked.map((s) => s.name).join(", ")} to the ${scope === "project" ? "project" : "global library"}?` });
+        const message =
+          kind === "gateway"
+            ? "This source only contains the skill-library gateway. Install it into your agents' skills folders?"
+            : `Add ${picked.map((s) => s.name).join(", ")} to the ${scope === "project" ? "project" : "global library"}?`;
+        const ok = await p.confirm({ message });
         return !p.isCancel(ok) && ok === true;
       },
       selectSkills: async (found) => {
@@ -154,7 +158,7 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
 
   const ok = result.skills.length > 0 && result.skills.every((r) => r.status !== "failed");
   const placeAgents = agents && !agents.includes("*") ? agents : [];
-  if (result.gatewayOnly || result.skills.some((r) => r.status === "installed")) {
+  if (!result.cancelled && (result.gatewayOnly || result.skills.some((r) => r.status === "installed"))) {
     const gw = await placeGateway(placeAgents);
     if (gw.updated.length > 0) note(`Updated skill-library gateway for ${gw.updated.join(", ")}`);
     if (gw.removedHelpers.length > 0) note(`Removed ${gw.removedHelpers.length} old skill-library helper skill(s) from agent folders`);
@@ -164,6 +168,10 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   if (json) {
     console.log(JSON.stringify(result.skills.map(jsonRow), null, 2));
     return result.skills.some((r) => r.status === "failed") ? 1 : 0;
+  }
+  if (result.cancelled) {
+    console.log("Installation cancelled");
+    return 0;
   }
   if (result.gatewayOnly) {
     console.log(`${TEXT}This source only contains the skill-library gateway; nothing was added to the library.${RESET}`);

@@ -1,7 +1,8 @@
 import { promises as fsp, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { CliError, msgOf } from "./cli.ts";
+import { agentIds } from "./agents.ts";
+import { CliError, msgOf, warn } from "./cli.ts";
 import { isEnoent, withFileLock, writeFileAtomic, type AgentsValue } from "./store.ts";
 
 export const MANIFEST = "skill-library.json";
@@ -69,9 +70,11 @@ const SHA = /^[0-9a-f]{40}$/;
 const HASH = /^sha256-[0-9a-f]{64}$/;
 
 /** A relative POSIX path that stays inside its base ("" and "." allowed). */
-export function isContainedRelPath(p: string): boolean {
+export function isContainedRelPath(p: string, platform: NodeJS.Platform = process.platform): boolean {
   if (p === "" || p === ".") return true;
-  if (p.startsWith("/") || p.includes("\\") || /^[a-zA-Z]:/.test(p)) return false;
+  if (p.startsWith("/")) return false;
+  // Backslashes and drive letters are separators/roots only on Windows; on POSIX they are filename characters.
+  if (platform === "win32" && (p.includes("\\") || /^[a-zA-Z]:/.test(p))) return false;
   return !p.split("/").some((seg) => seg === ".." || seg === "");
 }
 
@@ -88,6 +91,11 @@ export function validateEntry(file: string, id: string, raw: unknown): ManifestE
     bad(file, id, 'agents must be "all" or a list of agent ids');
   }
   if (e.name !== undefined && (typeof e.name !== "string" || e.name.trim() === "")) bad(file, id, "name must be a string");
+  if (Array.isArray(agents)) {
+    const known = agentIds();
+    const unknown = (agents as string[]).filter((a) => !known.includes(a));
+    if (unknown.length > 0) warn(`${file}: "${id}" lists unknown agents (${unknown.join(", ")}); they never match`);
+  }
   const out: ManifestEntry = { agents: agents as AgentsValue, ...(typeof e.name === "string" ? { name: e.name } : {}) };
   if (id.startsWith("local://")) {
     if (!isContainedRelPath(id.slice("local://".length))) bad(file, id, "local:// path must stay inside the project");

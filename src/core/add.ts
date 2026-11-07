@@ -1,7 +1,7 @@
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { CliError, msgOf, note } from "../lib/cli.ts";
-import { discoverSkills, filterSkills, parseSkillFile, type DiscoveredSkill } from "../lib/discover.ts";
+import { discoverSkills, filterSkills, parseSkillFile, requireStagedSkill, type DiscoveredSkill } from "../lib/discover.ts";
 import { cleanup, cloneRepo, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
 import { gitSkillId, localSkillId, skillDirFor } from "../lib/ids.ts";
@@ -38,7 +38,7 @@ export interface AddOptions extends BaseOptions {
   /** CLI hook: choose skills when several were found and none were named. */
   selectSkills?: (skills: DiscoveredSkill[]) => Promise<DiscoveredSkill[]>;
   /** CLI hook: confirm before anything is written. Return false to cancel. */
-  confirm?: (skills: DiscoveredSkill[], scope: "project" | "global") => Promise<boolean>;
+  confirm?: (skills: DiscoveredSkill[], scope: "project" | "global", kind?: "skills" | "gateway") => Promise<boolean>;
 }
 
 export interface AddedSkill {
@@ -136,6 +136,8 @@ export async function addSkills(source: string, opts: AddOptions = {}): Promise<
     if (found.length === 0) {
       if (reserved.length > 0) {
         result.gatewayOnly = true;
+        // Placing the gateway writes agent folders, so it needs the same confirmation as a store write.
+        if (!opts.list && opts.confirm && !(await opts.confirm(reserved, scope, "gateway"))) result.cancelled = true;
         return result;
       }
       throw new CliError(1, "No valid skills found. Skills require a SKILL.md with name and description.");
@@ -226,9 +228,11 @@ async function prepare(
 
 /** The copier skips symlinks; a skill whose SKILL.md is a link must not be stored without it. */
 async function assertStagedSkill(staged: string, skill: DiscoveredSkill): Promise<void> {
-  if (!(await exists(path.join(staged, "SKILL.md")))) {
+  try {
+    await requireStagedSkill(staged, skill.path, { name: skill.name, description: skill.description });
+  } catch (err) {
     await fsp.rm(staged, { recursive: true, force: true }).catch(() => {});
-    throw new CliError(1, `${skill.path}: SKILL.md is not a regular file (symlinks are not copied)`);
+    throw err;
   }
 }
 

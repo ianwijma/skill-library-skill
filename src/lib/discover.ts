@@ -71,6 +71,25 @@ export async function parseSkillFile(file: string, kind: "folder" | "file", quie
   return { name, description, path: kind === "file" ? file : path.dirname(file), kind, rawContent: raw };
 }
 
+/**
+ * A staged copy must hold a regular SKILL.md with usable frontmatter (the copier skips symlinks,
+ * so a linked SKILL.md would otherwise produce an empty version). Throws otherwise.
+ */
+export async function requireStagedSkill(staged: string, label: string, fallback?: { name: string; description: string }): Promise<{ name: string; description: string }> {
+  const file = path.join(staged, "SKILL.md");
+  let st;
+  try {
+    st = await fsp.lstat(file);
+  } catch {
+    st = null;
+  }
+  if (!st || !st.isFile()) throw new CliError(1, `${label}: SKILL.md is missing or not a regular file (symlinks are not copied)`);
+  const parsed = await parseSkillFile(file, "folder", true);
+  if (parsed) return { name: parsed.name, description: parsed.description };
+  if (fallback) return fallback;
+  throw new CliError(1, `${label}: SKILL.md has no usable name/description frontmatter`);
+}
+
 async function findSkillDirs(dir: string, depth = 0, maxDepth = 5): Promise<string[]> {
   if (depth > maxDepth) return [];
   const here = (await isFile(path.join(dir, "SKILL.md"))) ? [dir] : [];

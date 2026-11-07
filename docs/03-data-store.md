@@ -98,5 +98,6 @@ written to a temp file and renamed.
 On first use of a v1 store (an array `index.json`): copy each skill into a new
 version folder, derive its id from the recorded source path (`home://`/`path://`
 only), keep the v1 name and description, drop copies of the old gateway and
-helper skills, write the v2 index last, then delete the v1 folders. A failure
-before the new index is written leaves the v1 store untouched.
+helper skills, and write the v2 index last. The v1 folders are kept next to
+`index.v1.json`, so the backup stays usable. A failure before the new index is
+written leaves the v1 store untouched.

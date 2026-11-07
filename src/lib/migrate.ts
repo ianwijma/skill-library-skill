@@ -60,7 +60,7 @@ async function sourceKind(src: string): Promise<"folder" | "file"> {
   }
 }
 
-/** Caller holds the lock. Copies content first, writes the v2 index last, then deletes v1 folders. */
+/** Caller holds the lock. Copies content first and writes the v2 index last; v1 folders are kept. */
 export async function migrateV1(store: string, entries: unknown[]): Promise<StoreIndex> {
   if (!entries.every(isV1Entry)) {
     throw new CliError(2, `index.json is corrupted — fix or restore ${indexPath(store)}`);
@@ -123,12 +123,7 @@ export async function migrateV1(store: string, entries: unknown[]): Promise<Stor
     throw new CliError(2, `migration of ${indexPath(store)} failed; the old store is untouched: ${msgOf(err)}`);
   }
 
-  // Commit point passed: remove the v1 content folders (best effort).
-  for (const e of entries) {
-    const oldDir = path.resolve(store, e.contentDir);
-    if (index.skills.some((r) => path.resolve(store, r.dir) === oldDir)) continue;
-    await fsp.rm(oldDir, { recursive: true, force: true }).catch(() => {});
-  }
+  // The v1 content folders stay in place so index.v1.json remains a working backup.
   if (dropped.length > 0) note(`Dropped old skill-library helper skills from the store: ${dropped.join(", ")}`);
   note(`Migrated ${index.skills.length} skills to the new store format. Run skill-library add <any source> once to install the new gateway.`);
   return index;

@@ -4,7 +4,7 @@ import { msgOf } from "../lib/cli.ts";
 import { cleanup, cloneRepo, remoteTree, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
 import { loadProject, mutateManifest, type Project } from "../lib/manifest.ts";
-import { parseSkillFile } from "../lib/discover.ts";
+import { requireStagedSkill } from "../lib/discover.ts";
 import { isCommitSha } from "../lib/source.ts";
 import {
   commitVersionDir,
@@ -168,7 +168,7 @@ export async function updateSkills(opts: UpdateOptions = {}): Promise<UpdateResu
       await copySkill(src, staged, "folder");
       const hash = await hashSkillDir(staged);
       const tree = await treeAt(cloned.dir, t.sub);
-      const meta = await parseSkillFile(path.join(staged, "SKILL.md"), "folder", true);
+      const meta = await requireStagedSkill(staged, `${t.id} at ${cloned.commit.slice(0, 12)}`);
       const commit = cloned.commit;
       const stagedDir = staged;
       await mutateIndex(store, async (index) => {
@@ -182,8 +182,8 @@ export async function updateSkills(opts: UpdateOptions = {}): Promise<UpdateResu
           commit,
           ...(tree ? { tree } : {}),
           hash,
-          name: meta?.name ?? t.name,
-          description: meta?.description ?? record.versions[record.current]?.description ?? "",
+          name: meta.name,
+          description: meta.description,
           addedAt: now(),
         };
         record.updatedAt = now();
@@ -197,6 +197,7 @@ export async function updateSkills(opts: UpdateOptions = {}): Promise<UpdateResu
           if (e && e.commit === t.commit) {
             e.commit = commit;
             e.hash = hash;
+            e.name = meta.name;
           }
         });
       }

@@ -133,6 +133,7 @@ interface LockInfo {
   pid: number;
   host: string;
   at: string;
+  token?: string;
 }
 
 function pidAlive(pid: number): boolean {
@@ -154,9 +155,41 @@ export async function withLock<T>(store: string, fn: () => Promise<T>): Promise<
   return withFileLock(lockPath(store), fn);
 }
 
-/** O_EXCL lock file holding pid@host. Dead local holders are reclaimed; foreign ones fail (exit 2). */
+async function readHolder(file: string): Promise<LockInfo | null | "gone"> {
+  try {
+    return JSON.parse(await fsp.readFile(file, "utf8")) as LockInfo;
+  } catch (err) {
+    return isEnoent(err) ? "gone" : null;
+  }
+}
+
+/**
+ * Remove a dead holder's lock. Reclamation is serialised by an atomic `mkdir` guard and the lock
+ * is re-read under it, so a contender that decided "stale" earlier can never delete a newer,
+ * live owner's lock.
+ */
+async function reclaimStale(file: string, stale: LockInfo): Promise<void> {
+  const guard = `${file}.reclaim`;
+  try {
+    await fsp.mkdir(guard);
+  } catch (err) {
+    if ((err as { code?: string }).code !== "EEXIST") throw err;
+    // Another process is reclaiming; a guard left by a crash is cleared after a few seconds.
+    const st = await fsp.stat(guard).catch(() => null);
+    if (st && Date.now() - st.mtimeMs > 5_000) await fsp.rmdir(guard).catch(() => {});
+    return;
+  }
+  try {
+    const now = await readHolder(file);
+    if (now !== null && now !== "gone" && now.token === stale.token && now.pid === stale.pid) await fsp.rm(file, { force: true });
+  } finally {
+    await fsp.rmdir(guard).catch(() => {});
+  }
+}
+
+/** Lock file holding pid@host and a unique token. Dead local holders are reclaimed; foreign ones fail (exit 2). */
 export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promise<T> {
-  const mine: LockInfo = { pid: process.pid, host: os.hostname(), at: now() };
+  const mine: LockInfo = { pid: process.pid, host: os.hostname(), at: now(), token: randomBytes(12).toString("hex") };
   const deadline = Date.now() + LOCK_WAIT_MS;
   for (;;) {
     // Write the holder info first, then hard-link it into place: the lock never exists empty.
@@ -172,15 +205,11 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
         throw new CliError(2, `cannot create ${file}: ${msgOf(err)}`);
       }
     }
-    let holder: LockInfo | null = null;
-    try {
-      holder = JSON.parse(await fsp.readFile(file, "utf8")) as LockInfo;
-    } catch (err) {
-      if (isEnoent(err)) continue; // released between our attempt and the read: try again
-      holder = null;
-    }
+    const holder = await readHolder(file);
+    if (holder === "gone") continue; // released between our attempt and the read: try again
     if (holder && holder.host === os.hostname() && typeof holder.pid === "number" && !pidAlive(holder.pid)) {
-      await fsp.rm(file, { force: true });
+      await reclaimStale(file, holder);
+      await new Promise((r) => setTimeout(r, 10));
       continue;
     }
     if (holder && holder.host === os.hostname() && Date.now() < deadline) {
@@ -193,7 +222,9 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
   try {
     return await fn();
   } finally {
-    await fsp.rm(file, { force: true }).catch(() => {});
+    // Release only our own lock.
+    const holder = await readHolder(file);
+    if (holder !== null && holder !== "gone" && holder.token === mine.token) await fsp.rm(file, { force: true }).catch(() => {});
   }
 }
 

@@ -126,7 +126,8 @@ export async function projectSkills(store: string, index: StoreIndex, project: P
     if (id.startsWith("local://")) {
       const rel = id.slice("local://".length);
       const dir = path.resolve(project.root, rel === "." ? "" : rel);
-      const parsed = (await exists(path.join(dir, "SKILL.md"))) ? await parseSkillFile(path.join(dir, "SKILL.md"), "folder", true) : null;
+      const inside = dir === project.root || dir.startsWith(project.root + path.sep);
+      const parsed = inside && (await exists(path.join(dir, "SKILL.md"))) ? await parseSkillFile(path.join(dir, "SKILL.md"), "folder", true) : null;
       out.push({
         id,
         name: parsed?.name ?? entry.name ?? nameFromId(id),

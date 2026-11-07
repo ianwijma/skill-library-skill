@@ -1,7 +1,7 @@
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { CliError, msgOf } from "../lib/cli.ts";
-import { parseSkillFile } from "../lib/discover.ts";
+import { requireStagedSkill } from "../lib/discover.ts";
 import { cleanup, fetchCommit, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
 import { skillDirFor } from "../lib/ids.ts";
@@ -170,8 +170,8 @@ async function fetchPinned(store: string, id: string, entry: ManifestEntry): Pro
           : `${name} changed since it was pinned; run skill-library add ${entry.source} to re-pin`,
       );
     }
-    const parsed = await parseSkillFile(path.join(staged, "SKILL.md"), "folder", true);
-    return { staged, hash, tree, name: parsed?.name ?? id.split("/").pop() ?? id, description: parsed?.description ?? "" };
+    const meta = await requireStagedSkill(staged, id, entry.name ? { name: entry.name, description: "" } : undefined);
+    return { staged, hash, tree, name: meta.name, description: meta.description };
   } catch (err) {
     await fsp.rm(staged, { recursive: true, force: true }).catch(() => {});
     throw err;

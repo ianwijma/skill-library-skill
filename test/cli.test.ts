@@ -382,8 +382,9 @@ describe("migration v1 → v2", () => {
     const notes = index.skills.find((s: any) => s.name === undefined && s.id === "home://gone/notes.md");
     expect(notes.source.type).toBe("file");
     expect(Object.values(notes.versions)[0]).toMatchObject({ name: "notes", description: "Hand-written description" });
-    await fsp.access(path.join(sb.store, "index.v1.json"));
-    await expect(fsp.access(path.join(sb.store, "skills", "aaaa1111"))).rejects.toThrow();
+    // The v1 backup stays usable: every folder it references is still there.
+    const v1 = await readJson(path.join(sb.store, "index.v1.json"));
+    for (const e of v1) await fsp.access(path.join(sb.store, e.contentDir, "SKILL.md"));
   });
 
   test("a failure midway leaves the v1 store intact", async () => {

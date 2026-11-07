@@ -230,3 +230,89 @@ describe("API", () => {
     }
   });
 });
+
+describe("second review", () => {
+  test("two contenders reclaiming the same stale lock never hold it together", async () => {
+    const { withFileLock } = await import("../src/lib/store.ts");
+    const sb = await sandbox();
+    const file = path.join(sb.root, "x.lock");
+    const os = await import("node:os");
+    let inside = 0;
+    let max = 0;
+    for (let round = 0; round < 5; round++) {
+      await fsp.writeFile(file, JSON.stringify({ pid: 2 ** 22 + 12345, host: os.hostname(), at: "", token: `dead${round}` }));
+      await Promise.all(
+        [0, 1, 2].map(() =>
+          withFileLock(file, async () => {
+            inside++;
+            max = Math.max(max, inside);
+            await new Promise((r) => setTimeout(r, 20));
+            inside--;
+          }),
+        ),
+      );
+    }
+    expect(max).toBe(1);
+    await expect(fsp.access(file)).rejects.toThrow();
+  });
+
+  test("update refuses an upstream SKILL.md symlink and keeps the old pin", async () => {
+    const sb = await sandbox();
+    const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "Solo") });
+    const dir = await project(sb);
+    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    const before = await fsp.readFile(path.join(dir, "skill-library.json"), "utf8");
+    await fsp.writeFile(path.join(repo.work, "other.md"), skillMd("solo", "Solo v2"));
+    await fsp.rm(path.join(repo.work, "SKILL.md"));
+    await fsp.symlink("other.md", path.join(repo.work, "SKILL.md"));
+    await repo.commit({});
+    const u = await run(sb, ["update", "-y"], { cwd: dir });
+    expect(u.code).toBe(1);
+    expect(u.stdout).toContain("not a regular file");
+    expect(await fsp.readFile(path.join(dir, "skill-library.json"), "utf8")).toBe(before);
+    expect(JSON.parse((await run(sb, ["ls", "--json"], { cwd: dir })).stdout)[0].status).toBe("tracked");
+  });
+
+  test("update keeps the manifest name in step with a renamed skill", async () => {
+    const sb = await sandbox();
+    const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("old", "Old") });
+    const dir = await project(sb);
+    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    await repo.commit({ "SKILL.md": skillMd("new", "New") });
+    expect((await run(sb, ["update", "-y"], { cwd: dir })).code).toBe(0);
+    const m = await readJson(path.join(dir, "skill-library.json"));
+    expect((Object.values(m.skills)[0] as any).name).toBe("new");
+  });
+
+  test("a gateway-only source without -y and without a TTY places nothing", async () => {
+    const sb = await sandbox();
+    await writeFiles(path.join(sb.root, "gw"), { "skill-library/SKILL.md": skillMd("skill-library", "gateway") });
+    await fsp.mkdir(path.join(sb.home, ".claude"), { recursive: true });
+    const r = await run(sb, ["add", path.join(sb.root, "gw"), "-g", "-a", "claude-code"], { env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
+    expect(r.code).toBe(1);
+    await expect(fsp.access(path.join(sb.home, ".claude", "skills", "skill-library"))).rejects.toThrow();
+  });
+
+  test("folder names the writer accepts are read back (a:b, back\\\\slash on POSIX)", async () => {
+    const sb = await sandbox();
+    const dir = await project(sb);
+    await writeFiles(dir, { "a:b/SKILL.md": skillMd("colon", "C"), "x\\y/SKILL.md": skillMd("slash", "S") });
+    expect((await run(sb, ["add", "./a:b", "-y"], { cwd: dir })).code).toBe(0);
+    expect((await run(sb, ["add", "./x\\y", "-y"], { cwd: dir })).code).toBe(0);
+    const rows = JSON.parse((await run(sb, ["ls", "--json"], { cwd: dir })).stdout);
+    expect(rows.map((r: any) => r.name).sort()).toEqual(["colon", "slash"]);
+  });
+
+  test("list --json keeps stdout to one JSON value on errors", async () => {
+    const sb = await sandbox();
+    const bad = await run(sb, ["ls", "--json", "-a", "nope"]);
+    expect(bad.code).toBe(1);
+    expect(bad.stdout).toBe("[]\n");
+    expect(bad.stderr).toContain("Invalid agents: nope");
+    const dir = await project(sb);
+    await fsp.writeFile(path.join(dir, "skill-library.json"), "{nope");
+    const broken = await run(sb, ["ls", "--json"], { cwd: dir });
+    expect(broken.stdout).toBe("[]\n");
+    expect(broken.stderr).toContain("not valid JSON");
+  });
+});
