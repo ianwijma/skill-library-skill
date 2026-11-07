@@ -112,7 +112,7 @@ If online scoring is unavailable, `skill-library list --json` and
 
 Working on the repository needs Node.js >= 22.18: `npm start` runs the TypeScript
 source directly, and vitest needs 22.12+. The published package itself runs on any
-Node.js 22 or newer; CI tests it on 22.0.0, the latest 22 and the latest 24.
+Node.js 22 or newer; CI tests it on 22.0.0 and the latest 22, 24 and 26.
 
 ```sh
 npm install

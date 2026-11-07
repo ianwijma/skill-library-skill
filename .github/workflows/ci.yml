@@ -22,7 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 22.0.0 is the oldest Node the package supports (engines: >=22).
+          # Every supported release line (https://nodejs.org/en/about/previous-releases),
+          # plus 22.0.0: the oldest Node the package supports (engines: >=22).
           # The dev tools (vitest's rolldown) need 22.12+ to install, so install
           # with the latest 22, then run everything on 22.0.0.
           - node: "22.0.0"
@@ -31,6 +32,8 @@ jobs:
             install-node: "22"
           - node: "24"
             install-node: "24"
+          - node: "26"
+            install-node: "26"
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
