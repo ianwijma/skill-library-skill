@@ -26,11 +26,14 @@ jobs:
           # 22 is tested as 22.0.0, the oldest Node the package supports (engines: >=22).
           # The dev tools (vitest's rolldown) need 22.12+ to install, so install
           # with the latest 22, then run everything on 22.0.0.
-          - node: "22.0.0"
+          - node: "22"
+            version: "22.0.0"
             install-node: "22"
           - node: "24"
+            version: "24"
             install-node: "24"
           - node: "26"
+            version: "26"
             install-node: "26"
     steps:
       - name: Check out repository
@@ -45,11 +48,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Switch to Node.js ${{ matrix.node }}
-        if: matrix.node != matrix.install-node
+      - name: Switch to Node.js ${{ matrix.version }}
+        if: matrix.version != matrix.install-node
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: ${{ matrix.version }}
 
       - name: Show Node.js version
         run: node --version
