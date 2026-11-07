@@ -4,155 +4,141 @@
 
 Skills on demand — not always loaded.
 
-One tiny gateway skill checks what a task needs. The `skill-library` CLI
-scores the catalog with [TypeSafe](https://docs.typesafe.ai)'s Jev model.
-The agent reads only the skills that matter.
+One small gateway skill checks what a task needs. The `skill-library` CLI
+scores your library with [TypeSafe](https://docs.typesafe.ai)'s Jev model, and
+the agent reads only the skills that matter. Everything else stays out of the
+context window.
 
-## What you get
+The CLI speaks the [vercel-labs/skills](https://github.com/vercel-labs/skills)
+command contract — `add`, `list`, `remove`, `update`, `check`, `install`, `find`,
+`init`, `use` — with one difference: skills you add go into the library, never
+into your agents' skills folders.
 
-| Deliverable | What it is |
+## Quick start
+
+Requires [Node.js](https://nodejs.org) >= 22.18 and `git` (for remote sources).
+
+```sh
+npm i -g skill-library            # or run it with npx skill-library …
+skill-library add vercel-labs/agent-skills -g
+```
+
+`add` stores the skills in the library (`~/.local/share/skill-library`) and
+places the gateway skill in every installed agent's global skills folder
+(Claude Code, Codex, OpenCode, Cursor, …). Restart your agent so it loads the
+gateway.
+
+Then set your TypeSafe key in the environment that launches your agent:
+
+```sh
+export TYPESAFE_API_KEY='<your TypeSafe API key>'
+skill-library query -a claude-code "fix a failing next.js build"
+```
+
+`query` sends the task text and the candidate skills' names and descriptions to
+TypeSafe (`api.typesafe.ai`). Skill ids and paths never leave your machine. The
+other commands need neither an API key nor network access (except to fetch
+remote sources).
+
+## Commands
+
+| Command | What it does |
 |---|---|
-| `skill-library` | CLI. Commands: `query`, `list`, `add`, `update`, `remove`, `get` |
-| `skill-library` skills | The gateway. Plus one skill per command |
-| `skill-importer` | Skill. Imports new and changed skills — whole directories, multi-file skills included — and removes their sources from the auto-load dirs. Journals every change |
-| `skill-importer-undo` | Skill. Reverses an import run |
+| `add <source>` | Add skills from GitHub (`owner/repo`, `owner/repo@skill`), a git URL or a local folder. Project scope by default; `-g` for the whole library. `-a <agents>` records which agents a skill is for. |
+| `list` / `ls` | List the project's skills; `-g` for the whole library; `--json` for scripts. |
+| `remove [skills]` | In a project: drop the reference (the skill stays in the library). `-g`: delete it. |
+| `update` / `check` | Pull newer versions from each skill's source / report them. |
+| `install` | Restore a project's skills from `skill-library.json`, at the pinned versions. |
+| `find [query]` | Search [skills.sh](https://skills.sh). |
+| `init [name]` | Create a new `SKILL.md`. |
+| `use <source>@<skill>` | Print a prompt for one skill without adding it (`| claude`), or start an agent with `-a`. |
+| `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. |
 
-Status: **implemented** (v0.1.0). Docs below are the build contract.
+`skill-library --help` lists every flag. Details: [CLI spec](docs/02-cli-spec.md).
+
+## Projects
+
+Run `skill-library add <source>` inside a repository and the skill is recorded in
+`skill-library.json` at the project root — commit it. Each entry pins the exact
+commit and a content hash, so a teammate (or your other machine) runs
+`skill-library install` and gets the same skills; tampered content is refused.
+
+Folders inside the repository (`skill-library add ./skills/foo`) are read in
+place. Inside the project, `query` sees the project's skills plus your global
+library; when both have a skill with the same name, the project's wins.
+
+## Agents
+
+`-a/--agent` takes vercel's agent ids (`claude-code`, `codex`, `opencode`,
+`cursor`, `gemini-cli`, …). A skill added with `-a codex` is only returned to
+`query -a codex`. Skills without `-a` are for every agent. Each agent passes its
+own id; an unknown id prints the valid list.
+
+## Upgrading from the `npx skills add` install
+
+Earlier versions were installed with `npx skills add ianwijma/skill-library-skill`,
+which put the gateway and eight helper skills into your agent folders. Upgrade in
+this order:
+
+```sh
+# 1. Let vercel's CLI forget the old install (it force-deletes these folders,
+#    so do this before the new gateway exists).
+npx skills remove -g skill-library skill-library-add skill-library-get skill-library-list \
+  skill-library-update skill-library-remove skill-library-query skill-importer skill-importer-undo -y
+# 2. Install the CLI.
+npm i -g skill-library
+# 3. Any add places the new gateway (re-adding a skill you already have is fine).
+skill-library add <any source> -g
+```
+
+Your existing library migrates automatically on first use (the old index is kept
+as `index.v1.json`). Agents installed later get the gateway on the next `add`.
+
+## Programmatic API
+
+```ts
+import { add, list, query } from "skill-library";
+
+await add("vercel-labs/agent-skills", { skills: ["frontend-design"], global: true });
+const { matches } = await query("design a landing page", { agent: "claude-code" });
+```
+
+The API never prints, prompts, or touches agent folders.
+
+## Troubleshooting query failures
+
+| Diagnostic | What to check |
+|---|---|
+| Command not found | `npm i -g skill-library`, and make sure npm's bin directory is on the agent's `PATH` |
+| Missing `TYPESAFE_API_KEY` / HTTP 401 | Set a valid key in the environment that launches the agent |
+| Connection error / timeout | Network access, DNS, proxy settings, and sandbox restrictions |
+| `N project skills are not installed` | Run `skill-library install` in the project |
+| Store error | Follow the reported store diagnostic; this is independent of TypeSafe |
+
+If online scoring is unavailable, `skill-library list --json` and
+`skill-library list -g --json` show the skills and their paths without network access.
 
 ## Docs
 
 | Doc | Contents |
 |---|---|
-| [01 — overview](docs/01-overview.md) | Problem, goals, architecture |
+| [01 — overview](docs/01-overview.md) | Problem, architecture, key decisions |
 | [02 — CLI spec](docs/02-cli-spec.md) | Commands, flags, JSON, exit codes |
-| [03 — data store](docs/03-data-store.md) | Store layout, index schema, atomicity |
-| [04 — query](docs/04-typesafe-query.md) | Jev integration, retries, thresholds |
-| [05 — skills](docs/05-skills.md) | Skill behavior + full SKILL.md drafts |
-| [06 — import runbook](docs/06-import-runbook.md) | Import flows, rollback |
-| [07 — implementation plan](docs/07-implementation-plan.md) | Repo layout, milestones, tests |
-
-## Quick start
-
-Requires: [Node.js](https://nodejs.org) >= 22.18 (ships with npm). `query`
-also needs `TYPESAFE_API_KEY`.
-
-A skill is one file: `SKILL.md`.
-The files for this repo live under `skills/`.
-Installing a skill = putting its file in your agent's skills folder.
-The `skill-library` CLI behind them is built from `src/`.
-
-### 1. Install the skills
-
-**Option 1: `npx skills add`. Preferred.**
-
-```sh
-npx skills add ianwijma/skill-library-skill
-```
-
-Pick skills and agent when asked.
-
-No prompts? Use this:
-
-```sh
-npx skills add ianwijma/skill-library-skill -g -a opencode -s '*' -y
-```
-
-**Option 2: ask your agent.**
-
-Paste this into any agent (Claude Code, opencode, Cursor, …):
-
-```text
-Install the skill-library skills.
-
-Run: npx skills add ianwijma/skill-library-skill --skill '*'
-Select my agent when asked.
-
-If npx is unavailable: save the SKILL.md files from
-https://raw.githubusercontent.com/ianwijma/skill-library-skill/HEAD/skills/skill-library/SKILL.md
-and the 8 companion skills at the same paths into my agent's skills folder.
-Companions: skill-library-query, skill-library-list, skill-library-get,
-skill-library-add, skill-library-update, skill-library-remove,
-skill-importer, skill-importer-undo.
-Use one method.
-
-Then build the skill-library CLI (needs Node.js >= 22.18):
-
-If ~/.config/skill-library-skill already exists, cd into it and pull it
-(git pull) instead of cloning.
-
-git clone https://github.com/ianwijma/skill-library-skill ~/.config/skill-library-skill
-cd ~/.config/skill-library-skill
-npm install && npm run build
-install -m 755 dist/skill-library ~/.local/bin/skill-library
-
-Restart the agent.
-Use the skill-library skill whenever a skill might help — query often.
-```
-
-### 2. Build the CLI
-
-The skills drive the `skill-library` CLI. Build it:
-
-```sh
-git clone https://github.com/ianwijma/skill-library-skill
-cd skill-library-skill
-npm install
-npm run build
-install -m 755 dist/skill-library ~/.local/bin/skill-library
-```
-
-`~/.local/bin` must be on your `PATH`. The build is a single bundled file
-(`dist/skill-library`) with no runtime dependencies besides Node.js, so it
-keeps working after you delete the clone.
-
-Prefer npm's own bin directory? Run `npm install -g .` from the clone instead
-of the `install` step.
-
-### 3. Configure online scoring
-
-Set your TypeSafe API key in the environment that launches your agent:
-
-```sh
-export TYPESAFE_API_KEY='<your TypeSafe API key>'
-```
-
-`query` sends the task text and cataloged skill names/descriptions to TypeSafe.
-It needs outbound HTTPS access to `api.typesafe.ai`. An agent's sandbox can
-block this even when the command works in your terminal. The other commands
-use the local store and need neither an API key nor network access.
-
-### 4. Try it
-
-```sh
-skill-library list
-skill-library query "fix a failing next.js build"
-```
-
-Restart your agent so the skills load.
+| [03 — data store](docs/03-data-store.md) | Store layout, ids, versions, `skill-library.json` |
+| [04 — query](docs/04-typesafe-query.md) | Jev integration, candidates, thresholds |
+| [08 — vercel parity plan](docs/08-vercel-parity-plan.md) | The design behind this version |
 
 ## Development
 
 ```sh
 npm install
-npm test            # vitest
+npm test            # vitest (builds the bundle first)
 npm run typecheck   # tsc --noEmit
-npm run build       # esbuild bundle -> dist/skill-library
-npm start -- list   # run from source (Node strips the TypeScript types)
+npm run build       # dist/skill-library (CLI), dist/index.js + dist/api.d.ts (API)
 ```
 
-## Troubleshooting query failures
+## License
 
-The gateway's “unavailable” message is a fallback, not a diagnosis. Run
-`skill-library query "<task>"` and inspect stderr for the actual failure:
-
-| Diagnostic | What to check |
-|---|---|
-| Command not found | Build the CLI and put `~/.local/bin` on the agent's `PATH`; `npx skills add` installs only the skills |
-| Missing `TYPESAFE_API_KEY` / HTTP 401 | Set a valid key in the environment that launches the agent |
-| Connection error / timeout | Network access, DNS, proxy settings, and sandbox restrictions; use the agent's supported permission flow if available |
-| Store error | Follow the reported store diagnostic; this is independent of TypeSafe |
-
-There is no local service or daemon to start. A failed connection alone does
-not establish a TypeSafe outage. If online scoring remains unavailable, run
-`skill-library list`, select relevant skills by name/description, and read the
-returned `path` files. Pass the same `--store` if you used a store override.
+MIT. Parts of the agent table, agent detection, skill discovery, source parsing
+and CLI text are adapted from [vercel-labs/skills](https://github.com/vercel-labs/skills)
+(MIT); see `ThirdPartyNotices.txt` in the package.
