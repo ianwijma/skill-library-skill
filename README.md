@@ -31,7 +31,7 @@ gateway.
 Then set your TypeSafe key in the environment that launches your agent:
 
 ```sh
-export TYPESAFE_API_KEY='<your TypeSafe API key>'
+export SKILL_LIBRARY_TYPESAFE_API_KEY='<your TypeSafe API key>'
 skill-library query -a claude-code "fix a failing next.js build"
 ```
 
@@ -90,7 +90,7 @@ The API never prints, prompts, or touches agent folders.
 | Diagnostic | What to check |
 |---|---|
 | Command not found | `npm i -g skill-library`, and make sure npm's bin directory is on the agent's `PATH` |
-| Missing `TYPESAFE_API_KEY` / HTTP 401 | Set a valid key in the environment that launches the agent |
+| Missing `SKILL_LIBRARY_TYPESAFE_API_KEY` / HTTP 401 | Set a valid key in the environment that launches the agent |
 | Connection error / timeout | Network access, DNS, proxy settings, and sandbox restrictions |
 | `N project skills are not installed` | Run `skill-library install` in the project |
 | Store error | Follow the reported store diagnostic; this is independent of TypeSafe |

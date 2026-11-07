@@ -58,7 +58,7 @@ async function seed(sb: Sandbox): Promise<void> {
 }
 
 function q(sb: Sandbox, args: string[], mock: MockServer, opts: { cwd?: string; stdin?: string } = {}) {
-  return run(sb, ["query", ...args], { ...opts, env: { TYPESAFE_API_KEY: "test-key", TYPESAFE_API_BASE: mock.url } });
+  return run(sb, ["query", ...args], { ...opts, env: { SKILL_LIBRARY_TYPESAFE_API_KEY: "test-key", SKILL_LIBRARY_TYPESAFE_API_BASE: mock.url } });
 }
 
 describe("query", () => {
@@ -165,14 +165,15 @@ describe("query", () => {
     const r401 = await q(sb, ["task"], unauth);
     unauth.stop();
     expect(r401.code).toBe(2);
-    expect(r401.stderr).toContain("check TYPESAFE_API_KEY");
-    const net = await run(sb, ["query", "task"], { env: { TYPESAFE_API_KEY: "k", TYPESAFE_API_BASE: "http://127.0.0.1:1" } });
+    expect(r401.stderr).toContain("check SKILL_LIBRARY_TYPESAFE_API_KEY");
+    const net = await run(sb, ["query", "task"], { env: { SKILL_LIBRARY_TYPESAFE_API_KEY: "k", SKILL_LIBRARY_TYPESAFE_API_BASE: "http://127.0.0.1:1" } });
     expect(net.code).toBe(2);
     expect(net.stderr).toContain("unreachable after 3 retries");
     expect(net.stdout).toBe("");
-    const nokey = await run(sb, ["query", "task"]);
+    // Only the prefixed variable is read; a general TYPESAFE_API_KEY is ignored.
+    const nokey = await run(sb, ["query", "task"], { env: { TYPESAFE_API_KEY: "general-key" } });
     expect(nokey.code).toBe(2);
-    expect(nokey.stderr).toContain("TYPESAFE_API_KEY is not set");
+    expect(nokey.stderr).toContain("SKILL_LIBRARY_TYPESAFE_API_KEY is not set");
   });
 
 });

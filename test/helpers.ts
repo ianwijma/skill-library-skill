@@ -33,7 +33,7 @@ export async function sandbox(): Promise<Sandbox> {
   await fsp.mkdir(home, { recursive: true });
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
-  for (const k of [...AGENT_ENV, ...CI_ENV, "TYPESAFE_API_KEY", "TYPESAFE_API_BASE", "GITHUB_TOKEN", "GH_TOKEN"]) delete env[k];
+  for (const k of [...AGENT_ENV, ...CI_ENV, "SKILL_LIBRARY_TYPESAFE_API_KEY", "SKILL_LIBRARY_TYPESAFE_API_BASE", "GITHUB_TOKEN", "GH_TOKEN"]) delete env[k];
   Object.assign(env, {
     HOME: home,
     XDG_CONFIG_HOME: path.join(home, ".config"),
@@ -43,7 +43,7 @@ export async function sandbox(): Promise<Sandbox> {
     CODEX_HOME: path.join(home, ".codex"),
     SKILL_LIBRARY_DIR: path.join(home, "library"),
     SKILL_LIBRARY_NO_GATEWAY: "1",
-    SLI_RETRY_BASE_MS: "10",
+    SKILL_LIBRARY_RETRY_BASE_MS: "10",
     GIT_AUTHOR_NAME: "Test",
     GIT_AUTHOR_EMAIL: "test@example.com",
     GIT_COMMITTER_NAME: "Test",

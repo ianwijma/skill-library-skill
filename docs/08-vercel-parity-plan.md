@@ -367,7 +367,7 @@ import { add, install, list, remove, update, check, query } from "skill-library"
 ## 9. Docs
 
 - README: `npm i -g skill-library` / `npx skill-library`; the gateway is placed by `add`; command table
-  (vercel-compatible + `query`); `skill-library.json`, ids and versions; `TYPESAFE_API_KEY`.
+  (vercel-compatible + `query`); `skill-library.json`, ids and versions; `SKILL_LIBRARY_TYPESAFE_API_KEY`.
 - `docs/`: contract docs updated; old per-command docs removed.
 
 ## 10. Tests

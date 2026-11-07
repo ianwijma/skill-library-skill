@@ -14,7 +14,7 @@ connection, timeout) map to the CLI behaviors in "Failure handling".
 
 ```http
 POST https://api.typesafe.ai/v1/systemone
-Authorization: Bearer $TYPESAFE_API_KEY
+Authorization: Bearer $SKILL_LIBRARY_TYPESAFE_API_KEY
 Content-Type: application/json
 ```
 
@@ -127,7 +127,7 @@ a lower threshold). Sort desc; `--top n` truncates after sorting.
 
 | Condition | Behavior |
 |---|---|
-| `401 Unauthorized` | exit 2, stderr: check `TYPESAFE_API_KEY` |
+| `401 Unauthorized` | exit 2, stderr: check `SKILL_LIBRARY_TYPESAFE_API_KEY` |
 | `422 Unprocessable Entity` | exit 2 with response body (indicates a bug in question construction) |
 | `429 Too Many Requests` / `529 Overloaded` | retry with exponential backoff: 1s, 2s, 4s (+jitter), max 3 retries; honor `Retry-After` header when present; then exit 2 |
 | Network error / timeout (30s per attempt) | retry, then exit 2 with network/DNS/proxy/sandbox hint and local `list` fallback; does not establish a service outage |

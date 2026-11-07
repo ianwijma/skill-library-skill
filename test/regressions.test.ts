@@ -193,7 +193,7 @@ describe("missing project skills keep their real name", () => {
     });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    const r = await run(other, ["query", "task"], { cwd: dir, env: { TYPESAFE_API_KEY: "k", TYPESAFE_API_BASE: url } });
+    const r = await run(other, ["query", "task"], { cwd: dir, env: { SKILL_LIBRARY_TYPESAFE_API_KEY: "k", SKILL_LIBRARY_TYPESAFE_API_BASE: url } });
     server.close();
     expect(r.stderr).toContain("1 project skill is not installed");
     expect(bodies).toHaveLength(0);

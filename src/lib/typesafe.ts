@@ -62,7 +62,7 @@ export async function callSystemOne(
   apiKey: string,
   opts: CallOptions = {},
 ): Promise<SystemOneResult<Record<string, NoulQuestion>>> {
-  const baseUrl = opts.baseUrl ?? process.env.TYPESAFE_API_BASE;
+  const baseUrl = opts.baseUrl ?? process.env.SKILL_LIBRARY_TYPESAFE_API_BASE;
   const maxRetries = opts.maxRetries ?? MAX_RETRIES;
   const client = new TypeSafeClient({
     apiKey,
@@ -92,7 +92,7 @@ function toCliError(err: unknown, maxRetries: number): CliError {
     );
   }
   if (err instanceof AuthenticationError) {
-    return new CliError(2, "typesafe api returned 401 unauthorized — check TYPESAFE_API_KEY");
+    return new CliError(2, "typesafe api returned 401 unauthorized — check SKILL_LIBRARY_TYPESAFE_API_KEY");
   }
   if (err instanceof UnprocessableEntityError) {
     return new CliError(2, `typesafe api 422 (bad question construction): ${bodyOf(err.body)}`);
@@ -113,6 +113,6 @@ function bodyOf(body: unknown): string {
 }
 
 function retryBaseMsFromEnv(): number {
-  const v = Number(process.env.SLI_RETRY_BASE_MS);
+  const v = Number(process.env.SKILL_LIBRARY_RETRY_BASE_MS);
   return Number.isFinite(v) && v >= 0 && v <= 60_000 ? v : 1_000;
 }

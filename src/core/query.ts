@@ -11,7 +11,7 @@ export interface QueryOptions extends BaseOptions {
   agent?: string;
   threshold?: number;
   top?: number;
-  /** TypeSafe API key (default: $TYPESAFE_API_KEY). */
+  /** TypeSafe API key (default: $SKILL_LIBRARY_TYPESAFE_API_KEY). */
   apiKey?: string;
 }
 
@@ -83,8 +83,8 @@ export async function querySkills(task: string, opts: QueryOptions = {}): Promis
   const { candidates, notInstalled } = await gatherCandidates(opts);
   if (candidates.length === 0) return { matches: [], notInstalled };
 
-  const apiKey = opts.apiKey ?? process.env.TYPESAFE_API_KEY;
-  if (!apiKey) throw new CliError(2, "TYPESAFE_API_KEY is not set (required for query). Export it and retry.");
+  const apiKey = opts.apiKey ?? process.env.SKILL_LIBRARY_TYPESAFE_API_KEY;
+  if (!apiKey) throw new CliError(2, "SKILL_LIBRARY_TYPESAFE_API_KEY is not set (required for query). Export it and retry.");
 
   // Opaque keys: ids (which may contain local paths) never leave the machine.
   const keyed = candidates.map((s, i) => ({ key: `s${i}`, skill: s }));
