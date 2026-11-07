@@ -1,5 +1,5 @@
 import { loadProject } from "../lib/manifest.ts";
-import { openIndex } from "../lib/migrate.ts";
+import { openIndex } from "../lib/store.ts";
 import { agentsArg, agentsMatch, ctxOf, projectSkills, storeSkills, type BaseOptions, type ScopedSkill } from "./context.ts";
 
 export interface ListOptions extends BaseOptions {

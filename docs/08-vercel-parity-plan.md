@@ -21,7 +21,7 @@ package or copy its repository, logo, telemetry or security audit. Deliberate di
 | D6 | Skill ids come from where the skill came from (§1): `repo://`, `local://`, `home://`, `path://`. Same id = same skill. The version is not part of the id. |
 | D7 | Project skills work on another machine: `skill-library install` fetches every referenced skill that is missing, at the **pinned version**, and verifies its content hash (protection against tampered sources). |
 | D8 | `-a, --agent` on `add` records which agents a skill is for. `query -a <agent>` filters on that. Unknown agent names fail with the list of valid names so the LLM can retry. Jev scoring is unchanged and knows nothing about agents. |
-| D9 | One gateway skill = today's `skill-library` skill with the `skill-library-query` content merged in. The 6 subcommand helper skills and `skill-importer` / `skill-importer-undo` are deleted. Only `add` places the gateway (§6); no other command writes agent folders. |
+| D9 | One gateway skill = today's `skill-library` skill with the `skill-library-query` content merged in. Only `add` places the gateway (§6); no other command writes agent folders. |
 | D10 | Only the `skill-library` binary. No telemetry. No security audit. Our own logo. Node floor stays `>=22.18`. No refresh of local skills. No description editing. |
 | D11 | `query` prints plain text: path lines plus an instruction for the agent to read them. |
 | D12 | Programmatic API exported from the package. |
@@ -60,13 +60,13 @@ Rules:
   When a name matches several skills in scope: TTY → pick; non-TTY → error listing the ids, exit 1.
 - Prefixes need no shell quoting. `repo://` is not a git URL scheme, so an id is never mistaken for a
   source by `add`.
-- **The gateway is never a stored skill.** Discovery skips skills named `skill-library`,
-  `skill-library-*`, `skill-importer`, `skill-importer-undo`. `add ianwijma/skill-library-skill` therefore
+- **The gateway is never a stored skill.** Discovery skips skills named `skill-library` or
+  `skill-library-*`. `add ianwijma/skill-library-skill` therefore
   stores nothing and only places the gateway (§6).
 
 ## 2. Store and project file
 
-### 2.1 Store (`index.json` v2, versioned)
+### 2.1 Store (`index.json` version 1, versioned)
 
 ```
 ~/.local/share/skill-library/
@@ -82,7 +82,7 @@ Rules:
 
 ```jsonc
 {
-  "version": 2,
+  "version": 1,
   "skills": [{
     "id": "repo://github.com/vercel-labs/agent-skills/react-best-practices",
     "source": { "type": "git", "url": "https://github.com/vercel-labs/agent-skills.git",
@@ -105,8 +105,7 @@ Rules:
 - `source.type`: `git` | `folder` | `file`. `ref`: branch/tag followed (`null` = default branch); an
   explicit full-SHA source is fixed and never moved by `update`. `tree`: the skill folder's git tree id
   (`git rev-parse <commit>:<path>`), used by `check`.
-- **Name and description are per version**, read from that version's `SKILL.md` (or kept from v1 for
-  migrated skills without frontmatter). `query` and `list` always use the metadata of the version they
+- **Name and description are per version**, read from that version's `SKILL.md`. `query` and `list` always use the metadata of the version they
   will print, so a project pinned to an older version is scored on that version's description.
 - `record.source` is the **global** follow target. Project operations use the manifest entry's
   `source/ref/path` (§2.2) and never change `record.source`, `current` or `global`. A global `add` of an
@@ -166,7 +165,7 @@ always current. Not hashed.
   `.git`, `node_modules`, `__pycache__`, `.DS_Store`; regular files only); relative POSIX paths, UTF-8,
   sorted by byte value; per file feed `uint64-BE(len(pathBytes)) ‖ pathBytes ‖ uint64-BE(len(content)) ‖
   content` into one `sha256`; written as `sha256-<lowercase hex>`. One function, always run on the
-  staged copy, in `add`, `install`, `update` and migration. A fixed test vector pins the format.
+  staged copy, in `add`, `install` and `update`. A fixed test vector pins the format.
 - All git commands run with `-c core.autocrlf=false` so checkouts hash the same on every OS.
 - **Pin = version.** A project entry's `commit` (git) or `hash` (`home://`/`path://`) names a version
   folder. `add` in a project pins whatever it fetched; if that version isn't in the store yet it becomes
@@ -194,26 +193,6 @@ always current. Not hashed.
   origin <ref>` then `rev-parse FETCH_HEAD:<path>`), so commits to other skills in a monorepo are not
   updates. Path gone upstream → `removed upstream`, skipped. `check -g` skips non-global records.
 
-### 2.5 Migration v1 → v2 (one time, automatic)
-
-On first run when `index.json` is a v1 array, under `index.lock`:
-1. Copy `index.json` to `index.v1.json` (kept).
-2. For each entry, **copy** its `contentDir` into `skills/<slug>-<hash8>/h-<hash12>/` (new version,
-   `current`). The old folder is left in place.
-   - Id from its recorded `source` using only the `home://`/`path://` rules (never `local://`, whatever
-     the cwd); `source.type` = `folder` or `file` (v1 allowed bare `.md` files). If the source path no
-     longer exists (the importer deletes originals), the id still derives from the recorded path.
-   - `hash` computed from the copy. `global: true`, `agents: "all"`. The version keeps the v1 `name`
-     and `description`, even without frontmatter.
-   - Entries named `skill-library`, `skill-library-*`, `skill-importer`, `skill-importer-undo` are dropped
-     and listed in the output.
-   - Two entries with the same id become two versions of one record (identical hash → one version);
-     `current` = the one with the latest v1 `updatedAt`.
-3. Write v2 `index.json` (temp + rename). This is the commit point.
-4. Delete the old v1 content folders (best effort).
-A failure before step 3 leaves the v1 store untouched. Output (stderr):
-`Migrated N skills to the new store format. Run skill-library add <any source> once to install the new gateway.`
-
 ## 3. Commands (vercel 1.7.6 contract)
 
 General rules:
@@ -233,7 +212,7 @@ General rules:
 - Unknown flags: ignored with one stderr warning **(differs**: vercel ignores silently), except `use`,
   which errors like vercel (`src/use.ts:131–132`).
 - Prompts need a TTY; without one (and no agent detected), vercel's "pass -y" message and exit 1.
-- **`--json` mode:** stdout carries exactly one JSON value; every notice (migration, `$HOME` note,
+- **`--json` mode:** stdout carries exactly one JSON value; every notice (`$HOME` note,
   gateway line, warnings) goes to stderr; no logo, no ANSI.
 - Argument validation runs before anything else.
 
@@ -280,13 +259,6 @@ deferred source forms print `… is not supported by skill-library yet` and exit
 generic git).
 
 Dropped: `experimental_sync` / `sync` → `Unknown command` like any other.
-
-### 3.3 Old commands
-
-`get <id>`, `update <id> --name/--description/--path`, `add --name/--description/--path`,
-`--pretty`, `--return-content`: print the replacement (`add <path>`, `query`) plus the gateway hint
-(`run skill-library add <any source> once to install the new gateway`) and exit 1 without changing
-anything.
 
 ## 4. Agents
 
@@ -356,16 +328,9 @@ Exit codes: 0 / 1 (usage, incl. invalid agent) / 2 (runtime: API key, network, l
   one stderr line `Updated skill-library gateway for Claude Code, Codex`. Agents without a global dir are
   skipped. Opt-out `SKILL_LIBRARY_NO_GATEWAY=1`. The API never places it.
 - **Failures are never fatal** (read-only sandboxes): exit code unchanged, at most one stderr line.
-- **Ownership / symlinks:** `lstat` first. A symlinked `skill-library` folder (old vercel install) is
+- **Ownership / symlinks:** `lstat` first. A symlinked `skill-library` folder (e.g. a vercel install) is
   unlinked (never its target) and replaced with a real folder. A real folder is overwritten only if its
   frontmatter `name` is `skill-library`.
-- **Old helpers** (`skill-library-add`, `-get`, `-list`, `-update`, `-remove`, `-query`, `skill-importer`,
-  `skill-importer-undo`): links unlinked; real folders deleted after the frontmatter `name` check,
-  including the canonical `~/.agents/skills/<helper>`.
-- **Upgrade path** (README, in this order): 1) `npx skills remove -g skill-library skill-library-add …`
-  (vercel's remove force-deletes those folders, `src/remove.ts:388–437`, so it must run **before** our
-  gateway exists); 2) `npm i -g skill-library`; 3) `skill-library add <any source>` (re-adding an existing
-  skill is fine) to place the new gateway. New agents installed later get it on the next `add`.
 - Repo `skills/` keeps only `skill-library/`.
 
 ## 7. Programmatic API
@@ -402,8 +367,7 @@ import { add, install, list, remove, update, check, query } from "skill-library"
 ## 9. Docs
 
 - README: `npm i -g skill-library` / `npx skill-library`; the gateway is placed by `add`; command table
-  (vercel-compatible + `query`); `skill-library.json`, ids and versions; `TYPESAFE_API_KEY`; the upgrade
-  path from §6.
+  (vercel-compatible + `query`); `skill-library.json`, ids and versions; `TYPESAFE_API_KEY`.
 - `docs/`: contract docs updated; old per-command docs removed.
 
 ## 10. Tests
@@ -418,8 +382,6 @@ import { add, install, list, remove, update, check, query } from "skill-library"
   order (§5.1: missing project winner shadows global; Claude-only project winner + `-a codex` shadows
   global; same-priority clash keeps both); hash (fixed test vector, non-ASCII path, binary file, skipped
   files); version-key prefix collision; manifest serialisation.
-- **Migration:** missing source, bare `.md`, no frontmatter, duplicate ids → versions, helper entries
-  dropped, failure midway (read-only target) leaves the v1 store intact.
 - **Integration** with local bare git repos (`file://`; one fixture with
   `uploadpack.allowAnySHA1InWant=true` for the fetch-by-commit path, one without for the fallback): add
   global/project, global add of existing id replaces `record.source`, list, remove (D5, orphans,
@@ -428,14 +390,13 @@ import { add, install, list, remove, update, check, query } from "skill-library"
   fails), two projects pinning different versions side by side, per-version descriptions (project pinned
   to the old one is scored on the old description), update moving only this project's pin and `-g`
   moving only `current`, check on a monorepo (other skill changed → no update), `--frozen-lockfile` with
-  an empty manifest, JSON shapes (one JSON value on stdout even when the gateway is placed or a
-  migration runs) and exit codes, add inside a detected agent (implicit `-y`), one concurrent-add test,
+  an empty manifest, JSON shapes (one JSON value on stdout even when the gateway is placed) and exit codes, add inside a detected agent (implicit `-y`), one concurrent-add test,
   foreign-host lock.
 - **`use`:** stdout prompt without `-a`, stub `claude` on `PATH` with `-a` (exit code passed through),
   conflicting selectors, several skills without selector.
 - **`find`:** `SKILLS_API_URL` pointed at a local stub.
 - **Gateway:** placed only by `add` (no other command writes agent folders), symlinked old install,
-  shared dirs, read-only dir (non-fatal), helper cleanup, adding this repo's gateway source stores nothing.
+  shared dirs, read-only dir (non-fatal), adding this repo's gateway source stores nothing.
 - **Jev** mocked; golden test: request body identical to today's except question keys.
 - Help/diagnostic text snapshots.
 
@@ -443,10 +404,10 @@ import { add, install, list, remove, update, check, query } from "skill-library"
 
 | M | Content |
 |---|---|
-| M1 | Store v2 with version folders, ids, hash, lock, migration; `query` (text, `-a`, candidate order, opaque keys) |
+| M1 | Store with version folders, ids, hash, lock; `query` (text, `-a`, candidate order, opaque keys) |
 | M2 | Source parsing, git fetch, discovery; `add`/`list`/`remove` global and project; `skill-library.json` |
 | M3 | `install` (pinned, verified, `--force` repair), `update`, `check` (tree ids) |
-| M4 | Gateway: merged SKILL.md, embedding, placement by `add`, symlink/helper cleanup; delete other skills from `skills/` |
+| M4 | Gateway: merged SKILL.md, embedding, placement by `add`, symlink replacement; delete other skills from `skills/` |
 | M5 | vercel-style output and diagnostics, agent detection, `init`, `use`, `--json`, help, `find` (first to slip if needed) |
 | M6 | API entry, types, README/docs, LICENSE, notices, packaging, smoke check, publish 0.1.0 |
 

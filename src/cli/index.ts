@@ -4,7 +4,6 @@ import { parseFlags } from "./args.ts";
 import { runFind } from "./find.ts";
 import { runInit } from "./init.ts";
 import { runInstall } from "./install.ts";
-import { oldGetCommand } from "./legacy.ts";
 import { runList } from "./list.ts";
 import { runQuery } from "./query.ts";
 import { runRemove } from "./remove.ts";
@@ -102,9 +101,6 @@ export async function main(argv: string[]): Promise<number> {
         return await runUse(args, g);
       case "query":
         return await runQuery(args, g);
-      case "get":
-        oldGetCommand();
-      // falls through (oldGetCommand throws)
       case "--help":
       case "-h":
         showHelp();

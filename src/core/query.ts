@@ -1,8 +1,8 @@
 import path from "node:path";
+import { openIndex } from "../lib/store.ts";
 import type { NoulResponse } from "@typesafe-ai/sdk";
 import { CliError, warn } from "../lib/cli.ts";
 import { loadProject } from "../lib/manifest.ts";
-import { openIndex } from "../lib/migrate.ts";
 import { buildRequest, callSystemOne } from "../lib/typesafe.ts";
 import { agentsArg, agentsMatch, ctxOf, projectSkills, storeSkills, type BaseOptions, type ScopedSkill } from "./context.ts";
 

@@ -5,16 +5,6 @@ import { detectInstalledAgents, displayName, globalReadDir } from "./agents.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 
 export const GATEWAY_NAME = "skill-library";
-export const OLD_HELPERS = [
-  "skill-library-add",
-  "skill-library-get",
-  "skill-library-list",
-  "skill-library-update",
-  "skill-library-remove",
-  "skill-library-query",
-  "skill-importer",
-  "skill-importer-undo",
-];
 
 export function gatewaySkillMd(): string {
   return gatewayContent;
@@ -23,8 +13,6 @@ export function gatewaySkillMd(): string {
 export interface GatewayResult {
   /** Display names of agents whose gateway was written or refreshed. */
   updated: string[];
-  /** Old helper skill folders/links removed. */
-  removedHelpers: string[];
   /** Non-fatal problems (e.g. read-only dirs). */
   errors: string[];
 }
@@ -51,7 +39,7 @@ async function frontmatterName(file: string): Promise<string | null> {
  * `extraAgents`, grouped by physical dir. Never throws; failures are reported in `errors`.
  */
 export async function placeGateway(extraAgents: string[] = []): Promise<GatewayResult> {
-  const result: GatewayResult = { updated: [], removedHelpers: [], errors: [] };
+  const result: GatewayResult = { updated: [], errors: [] };
   if (process.env.SKILL_LIBRARY_NO_GATEWAY === "1") return result;
   const content = gatewaySkillMd();
   const agents = [...new Set([...(await detectInstalledAgents().catch(() => [] as string[])), ...extraAgents])];
@@ -92,32 +80,8 @@ export async function placeGateway(extraAgents: string[] = []): Promise<GatewayR
         await fsp.rename(tmp, file);
         result.updated.push(...ids.map(displayName));
       }
-      for (const helper of OLD_HELPERS) {
-        const hp = path.join(dir, helper);
-        const hst = await lstatOrNull(hp);
-        if (!hst) continue;
-        if (hst.isSymbolicLink()) {
-          await fsp.unlink(hp);
-          result.removedHelpers.push(hp);
-        } else if (hst.isDirectory() && (await frontmatterName(path.join(hp, "SKILL.md"))) === helper) {
-          await fsp.rm(hp, { recursive: true, force: true });
-          result.removedHelpers.push(hp);
-        }
-      }
     } catch (err) {
       result.errors.push(`${dir}: ${(err as Error).message}`);
-    }
-  }
-  // Canonical vercel copies of the old helpers (~/.agents/skills/<helper>).
-  const canonical = globalReadDir("codex");
-  if (canonical && !byDir.has(canonical)) {
-    for (const helper of OLD_HELPERS) {
-      const hp = path.join(canonical, helper);
-      const hst = await lstatOrNull(hp);
-      if (hst?.isDirectory() && (await frontmatterName(path.join(hp, "SKILL.md"))) === helper) {
-        await fsp.rm(hp, { recursive: true, force: true }).catch(() => {});
-        result.removedHelpers.push(hp);
-      }
     }
   }
   return result;

@@ -6,7 +6,6 @@
 ~/.local/share/skill-library/          # or $SKILL_LIBRARY_DIR / --store
   index.json
   index.lock                           # only while writing
-  index.v1.json                        # backup kept after the v1 → v2 migration
   skills/
     react-best-practices-3f9c1a2e/     # <safe-slug(name)>-<first 8 hex of sha256(id)>
       3f2a9c1d07e4/                    # git version: first 12 hex of the commit
@@ -33,11 +32,11 @@ Old versions are kept (the store can't know which projects pin them);
 For folder sources the id is the discovered skill folder, not the path given to
 `add`. Two folders in one source declaring the same name are refused.
 
-## `index.json` (v2)
+## `index.json`
 
 ```jsonc
 {
-  "version": 2,
+  "version": 1,
   "skills": [{
     "id": "repo://github.com/vercel-labs/agent-skills/react-best-practices",
     "source": { "type": "git", "url": "https://github.com/vercel-labs/agent-skills.git",
@@ -93,11 +92,3 @@ reclaimed, a foreign one is reported with exit 2), `index.json` is re-read, the
 staged folder is renamed into place, and `index.json` / `skill-library.json` are
 written to a temp file and renamed.
 
-## Migration from v1
-
-On first use of a v1 store (an array `index.json`): copy each skill into a new
-version folder, derive its id from the recorded source path (`home://`/`path://`
-only), keep the v1 name and description, drop copies of the old gateway and
-helper skills, and write the v2 index last. The v1 folders are kept next to
-`index.v1.json`, so the backup stays usable. A failure before the new index is
-written leaves the v1 store untouched.

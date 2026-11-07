@@ -18,8 +18,8 @@ import {
   versionDir,
   versionKeyFor,
   type StoreIndex,
+  openIndex,
 } from "../lib/store.ts";
-import { openIndex } from "../lib/migrate.ts";
 import { ctxOf, mutateIndex, type BaseOptions } from "./context.ts";
 
 export interface InstallOptions extends BaseOptions {

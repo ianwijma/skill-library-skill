@@ -1,8 +1,7 @@
 import path from "node:path";
 import { CliError, note } from "../lib/cli.ts";
 import { loadProject, mutateManifest } from "../lib/manifest.ts";
-import { openIndex } from "../lib/migrate.ts";
-import { removeDir } from "../lib/store.ts";
+import { removeDir, openIndex } from "../lib/store.ts";
 import {
   ctxOf,
   mutateIndex,

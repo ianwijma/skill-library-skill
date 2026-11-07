@@ -31,17 +31,6 @@ describe("root commands", () => {
     expect((await run(sb, ["sync"])).code).toBe(1);
   });
 
-  test("old command forms are refused and change nothing", async () => {
-    const sb = await sandbox();
-    const a = await run(sb, ["add", "--name", "x", "--description", "y", "--path", "/tmp/x"]);
-    expect(a.code).toBe(1);
-    expect(a.stderr).toContain("old command form");
-    expect(a.stderr).toContain("Run skill-library add <any source> once to install the new gateway.");
-    expect((await run(sb, ["get", "abcd1234"])).code).toBe(1);
-    expect((await run(sb, ["update", "abcd1234", "--description", "z"])).code).toBe(1);
-    await expect(fsp.access(sb.store)).rejects.toThrow();
-  });
-
   test("init writes the vercel template", async () => {
     const sb = await sandbox();
     const r = await run(sb, ["init", "my-skill"]);
@@ -66,7 +55,7 @@ describe("local sources", () => {
     expect(m.skills["local://skills/foo"]).toEqual({ name: "foo", agents: "all" });
     expect(m.skills["home://my-skills/bar"]).toEqual({ name: "bar", source: "~/my-skills/bar", hash: expect.stringMatching(/^sha256-[0-9a-f]{64}$/), agents: ["claude-code"] });
     const index = await readJson(path.join(sb.store, "index.json"));
-    expect(index.version).toBe(2);
+    expect(index.version).toBe(1);
     expect(index.skills.map((s: any) => [s.id, s.global])).toEqual([
       ["home://my-skills/bar", false],
       ["home://my-skills/baz", false],
@@ -303,20 +292,18 @@ describe("git sources", () => {
 });
 
 describe("gateway placement", () => {
-  test("only add writes agent folders; symlinked old install and helpers are replaced", async () => {
+  test("only add writes agent folders; a symlinked gateway is replaced", async () => {
     const sb = await sandbox();
     const env = { SKILL_LIBRARY_NO_GATEWAY: undefined };
     await fsp.mkdir(path.join(sb.home, ".claude"), { recursive: true });
     await fsp.mkdir(path.join(sb.home, ".codex"), { recursive: true });
-    // Old vercel install: canonical copy + symlinks from the agent dirs.
+    // A gateway linked in from elsewhere (e.g. a vercel install): canonical copy + symlink.
     const canonical = path.join(sb.home, ".agents", "skills");
     await writeFiles(canonical, {
       "skill-library/SKILL.md": skillMd("skill-library", "old gateway"),
-      "skill-library-get/SKILL.md": skillMd("skill-library-get", "old helper"),
     });
     await fsp.mkdir(path.join(sb.home, ".claude", "skills"), { recursive: true });
     await fsp.symlink(path.join(canonical, "skill-library"), path.join(sb.home, ".claude", "skills", "skill-library"));
-    await fsp.symlink(path.join(canonical, "skill-library-get"), path.join(sb.home, ".claude", "skills", "skill-library-get"));
     await writeFiles(path.join(sb.root, "s"), { "bar/SKILL.md": skillMd("bar", "Bar") });
 
     await run(sb, ["list", "-g"], { env });
@@ -331,8 +318,6 @@ describe("gateway placement", () => {
     const b = await fsp.readFile(path.join(canonical, "skill-library", "SKILL.md"), "utf8");
     expect(a).toBe(b);
     expect(a).toContain("skill-library query -a <your-agent-id>");
-    await expect(fsp.lstat(path.join(sb.home, ".claude", "skills", "skill-library-get"))).rejects.toThrow();
-    await expect(fsp.access(path.join(canonical, "skill-library-get"))).rejects.toThrow();
     // Idempotent: a second add writes nothing.
     const again = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-g", "-y"], { env });
     expect(again.stderr).not.toContain("Updated skill-library gateway");
@@ -349,54 +334,13 @@ describe("gateway placement", () => {
   });
 });
 
-describe("migration v1 → v2", () => {
-  async function v1Store(sb: Awaited<ReturnType<typeof sandbox>>) {
-    const s = sb.store;
-    await writeFiles(s, {
-      "skills/aaaa1111/SKILL.md": "# no frontmatter\n",
-      "skills/bbbb2222/SKILL.md": skillMd("helper", "x"),
-      "skills/cccc3333/SKILL.md": skillMd("skill-library-get", "old helper"),
-    });
-    const index = [
-      { id: "aaaa1111", name: "notes", description: "Hand-written description", source: path.join(sb.home, "gone", "notes.md"), addedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", contentDir: "skills/aaaa1111" },
-      { id: "bbbb2222", name: "helper", description: "Helper", source: "/opt/elsewhere/helper", addedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z", contentDir: "skills/bbbb2222" },
-      { id: "cccc3333", name: "skill-library-get", description: "old", source: "", addedAt: "2026-01-03T00:00:00.000Z", updatedAt: "2026-01-03T00:00:00.000Z", contentDir: "skills/cccc3333" },
-    ];
-    await fsp.writeFile(path.join(s, "index.json"), JSON.stringify(index));
-    return index;
-  }
-
-  test("migrates ids, keeps names/descriptions, drops helpers, removes old folders", async () => {
+describe("store index", () => {
+  test("an index.json that is not a version 1 index is reported as corrupted", async () => {
     const sb = await sandbox();
-    await v1Store(sb);
-    const r = await run(sb, ["ls", "-g", "--json"], { cwd: sb.home });
-    expect(r.code).toBe(0);
-    expect(r.stderr).toContain("Migrated 2 skills to the new store format.");
-    expect(r.stderr).toContain("skill-library-get");
-    const rows = JSON.parse(r.stdout);
-    expect(rows.map((x: any) => [x.name, x.id])).toEqual([
-      ["helper", "path:///opt/elsewhere/helper"],
-      ["notes", "home://gone/notes.md"],
-    ]);
-    const index = await readJson(path.join(sb.store, "index.json"));
-    const notes = index.skills.find((s: any) => s.name === undefined && s.id === "home://gone/notes.md");
-    expect(notes.source.type).toBe("file");
-    expect(Object.values(notes.versions)[0]).toMatchObject({ name: "notes", description: "Hand-written description" });
-    // The v1 backup stays usable: every folder it references is still there.
-    const v1 = await readJson(path.join(sb.store, "index.v1.json"));
-    for (const e of v1) await fsp.access(path.join(sb.store, e.contentDir, "SKILL.md"));
-  });
-
-  test("a failure midway leaves the v1 store intact", async () => {
-    const sb = await sandbox();
-    const v1 = await v1Store(sb);
-    await fsp.chmod(path.join(sb.store, "skills", "bbbb2222"), 0o000);
+    await writeFiles(sb.store, { "index.json": "[]" });
     const r = await run(sb, ["ls", "-g"], { cwd: sb.home });
-    await fsp.chmod(path.join(sb.store, "skills", "bbbb2222"), 0o700);
     expect(r.code).toBe(2);
-    expect(r.stderr).toContain("the old store is untouched");
-    expect(await readJson(path.join(sb.store, "index.json"))).toEqual(v1);
-    await fsp.access(path.join(sb.store, "skills", "aaaa1111", "SKILL.md"));
+    expect(r.stderr).toContain("index.json is corrupted");
   });
 });
 
