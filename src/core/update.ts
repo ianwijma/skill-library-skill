@@ -1,10 +1,9 @@
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { msgOf } from "../lib/cli.ts";
-import { filterSkills } from "../lib/discover.ts";
 import { cleanup, cloneRepo, remoteTree, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
-import { loadProject, saveManifest, type Project } from "../lib/manifest.ts";
+import { loadProject, mutateManifest, type Project } from "../lib/manifest.ts";
 import { parseSkillFile } from "../lib/discover.ts";
 import { isCommitSha } from "../lib/source.ts";
 import {
@@ -18,7 +17,7 @@ import {
   versionDir,
   versionKeyFor,
 } from "../lib/store.ts";
-import { ctxOf, mutateIndex, type BaseOptions } from "./context.ts";
+import { ctxOf, mutateIndex, resolveSelectors, type BaseOptions } from "./context.ts";
 import { openIndex } from "../lib/migrate.ts";
 
 export interface UpdateOptions extends BaseOptions {
@@ -26,6 +25,8 @@ export interface UpdateOptions extends BaseOptions {
   skills?: string[];
   global?: boolean;
   project?: boolean;
+  /** CLI hook: pick one id when a name matches several skills (return null to skip it). */
+  chooseAmbiguous?: (selector: string, ids: string[]) => Promise<string | null>;
 }
 
 export type UpdateStatus = "updated" | "up-to-date" | "has-update" | "skipped" | "failed";
@@ -109,10 +110,11 @@ async function targets(opts: UpdateOptions): Promise<{ list: Target[]; scopes: A
       });
     }
   }
-  const filtered =
-    opts.skills && opts.skills.length > 0
-      ? [...filterSkills(list, opts.skills), ...list.filter((t) => opts.skills!.includes(t.id))].filter((t, i, a) => a.indexOf(t) === i)
-      : list;
+  let filtered = list;
+  if (opts.skills && opts.skills.length > 0) {
+    const { ids } = await resolveSelectors(list, opts.skills, opts.chooseAmbiguous);
+    filtered = list.filter((t) => ids.includes(t.id));
+  }
   return { list: filtered, scopes, project, store: ctx.store };
 }
 
@@ -189,11 +191,14 @@ export async function updateSkills(opts: UpdateOptions = {}): Promise<UpdateResu
       });
       staged = null;
       if (t.scope === "project" && project) {
-        const e = project.manifest.skills[t.id];
-        if (e) {
-          e.commit = commit;
-          e.hash = hash;
-        }
+        // Re-read under the manifest lock; only move a pin that is still the one we checked.
+        await mutateManifest(project, (manifest) => {
+          const e = manifest.skills[t.id];
+          if (e && e.commit === t.commit) {
+            e.commit = commit;
+            e.hash = hash;
+          }
+        });
       }
       rows.push({ ...base, status: "updated", ...(t.commit ? { from: t.commit.slice(0, 7) } : {}), to: commit.slice(0, 7) });
     } catch (err) {
@@ -203,6 +208,5 @@ export async function updateSkills(opts: UpdateOptions = {}): Promise<UpdateResu
       await cleanup(checkout);
     }
   }
-  if (project && rows.some((r) => r.scope === "project" && r.status === "updated")) await saveManifest(project);
   return { skills: rows, scopes };
 }

@@ -1,10 +1,19 @@
 import path from "node:path";
 import { CliError, note } from "../lib/cli.ts";
-import { filterSkills } from "../lib/discover.ts";
-import { loadProject, saveManifest } from "../lib/manifest.ts";
-import { removeDir } from "../lib/store.ts";
-import { ctxOf, mutateIndex, projectSkills, storeSkills, subtractAgents, validateAgents, type BaseOptions, type ScopedSkill } from "./context.ts";
+import { loadProject, mutateManifest } from "../lib/manifest.ts";
 import { openIndex } from "../lib/migrate.ts";
+import { removeDir } from "../lib/store.ts";
+import {
+  ctxOf,
+  mutateIndex,
+  projectSkills,
+  resolveSelectors,
+  storeSkills,
+  subtractAgents,
+  validateAgents,
+  type BaseOptions,
+  type ScopedSkill,
+} from "./context.ts";
 
 export interface RemoveOptions extends BaseOptions {
   /** Remove from the store (`-g`) instead of the project's references. */
@@ -13,6 +22,8 @@ export interface RemoveOptions extends BaseOptions {
   agents?: string[];
   /** Remove every skill in scope. */
   all?: boolean;
+  /** CLI hook: pick one id when a name matches several skills (return null to skip it). */
+  chooseAmbiguous?: (selector: string, ids: string[]) => Promise<string | null>;
 }
 
 export interface RemovedRow {
@@ -36,8 +47,7 @@ export interface RemoveResult {
 export async function removableSkills(opts: RemoveOptions = {}): Promise<ScopedSkill[]> {
   const ctx = ctxOf(opts);
   const index = await openIndex(ctx.store);
-  if (opts.global) return storeSkills(ctx.store, index, true);
-  const project = await loadProject(ctx.cwd);
+  const project = opts.global ? null : await loadProject(ctx.cwd);
   if (!project) return storeSkills(ctx.store, index, true);
   return projectSkills(ctx.store, index, project);
 }
@@ -55,80 +65,77 @@ export async function removeSkills(selectors: string[], opts: RemoveOptions = {}
   if (!opts.global && !project) note("No project here; using global scope.");
 
   const inScope = global ? await storeSkills(ctx.store, index, true) : await projectSkills(ctx.store, index, project!);
-  const pick = (sel: string): ScopedSkill[] => [...inScope.filter((s) => s.id === sel), ...filterSkills(inScope, [sel])].filter((s, i, a) => a.indexOf(s) === i);
-
-  let chosen: ScopedSkill[];
-  const unmatched: string[] = [];
+  const nameOf = new Map(inScope.map((s) => [s.id, s.name]));
   const notes: string[] = [];
-  if (opts.all || selectors.includes("*")) chosen = inScope;
+  let ids: string[];
+  let unmatched: string[] = [];
+  if (opts.all || selectors.includes("*")) ids = inScope.map((s) => s.id);
   else {
-    chosen = [];
-    for (const sel of selectors) {
-      const hit = pick(sel);
-      if (hit.length === 0) {
-        unmatched.push(sel);
-        if (!global) {
-          const globals = await storeSkills(ctx.store, index, false);
-          if (globals.some((g) => g.id === sel || filterSkills([g], [sel]).length > 0)) notes.push(`${sel} is global; use -g`);
-        }
+    ({ ids, unmatched } = await resolveSelectors(inScope, selectors, opts.chooseAmbiguous));
+    if (!global && unmatched.length > 0) {
+      const globals = await storeSkills(ctx.store, index, false);
+      for (const sel of unmatched) {
+        const hit = await resolveSelectors(globals, [sel], async () => null);
+        if (hit.ids.length > 0 || globals.some((g) => g.name === sel)) notes.push(`${sel} is global; use -g`);
       }
-      for (const h of hit) if (!chosen.includes(h)) chosen.push(h);
     }
   }
 
   const removed: RemovedRow[] = [];
+  if (ids.length === 0) return { removed, unmatched, notes };
+
   if (global) {
     const referenced = project && project.exists ? new Set(Object.keys(project.manifest.skills)) : new Set<string>();
-    if (chosen.length > 0) {
-      await mutateIndex(ctx.store, async (idx) => {
-        for (const s of chosen) {
-          const record = idx.skills.find((r) => r.id === s.id);
-          if (!record) continue;
-          if (agentsToRemove) {
-            const r = subtractAgents(record.agents, agentsToRemove);
-            if (r.kind === "all") {
-              removed.push({ id: s.id, name: s.name, scope: "global", action: "kept", message: `${s.name} is available to all agents; remove it without -a` });
-              continue;
-            }
-            if (r.kind === "rest") {
-              record.agents = r.value;
-              removed.push({ id: s.id, name: s.name, scope: "global", action: "agents" });
-              continue;
-            }
+    await mutateIndex(ctx.store, async (idx) => {
+      for (const id of ids) {
+        const record = idx.skills.find((r) => r.id === id);
+        if (!record) continue;
+        const name = nameOf.get(id) ?? id;
+        if (agentsToRemove) {
+          const r = subtractAgents(record.agents, agentsToRemove);
+          if (r.kind === "all") {
+            removed.push({ id, name, scope: "global", action: "kept", message: `${name} is available to all agents; remove it without -a` });
+            continue;
           }
-          idx.skills.splice(idx.skills.indexOf(record), 1);
-          await removeDir(path.join(ctx.store, record.dir));
-          removed.push({
-            id: s.id,
-            name: s.name,
-            scope: "global",
-            action: "removed",
-            ...(referenced.has(s.id) ? { message: `${s.name} is still referenced by ${project!.file}; run skill-library install to fetch it again` } : {}),
-          });
+          if (r.kind === "rest") {
+            record.agents = r.value;
+            removed.push({ id, name, scope: "global", action: "agents" });
+            continue;
+          }
         }
-      });
-    }
-  } else {
-    const entries = project!.manifest.skills;
-    for (const s of chosen) {
-      const entry = entries[s.id];
-      if (!entry) continue;
-      if (agentsToRemove) {
-        const r = subtractAgents(entry.agents, agentsToRemove);
-        if (r.kind === "all") {
-          removed.push({ id: s.id, name: s.name, scope: "project", action: "kept", message: `${s.name} is available to all agents; remove it without -a` });
-          continue;
-        }
-        if (r.kind === "rest") {
-          entry.agents = r.value;
-          removed.push({ id: s.id, name: s.name, scope: "project", action: "agents" });
-          continue;
-        }
+        idx.skills.splice(idx.skills.indexOf(record), 1);
+        await removeDir(path.join(ctx.store, record.dir));
+        removed.push({
+          id,
+          name,
+          scope: "global",
+          action: "removed",
+          ...(referenced.has(id) ? { message: `${name} is still referenced by ${project!.file}; run skill-library install to fetch it again` } : {}),
+        });
       }
-      delete entries[s.id];
-      removed.push({ id: s.id, name: s.name, scope: "project", action: "removed" });
-    }
-    if (removed.some((r) => r.action !== "kept")) await saveManifest(project!);
+    });
+  } else {
+    await mutateManifest(project!, (manifest) => {
+      for (const id of ids) {
+        const entry = manifest.skills[id];
+        if (!entry) continue;
+        const name = nameOf.get(id) ?? entry.name ?? id;
+        if (agentsToRemove) {
+          const r = subtractAgents(entry.agents, agentsToRemove);
+          if (r.kind === "all") {
+            removed.push({ id, name, scope: "project", action: "kept", message: `${name} is available to all agents; remove it without -a` });
+            continue;
+          }
+          if (r.kind === "rest") {
+            entry.agents = r.value;
+            removed.push({ id, name, scope: "project", action: "agents" });
+            continue;
+          }
+        }
+        delete manifest.skills[id];
+        removed.push({ id, name, scope: "project", action: "removed" });
+      }
+    });
   }
   return { removed, unmatched, notes };
 }

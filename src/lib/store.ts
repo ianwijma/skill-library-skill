@@ -151,16 +151,23 @@ export async function withLock<T>(store: string, fn: () => Promise<T>): Promise<
   await fsp.mkdir(store, { recursive: true }).catch((err) => {
     throw new CliError(2, `cannot create store directory ${store}: ${msgOf(err)}`);
   });
-  const file = lockPath(store);
+  return withFileLock(lockPath(store), fn);
+}
+
+/** O_EXCL lock file holding pid@host. Dead local holders are reclaimed; foreign ones fail (exit 2). */
+export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promise<T> {
   const mine: LockInfo = { pid: process.pid, host: os.hostname(), at: now() };
   const deadline = Date.now() + LOCK_WAIT_MS;
   for (;;) {
+    // Write the holder info first, then hard-link it into place: the lock never exists empty.
+    const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}`;
     try {
-      const fh = await fsp.open(file, "wx");
-      await fh.writeFile(JSON.stringify(mine));
-      await fh.close();
+      await fsp.writeFile(tmp, JSON.stringify(mine));
+      await fsp.link(tmp, file);
+      await fsp.rm(tmp, { force: true });
       break;
     } catch (err) {
+      await fsp.rm(tmp, { force: true }).catch(() => {});
       if ((err as { code?: string }).code !== "EEXIST") {
         throw new CliError(2, `cannot create ${file}: ${msgOf(err)}`);
       }
@@ -168,7 +175,8 @@ export async function withLock<T>(store: string, fn: () => Promise<T>): Promise<
     let holder: LockInfo | null = null;
     try {
       holder = JSON.parse(await fsp.readFile(file, "utf8")) as LockInfo;
-    } catch {
+    } catch (err) {
+      if (isEnoent(err)) continue; // released between our attempt and the read: try again
       holder = null;
     }
     if (holder && holder.host === os.hostname() && typeof holder.pid === "number" && !pidAlive(holder.pid)) {
@@ -180,7 +188,7 @@ export async function withLock<T>(store: string, fn: () => Promise<T>): Promise<
       continue;
     }
     const who = holder ? `${holder.pid}@${holder.host}` : "an unknown process";
-    throw new CliError(2, `index.lock held by ${who}; delete ${file} if no skill-library is running`);
+    throw new CliError(2, `${path.basename(file)} held by ${who}; delete ${file} if no skill-library is running`);
   }
   try {
     return await fn();

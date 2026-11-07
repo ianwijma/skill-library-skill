@@ -5,7 +5,8 @@ import { discoverSkills, filterSkills, parseSkillFile, type DiscoveredSkill } fr
 import { cleanup, cloneRepo, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
 import { gitSkillId, localSkillId, skillDirFor } from "../lib/ids.ts";
-import { loadProject, saveManifest, type ManifestEntry, type Project } from "../lib/manifest.ts";
+import { loadProject, mutateManifest, type ManifestEntry, type Project } from "../lib/manifest.ts";
+import { isReservedSkillName } from "../lib/migrate.ts";
 import { tildify, toPosix } from "../lib/paths.ts";
 import { parseSource, type ParsedSource } from "../lib/source.ts";
 import {
@@ -14,12 +15,13 @@ import {
   exists,
   findRecord,
   now,
+  replaceVersionDir,
   stagingDir,
   versionDir,
   versionKeyFor,
   type AgentsValue,
   type SourceInfo,
-  type StoreRecord,
+  type StoreIndex,
 } from "../lib/store.ts";
 import { agentsArg, ctxOf, mergeAgents, mutateIndex, type BaseOptions } from "./context.ts";
 
@@ -28,13 +30,15 @@ export interface AddOptions extends BaseOptions {
   global?: boolean;
   /** Agents the skill is for (default: all; `['*']` = all). */
   agents?: string[];
-  /** Skill names to add; `['*']` = all. Default: every discovered skill (API) or a prompt (CLI). */
+  /** Skill names or ids to add; `['*']` = all. Default: every discovered skill (API) or a prompt (CLI). */
   skills?: string[];
   fullDepth?: boolean;
   /** Only discover; write nothing. */
   list?: boolean;
   /** CLI hook: choose skills when several were found and none were named. */
   selectSkills?: (skills: DiscoveredSkill[]) => Promise<DiscoveredSkill[]>;
+  /** CLI hook: confirm before anything is written. Return false to cancel. */
+  confirm?: (skills: DiscoveredSkill[], scope: "project" | "global") => Promise<boolean>;
 }
 
 export interface AddedSkill {
@@ -57,10 +61,12 @@ export interface AddResult {
   scope: "project" | "global";
   projectRoot: string | null;
   /** Discovered skills (set for list mode and always informative). */
-  discovered: Array<{ name: string; description: string; path: string }>;
+  discovered: Array<{ id: string; name: string; description: string; path: string }>;
   skills: AddedSkill[];
   /** The source held only the skill-library gateway (nothing is stored). */
   gatewayOnly: boolean;
+  /** The confirm hook declined. */
+  cancelled: boolean;
 }
 
 interface Prepared {
@@ -89,6 +95,7 @@ export async function addSkills(source: string, opts: AddOptions = {}): Promise<
       if (!opts.list) note("No project here; using global scope.");
     }
   }
+  const projectRoot = scope === "project" ? project!.root : null;
 
   let cloneDir: string | null = null;
   let commit: string | null = null;
@@ -115,14 +122,16 @@ export async function addSkills(source: string, opts: AddOptions = {}): Promise<
     let reserved: DiscoveredSkill[] = [];
     if (fileSource) {
       const s = await parseSkillFile(base, "file");
-      found = s ? [s] : [];
+      found = s && !isReservedSkillName(s.name) ? [s] : [];
+      if (s && isReservedSkillName(s.name)) reserved = [s];
     } else {
       const d = await discoverSkills(base, parsed.subpath, { ...(opts.fullDepth ? { fullDepth: true } : {}) });
       found = d.skills;
       reserved = d.reserved;
     }
-    const discovered = found.map((s) => ({ name: s.name, description: s.description, path: s.path }));
-    const result: AddResult = { source: parsed, scope, projectRoot: project?.root ?? null, discovered, skills: [], gatewayOnly: false };
+    const idOf = (s: DiscoveredSkill): string => (parsed.type === "git" ? gitSkillId(parsed.url, s.name) : localSkillId(s.path, projectRoot));
+    const discovered = found.map((s) => ({ id: idOf(s), name: s.name, description: s.description, path: s.path }));
+    const result: AddResult = { source: parsed, scope, projectRoot, discovered, skills: [], gatewayOnly: false, cancelled: false };
 
     if (found.length === 0) {
       if (reserved.length > 0) {
@@ -137,22 +146,30 @@ export async function addSkills(source: string, opts: AddOptions = {}): Promise<
     let selected: DiscoveredSkill[];
     if (selectors.includes("*")) selected = found;
     else if (selectors.length > 0) {
-      selected = filterSkills(found, selectors);
+      const byId = found.filter((s) => selectors.includes(idOf(s)));
+      const byName = filterSkills(found, selectors.filter((sel) => !found.some((s) => idOf(s) === sel)));
+      selected = found.filter((s) => byId.includes(s) || byName.includes(s));
       if (selected.length === 0) {
         throw new CliError(1, `No matching skills found for: ${selectors.join(", ")}`, `Available skills:\n${found.map((s) => `  - ${s.name}`).join("\n")}`);
       }
     } else if (found.length === 1 || !opts.selectSkills) selected = found;
     else selected = await opts.selectSkills(found);
-    if (selected.length === 0) return result;
+    if (selected.length === 0) {
+      result.cancelled = true;
+      return result;
+    }
+    if (opts.confirm && !(await opts.confirm(selected, scope))) {
+      result.cancelled = true;
+      return result;
+    }
 
     const prepared: Prepared[] = [];
     try {
-      for (const skill of selected) prepared.push(await prepare(ctx.store, parsed, skill, base, commit, scope === "project" ? project!.root : null));
-      result.skills = await commit_(ctx.store, prepared, scope, project, requested, parsed);
+      for (const skill of selected) prepared.push(await prepare(ctx.store, parsed, skill, base, commit, projectRoot));
+      result.skills = await commitAll(ctx.store, prepared, scope, project, requested);
     } finally {
       for (const p of prepared) if (p.staged) await fsp.rm(p.staged, { recursive: true, force: true }).catch(() => {});
     }
-    if (project && scope === "project") await saveManifest(project);
     return result;
   } finally {
     await cleanup(cloneDir);
@@ -169,12 +186,12 @@ async function prepare(
 ): Promise<Prepared> {
   if (parsed.type === "git") {
     const relPath = toPosix(path.relative(base, skill.path));
-    const id = gitSkillId(parsed.url, skill.name);
     const staged = await stagingDir(store);
     await copySkill(skill.path, staged, "folder");
+    await assertStagedSkill(staged, skill);
     return {
       skill,
-      id,
+      id: gitSkillId(parsed.url, skill.name),
       staged,
       hash: await hashSkillDir(staged),
       commit,
@@ -193,6 +210,7 @@ async function prepare(
   }
   const staged = await stagingDir(store);
   await copySkill(skill.path, staged, skill.kind);
+  await assertStagedSkill(staged, skill);
   return {
     skill,
     id,
@@ -206,21 +224,22 @@ async function prepare(
   };
 }
 
-async function commit_(
-  store: string,
-  prepared: Prepared[],
-  scope: "project" | "global",
-  project: Project | null,
-  requested: AgentsValue,
-  parsed: ParsedSource,
-): Promise<AddedSkill[]> {
+/** The copier skips symlinks; a skill whose SKILL.md is a link must not be stored without it. */
+async function assertStagedSkill(staged: string, skill: DiscoveredSkill): Promise<void> {
+  if (!(await exists(path.join(staged, "SKILL.md")))) {
+    await fsp.rm(staged, { recursive: true, force: true }).catch(() => {});
+    throw new CliError(1, `${skill.path}: SKILL.md is not a regular file (symlinks are not copied)`);
+  }
+}
+
+async function commitAll(store: string, prepared: Prepared[], scope: "project" | "global", project: Project | null, requested: AgentsValue): Promise<AddedSkill[]> {
   const rows: AddedSkill[] = [];
   const stored = prepared.filter((p) => !p.local);
   if (stored.length > 0) {
     await mutateIndex(store, async (index) => {
       for (const p of stored) {
         try {
-          rows.push(await commitOne(store, index, p, scope, project, requested));
+          rows.push(await commitOne(store, index, p, scope, requested));
         } catch (err) {
           rows.push(failedRow(p, scope, requested, err));
         }
@@ -228,111 +247,72 @@ async function commit_(
     });
   }
   for (const p of prepared.filter((x) => x.local)) {
-    const entries = project!.manifest.skills;
-    const agents = mergeAgents(entries[p.id]?.agents, requested);
-    entries[p.id] = { agents };
-    rows.push({
-      id: p.id,
-      name: p.skill.name,
-      status: "installed",
-      scope: "project",
-      source: p.id,
-      ref: null,
-      hash: null,
-      commit: null,
-      path: p.skill.path,
-      agents,
-    });
+    rows.push({ id: p.id, name: p.skill.name, status: "installed", scope: "project", source: p.id, ref: null, hash: null, commit: null, path: p.skill.path, agents: requested });
   }
-  void parsed;
+  if (scope === "project" && project) {
+    const done = rows.filter((r) => r.status === "installed");
+    if (done.length > 0) {
+      await mutateManifest(project, (manifest) => {
+        for (const r of done) {
+          const p = prepared.find((x) => x.id === r.id)!;
+          const agents = mergeAgents(manifest.skills[r.id]?.agents, requested);
+          r.agents = agents;
+          let entry: ManifestEntry;
+          if (p.local) entry = { name: p.skill.name, agents };
+          else if (p.sourceInfo.type === "git") {
+            entry = { name: p.skill.name, source: p.sourceInfo.url, ref: p.sourceInfo.ref, path: p.relPath, commit: p.commit!, hash: p.hash!, agents };
+          } else entry = { name: p.skill.name, source: tildify(p.sourceInfo.url), hash: p.hash!, agents };
+          manifest.skills[r.id] = entry;
+        }
+      });
+    }
+  }
   return rows;
 }
 
 function failedRow(p: Prepared, scope: "project" | "global", agents: AgentsValue, err: unknown): AddedSkill {
-  return {
-    id: p.id,
-    name: p.skill.name,
-    status: "failed",
-    scope,
-    source: p.sourceInfo.url,
-    ref: p.sourceInfo.ref,
-    hash: p.hash,
-    commit: p.commit,
-    path: null,
-    agents,
-    error: msgOf(err),
-  };
+  return { id: p.id, name: p.skill.name, status: "failed", scope, source: p.sourceInfo.url, ref: p.sourceInfo.ref, hash: p.hash, commit: p.commit, path: null, agents, error: msgOf(err) };
 }
 
-async function commitOne(
-  store: string,
-  index: { skills: StoreRecord[] },
-  p: Prepared,
-  scope: "project" | "global",
-  project: Project | null,
-  requested: AgentsValue,
-): Promise<AddedSkill> {
+async function commitOne(store: string, index: StoreIndex, p: Prepared, scope: "project" | "global", requested: AgentsValue): Promise<AddedSkill> {
   const at = now();
-  let record = findRecord(index as never, p.id);
+  let record = findRecord(index, p.id);
   const versionInfo = { ...(p.commit ? { commit: p.commit } : {}), hash: p.hash! };
   const isNew = !record;
   if (!record) {
-    record = {
-      id: p.id,
-      source: p.sourceInfo,
-      dir: skillDirFor(p.id, p.skill.name),
-      versions: {},
-      current: "",
-      global: false,
-      agents: "all",
-      addedAt: at,
-      updatedAt: at,
-    };
+    record = { id: p.id, source: p.sourceInfo, dir: skillDirFor(p.id, p.skill.name), versions: {}, current: "", global: false, agents: "all", addedAt: at, updatedAt: at };
     index.skills.push(record);
   }
   const key = versionKeyFor(record, versionInfo);
   const dest = versionDir(store, record, key);
-  if (!record.versions[key] || !(await exists(path.join(dest, "SKILL.md")))) {
+  const intact = record.versions[key] !== undefined && (await exists(path.join(dest, "SKILL.md"))) && (await hashSkillDir(dest)) === p.hash;
+  if (intact) {
+    await fsp.rm(p.staged!, { recursive: true, force: true }).catch(() => {});
+  } else if (await exists(dest)) {
+    await replaceVersionDir(p.staged!, dest); // incomplete or damaged version folder: repair
+  } else {
     await commitVersionDir(p.staged!, dest);
-    record.versions[key] = {
-      ...(p.commit ? { commit: p.commit } : {}),
-      ...(p.tree ? { tree: p.tree } : {}),
-      hash: p.hash!,
-      name: p.skill.name,
-      description: p.skill.description,
-      addedAt: at,
-    };
   }
   p.staged = null;
+  record.versions[key] ??= {
+    ...(p.commit ? { commit: p.commit } : {}),
+    ...(p.tree ? { tree: p.tree } : {}),
+    hash: p.hash!,
+    name: p.skill.name,
+    description: p.skill.description,
+    addedAt: at,
+  };
   record.updatedAt = at;
 
-  let agents: AgentsValue;
+  let agents: AgentsValue = requested;
   if (scope === "global") {
     record.current = key;
     record.source = p.sourceInfo;
     agents = record.global ? mergeAgents(record.agents, requested) : requested;
     record.global = true;
     record.agents = agents;
-  } else {
-    if (isNew) record.current = key;
-    const entries = project!.manifest.skills;
-    agents = mergeAgents(entries[p.id]?.agents, requested);
-    const entry: ManifestEntry =
-      p.sourceInfo.type === "git"
-        ? { source: p.sourceInfo.url, ref: p.sourceInfo.ref, path: p.relPath, commit: p.commit!, hash: p.hash!, agents }
-        : { source: tildify(p.sourceInfo.url), hash: p.hash!, agents };
-    entries[p.id] = entry;
+  } else if (isNew) {
+    record.current = key;
   }
-  return {
-    id: p.id,
-    name: p.skill.name,
-    status: "installed",
-    scope,
-    source: p.sourceInfo.url,
-    ref: p.sourceInfo.ref,
-    hash: p.hash,
-    commit: p.commit,
-    path: dest,
-    agents,
-  };
+  return { id: p.id, name: p.skill.name, status: "installed", scope, source: p.sourceInfo.url, ref: p.sourceInfo.ref, hash: p.hash, commit: p.commit, path: dest, agents };
 }

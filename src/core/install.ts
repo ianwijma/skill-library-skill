@@ -74,21 +74,23 @@ export async function installProject(opts: InstallOptions = {}): Promise<Install
     }
     const record = findRecord(index, id);
     const key = record ? findVersion(record, pinOf(entry)) : undefined;
-    const present = record && key ? await exists(path.join(versionDir(ctx.store, record, key), "SKILL.md")) : false;
-    if (present && !opts.force) {
-      rows.push({ id, status: "present" });
+    const dir = record && key ? versionDir(ctx.store, record, key) : null;
+    const hasDir = dir !== null && (await exists(dir));
+    const hasMd = dir !== null && (await exists(path.join(dir, "SKILL.md")));
+    if (!hasDir) {
+      work.push({ id, entry, repair: false });
       continue;
     }
-    if (present && opts.force) {
-      const actual = await hashSkillDir(versionDir(ctx.store, record!, key!));
-      if (actual === record!.versions[key!]!.hash) {
-        rows.push({ id, status: "present" });
-        continue;
-      }
+    // An existing folder without SKILL.md is incomplete: always repair it.
+    if (!hasMd) {
       work.push({ id, entry, repair: true });
       continue;
     }
-    work.push({ id, entry, repair: false });
+    if (opts.force && (await hashSkillDir(dir!)) !== record!.versions[key!]!.hash) {
+      work.push({ id, entry, repair: true });
+      continue;
+    }
+    rows.push({ id, status: "present" });
   }
 
   if (opts.dryRun) {
@@ -201,7 +203,8 @@ async function place(store: string, index: StoreIndex, id: string, entry: Manife
   const info = { ...(entry.commit !== undefined ? { commit: entry.commit } : {}), hash: f.hash };
   const key = findVersion(record, info) ?? versionKeyFor(record, info);
   const dest = versionDir(store, record, key);
-  if (repair) await replaceVersionDir(f.staged, dest);
+  // Re-check under the lock: anything already at `dest` is replaced (with rollback), never trusted.
+  if (await exists(dest)) await replaceVersionDir(f.staged, dest);
   else await commitVersionDir(f.staged, dest);
   record.versions[key] ??= {
     ...(entry.commit !== undefined ? { commit: entry.commit } : {}),

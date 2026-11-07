@@ -6,6 +6,12 @@ import { isRunningInAgent } from "../lib/detect-agent.ts";
 import { parseFlags } from "./args.ts";
 import type { GlobalOpts } from "./index.ts";
 
+/** TTY picker for a name that matches several skills. */
+export async function pickAmbiguous(selector: string, ids: string[]): Promise<string | null> {
+  const picked = await p.select({ message: `"${selector}" matches several skills — which one?`, options: ids.map((id) => ({ value: id, label: id })) });
+  return p.isCancel(picked) ? null : (picked as string);
+}
+
 export async function runRemove(args: string[], g: GlobalOpts): Promise<number> {
   const f = parseFlags(args, {
     booleans: { global: ["-g", "--global"], yes: ["-y", "--yes"], all: ["--all"] },
@@ -39,7 +45,10 @@ export async function runRemove(args: string[], g: GlobalOpts): Promise<number> 
       }
       selectors = picked as string[];
     }
-    if (!yes && process.stdin.isTTY) {
+    if (!yes && !process.stdin.isTTY) {
+      throw new CliError(1, "Interactive prompt required but stdin is not a TTY. Nothing was removed. Use -y to run non-interactively.");
+    }
+    if (!yes) {
       const what = all ? "every skill in scope" : selectors.join(", ");
       const ok = await p.confirm({ message: `Remove ${what}${base.global ? " from the library" : " from this project"}?` });
       if (p.isCancel(ok) || !ok) {
@@ -47,7 +56,12 @@ export async function runRemove(args: string[], g: GlobalOpts): Promise<number> 
         return 0;
       }
     }
-    const res = await removeSkills(all ? [] : selectors, { ...base, all, ...(f.lists.get("agent") ? { agents: f.lists.get("agent")! } : {}) });
+    const res = await removeSkills(all ? [] : selectors, {
+      ...base,
+      all,
+      ...(f.lists.get("agent") ? { agents: f.lists.get("agent")! } : {}),
+      ...(process.stdin.isTTY ? { chooseAmbiguous: pickAmbiguous } : {}),
+    });
     for (const n of res.notes) note(n);
     if (res.unmatched.length > 0 && res.removed.length === 0) {
       console.log(`No matching skills found for: ${res.unmatched.join(", ")}`);

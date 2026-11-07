@@ -2,7 +2,7 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { agentIds } from "../lib/agents.ts";
 import { CliError } from "../lib/cli.ts";
-import { parseSkillFile } from "../lib/discover.ts";
+import { filterSkills, parseSkillFile } from "../lib/discover.ts";
 import { loadProject, type ManifestEntry, type Project } from "../lib/manifest.ts";
 import { openIndex } from "../lib/migrate.ts";
 import { resolveStore } from "../lib/paths.ts";
@@ -129,7 +129,7 @@ export async function projectSkills(store: string, index: StoreIndex, project: P
       const parsed = (await exists(path.join(dir, "SKILL.md"))) ? await parseSkillFile(path.join(dir, "SKILL.md"), "folder", true) : null;
       out.push({
         id,
-        name: parsed?.name ?? nameFromId(id),
+        name: parsed?.name ?? entry.name ?? nameFromId(id),
         description: parsed?.description ?? "",
         scope: "project",
         kind: "local",
@@ -149,7 +149,7 @@ export async function projectSkills(store: string, index: StoreIndex, project: P
     const meta = record && key ? record.versions[key] : undefined;
     out.push({
       id,
-      name: meta?.name ?? nameFromId(id),
+      name: meta?.name ?? entry.name ?? nameFromId(id),
       description: meta?.description ?? "",
       scope: "project",
       kind: "stored",
@@ -190,6 +190,39 @@ export async function storeSkills(store: string, index: StoreIndex, includeHidde
     });
   }
   return out;
+}
+
+/**
+ * Resolve selectors (ids or names) to distinct ids. A name that matches several ids is
+ * ambiguous: `choose` (TTY picker) decides, otherwise it is an error listing the ids.
+ * Unmatched selectors are returned separately. Nothing is mutated here.
+ */
+export async function resolveSelectors<T extends { id: string; name: string }>(
+  items: T[],
+  selectors: string[],
+  choose?: (selector: string, ids: string[]) => Promise<string | null>,
+): Promise<{ ids: string[]; unmatched: string[] }> {
+  const ids: string[] = [];
+  const unmatched: string[] = [];
+  for (const sel of selectors) {
+    const exact = items.filter((i) => i.id === sel);
+    const byName = exact.length > 0 ? exact : filterSkills(items, [sel]);
+    const distinct = [...new Set(byName.map((i) => i.id))];
+    if (distinct.length === 0) {
+      unmatched.push(sel);
+      continue;
+    }
+    let id: string | null = distinct[0]!;
+    if (distinct.length > 1) {
+      id = choose ? await choose(sel, distinct) : null;
+      if (id === null) {
+        if (choose) continue;
+        throw new CliError(1, `"${sel}" matches several skills:\n${distinct.map((d) => `  - ${d}`).join("\n")}`, "Pass the full id to pick one.");
+      }
+    }
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return { ids, unmatched };
 }
 
 export async function loadScope(opts: BaseOptions): Promise<{ ctx: Ctx; index: StoreIndex; project: Project | null }> {

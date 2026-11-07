@@ -7,7 +7,7 @@
  *   await add("vercel-labs/agent-skills", { skills: ["frontend-design"], global: true });
  *   const { matches } = await query("design a landing page", { agent: "claude-code" });
  */
-import { setWarnSink } from "./lib/cli.ts";
+import { withWarnSink } from "./lib/cli.ts";
 import { addSkills, type AddOptions, type AddResult } from "./core/add.ts";
 import { installProject, type InstallOptions, type InstallResult } from "./core/install.ts";
 import { listSkills, type ListOptions, type ListResult } from "./core/list.ts";
@@ -26,14 +26,8 @@ export type { AgentsValue } from "./lib/store.ts";
 export { CliError as SkillLibraryError } from "./lib/cli.ts";
 
 /** Each call collects warnings instead of printing them. */
-async function quiet<T>(warnings: string[] | undefined, fn: () => Promise<T>): Promise<T> {
-  const sink = (m: string) => warnings?.push(m);
-  setWarnSink(sink);
-  try {
-    return await fn();
-  } finally {
-    setWarnSink(undefined);
-  }
+function quiet<T>(warnings: string[] | undefined, fn: () => Promise<T>): Promise<T> {
+  return withWarnSink((m: string) => warnings?.push(m), fn);
 }
 
 export interface ApiOptions {

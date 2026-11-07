@@ -147,7 +147,7 @@ describe("query", () => {
     await run(sb, ["add", path.join(sb.root, "g", "dup"), "-g", "-y"]);
     await run(sb, ["add", "./skills/dup", "-y"], { cwd: dir });
     const manifest = JSON.parse(await fsp.readFile(path.join(dir, "skill-library.json"), "utf8"));
-    manifest.skills["repo://github.com/x/y/gone"] = { source: "https://github.com/x/y.git", ref: null, path: "", commit: "0".repeat(40), hash: "sha256-0", agents: "all" };
+    manifest.skills["repo://github.com/x/y/gone"] = { source: "https://github.com/x/y.git", ref: null, path: "", commit: "0".repeat(40), hash: `sha256-${"0".repeat(64)}`, agents: "all", name: "gone" };
     await fsp.writeFile(path.join(dir, "skill-library.json"), JSON.stringify(manifest));
     const mock = await startMock(byName({ dup: 0.9 }));
     const res = await q(sb, ["task"], mock, { cwd: dir });

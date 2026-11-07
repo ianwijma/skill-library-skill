@@ -108,6 +108,15 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
       ...(skills ? { skills } : {}),
       fullDepth: f.booleans.has("fullDepth"),
       list: f.booleans.has("list"),
+      confirm: async (picked, scope) => {
+        if (yes) return true;
+        if (!process.stdin.isTTY) {
+          throw new CliError(1, "Interactive prompt required but stdin is not a TTY. Nothing was installed. Use -y to run non-interactively.");
+        }
+        spinner?.stop(`Found ${picked.length} skill(s)`);
+        const ok = await p.confirm({ message: `Add ${picked.map((s) => s.name).join(", ")} to the ${scope === "project" ? "project" : "global library"}?` });
+        return !p.isCancel(ok) && ok === true;
+      },
       selectSkills: async (found) => {
         if (yes) return found;
         if (!process.stdin.isTTY) {
@@ -160,7 +169,7 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
     console.log(`${TEXT}This source only contains the skill-library gateway; nothing was added to the library.${RESET}`);
     return 0;
   }
-  if (result.skills.length === 0) {
+  if (result.cancelled || result.skills.length === 0) {
     console.log("Installation cancelled");
     return 0;
   }

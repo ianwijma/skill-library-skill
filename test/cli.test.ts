@@ -63,8 +63,8 @@ describe("local sources", () => {
     expect(r.code).toBe(0);
     const m = await readJson(path.join(dir, "skill-library.json"));
     expect(Object.keys(m.skills)).toEqual(["home://my-skills/bar", "home://my-skills/baz", "local://skills/foo"]);
-    expect(m.skills["local://skills/foo"]).toEqual({ agents: "all" });
-    expect(m.skills["home://my-skills/bar"]).toEqual({ source: "~/my-skills/bar", hash: expect.stringMatching(/^sha256-[0-9a-f]{64}$/), agents: ["claude-code"] });
+    expect(m.skills["local://skills/foo"]).toEqual({ name: "foo", agents: "all" });
+    expect(m.skills["home://my-skills/bar"]).toEqual({ name: "bar", source: "~/my-skills/bar", hash: expect.stringMatching(/^sha256-[0-9a-f]{64}$/), agents: ["claude-code"] });
     const index = await readJson(path.join(sb.store, "index.json"));
     expect(index.version).toBe(2);
     expect(index.skills.map((s: any) => [s.id, s.global])).toEqual([
@@ -181,7 +181,7 @@ describe("git sources", () => {
     expect(r.code).toBe(0);
     const id = `repo://localhost${repo.bare.replace(/\.git$/, "")}/react`;
     const m = await readJson(path.join(dir, "skill-library.json"));
-    expect(m.skills[id]).toEqual({ source: repo.url, ref: null, path: "skills/react", commit: repo.head, hash: expect.stringMatching(/^sha256-/), agents: "all" });
+    expect(m.skills[id]).toEqual({ name: "react", source: repo.url, ref: null, path: "skills/react", commit: repo.head, hash: expect.stringMatching(/^sha256-/), agents: "all" });
 
     // Upstream moves on; a fresh store still installs exactly the pinned version.
     await repo.commit({ "skills/react/SKILL.md": skillMd("react", "React rules v2") });

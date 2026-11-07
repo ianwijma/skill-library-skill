@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import pc from "picocolors";
 
 /** Error carrying the process exit code (1 = usage/validation, 2 = runtime). */
@@ -23,21 +24,23 @@ export function formatError(err: unknown): string {
   return msgOf(err);
 }
 
-let warnSink: ((message: string) => void) | undefined;
+const sinks = new AsyncLocalStorage<(message: string) => void>();
 
-/** Route warnings somewhere other than stderr (the programmatic API collects them). */
-export function setWarnSink(sink: ((message: string) => void) | undefined): void {
-  warnSink = sink;
+/** Run `fn` with warnings routed to `sink` instead of stderr (per async context, so overlapping API calls stay separate). */
+export function withWarnSink<T>(sink: (message: string) => void, fn: () => Promise<T>): Promise<T> {
+  return sinks.run(sink, fn);
 }
 
 export function warn(message: string): void {
-  if (warnSink) warnSink(message);
+  const sink = sinks.getStore();
+  if (sink) sink(message);
   else console.error(`${pc.yellow("warning:")} ${message}`);
 }
 
 /** Notices that must never reach stdout (JSON mode keeps stdout to one value). */
 export function note(message: string): void {
-  if (warnSink) warnSink(message);
+  const sink = sinks.getStore();
+  if (sink) sink(message);
   else console.error(message);
 }
 

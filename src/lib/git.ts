@@ -71,8 +71,15 @@ export async function cleanup(dir: string | null | undefined): Promise<void> {
   if (dir) await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
 }
 
+/** Refuse URLs/refs that git could read as options, and transports that run commands. */
+export function assertSafeGitArgs(url: string, ref?: string | null): void {
+  if (url.startsWith("-") || /^ext::/i.test(url)) throw new CliError(1, `Unsupported git URL: ${url}`);
+  if (ref !== undefined && ref !== null && (ref.startsWith("-") || ref === "")) throw new CliError(1, `Invalid git ref: ${ref}`);
+}
+
 /** Shallow clone at `ref` (branch, tag or full SHA). Returns the checkout and its commit. */
 export async function cloneRepo(url: string, ref?: string): Promise<{ dir: string; commit: string }> {
+  assertSafeGitArgs(url, ref);
   const dir = await tempDir();
   try {
     if (ref && isCommitSha(ref)) {
@@ -93,25 +100,32 @@ export async function cloneRepo(url: string, ref?: string): Promise<{ dir: strin
   }
 }
 
-/** Fetch exactly `sha` into an empty `dir` (depth 1; falls back to a full clone). */
+/** Fetch exactly `sha` into an empty `dir` (depth 1; falls back to a full clone), then verify HEAD. */
 async function checkoutCommitInto(dir: string, url: string, sha: string): Promise<void> {
+  if (!isCommitSha(sha)) throw new CliError(1, `Not a full commit SHA: ${sha}`);
+  assertSafeGitArgs(url);
+  let ok = false;
   try {
-    await git(["init", "-q", dir], {});
-    await git(["remote", "add", "origin", url], { cwd: dir });
-    await git(["fetch", "-q", "--depth", "1", "origin", sha], { cwd: dir, url });
-    await git(["checkout", "-q", "FETCH_HEAD"], { cwd: dir });
-    return;
+    await git(["init", "-q", "--", dir], {});
+    await git(["remote", "add", "--", "origin", url], { cwd: dir });
+    await git(["fetch", "-q", "--depth", "1", "--", "origin", sha], { cwd: dir, url });
+    await git(["checkout", "-q", "--detach", "FETCH_HEAD"], { cwd: dir });
+    ok = true;
   } catch {
     // Servers that refuse fetch-by-commit (uploadpack.allowAnySHA1InWant off): full clone.
   }
-  await fsp.rm(dir, { recursive: true, force: true });
-  await fsp.mkdir(dir, { recursive: true });
-  try {
-    await git(["clone", "-q", "--no-checkout", "--", url, dir], { url });
-    await git(["checkout", "-q", sha], { cwd: dir });
-  } catch (err) {
-    throw new CliError(2, `Failed to fetch ${sha.slice(0, 12)} from ${url}: ${(err as Error).message}`);
+  if (!ok) {
+    await fsp.rm(dir, { recursive: true, force: true });
+    await fsp.mkdir(dir, { recursive: true });
+    try {
+      await git(["clone", "-q", "--no-checkout", "--", url, dir], { url });
+      await git(["checkout", "-q", "--detach", `${sha}^{commit}`], { cwd: dir });
+    } catch (err) {
+      throw new CliError(2, `Failed to fetch ${sha.slice(0, 12)} from ${url}: ${(err as Error).message}`);
+    }
   }
+  const head = await git(["rev-parse", "HEAD"], { cwd: dir });
+  if (head.toLowerCase() !== sha.toLowerCase()) throw new CliError(2, `Fetched ${head.slice(0, 12)} instead of ${sha.slice(0, 12)} from ${url}`);
 }
 
 /** Shallow checkout of one commit. */
@@ -137,9 +151,10 @@ export async function treeAt(dir: string, sub: string): Promise<string | null> {
 
 /** Head commit of `ref` on the remote and the tree id of `sub` there (blob-less shallow fetch). */
 export async function remoteTree(url: string, ref: string | null, sub: string): Promise<{ commit: string; tree: string | null }> {
+  assertSafeGitArgs(url, ref);
   const dir = await tempDir();
   try {
-    await git(["init", "-q", dir], {});
+    await git(["init", "-q", "--", dir], {});
     await git(["fetch", "-q", "--depth", "1", "--filter=blob:none", "--", url, ref ?? "HEAD"], { cwd: dir, url });
     const commit = await git(["rev-parse", "FETCH_HEAD"], { cwd: dir });
     let tree: string | null = null;

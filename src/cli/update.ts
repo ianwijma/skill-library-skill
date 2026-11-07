@@ -3,6 +3,7 @@ import { checkSkills, updateSkills, type UpdateRow } from "../core/update.ts";
 import { CliError, DIM, RESET, formatError, sanitizeMetadata } from "../lib/cli.ts";
 import { oldCommandGuard } from "./legacy.ts";
 import { parseFlags } from "./args.ts";
+import { pickAmbiguous } from "./remove.ts";
 import type { GlobalOpts } from "./index.ts";
 
 export async function runUpdate(args: string[], g: GlobalOpts, mode: "update" | "check"): Promise<number> {
@@ -16,6 +17,7 @@ export async function runUpdate(args: string[], g: GlobalOpts, mode: "update" | 
     global: f.booleans.has("global"),
     project: f.booleans.has("project"),
     skills: f.positionals,
+    ...(process.stdin.isTTY ? { chooseAmbiguous: pickAmbiguous } : {}),
   };
   try {
     const res = mode === "check" ? await checkSkills(opts) : await updateSkills(opts);
