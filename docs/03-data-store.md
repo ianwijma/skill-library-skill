@@ -1,104 +1,103 @@
-# 03 — Data Store
+# 03 — Data store
 
 ## Layout
 
 ```
-~/.local/share/skill-library/        (XDG data dir; override: SKILL_LIBRARY_DIR / --store)
-├── index.json                       metadata — authoritative for name/description
-├── skills/
-│   ├── 9f3a1c2b/                    one directory per skill, copied verbatim
-│   │   ├── SKILL.md                 skill entry point (what `path` points to)
-│   │   ├── scripts/                 sibling assets come along…
-│   │   │   └── tool.py              …so relative references keep working
-│   │   └── data/
-│   │       └── reference.csv
-│   └── 7d0e4f11/
-│       └── SKILL.md
-└── imports/                         undo journals (importer skill only)
-    └── <yyyy-MM-ddTHH-mm-ss>/       one dir per import run
-        └── journal.json             executed adds/updates + prior name/description
+~/.local/share/skill-library/          # or $SKILL_LIBRARY_DIR / --store
+  index.json
+  index.lock                           # only while writing
+  index.v1.json                        # backup kept after the v1 → v2 migration
+  skills/
+    react-best-practices-3f9c1a2e/     # <safe-slug(name)>-<first 8 hex of sha256(id)>
+      3f2a9c1d07e4/                    # git version: first 12 hex of the commit
+      8e01b7a4c2f9/
+    my-notes-a1b2c3d4/
+      h-5d41402abc4b/                  # local version: "h-" + first 12 hex of the content hash
 ```
 
-- The `imports/` subdirectory is created and consumed by the importer/undo
-  skills, not by the app; all app commands ignore it.
+A version folder is written once and never modified, except by
+`install --force` repairing a folder whose content no longer matches its hash.
+Old versions are kept (the store can't know which projects pin them);
+`remove -g` deletes a skill with all its versions.
 
-- Every skill lives in its own directory `skills/<id>/`, always containing a
-  `SKILL.md` (the entry point). `add --path` accepts either a skill **directory**
-  (copied wholesale, verbatim) or a bare `SKILL.md` file (stored as a single-file
-  skill). Because siblings travel with the skill, relative references like
-  `scripts/tool.py` resolve inside the store — no path rewriting, no staging.
+## Ids
 
-- Content is stored **verbatim** — no frontmatter stripping or rewriting. The
-  index carries the authoritative name/description, which may be curated versions
-  that differ from the file's own frontmatter.
-
-## `index.json` schema
-
-```json
-[
-  {
-    "id": "9f3a1c2b",
-    "name": "frontend-design",
-    "description": "Create distinctive, production-grade frontend interfaces. Use when building or styling web UI.",
-    "source": "/home/ian/.opencode/skills/frontend-design",
-    "addedAt": "2026-09-20T21:04:11.520Z",
-    "updatedAt": "2026-09-20T21:30:02.104Z",
-    "contentDir": "skills/9f3a1c2b"
-  }
-]
-```
-
-| Field | Contract |
+| Source | Id |
 |---|---|
-| `id` | 8 lowercase alphanumeric chars; generated at `add`; **never** changes (not even on `update --name`) |
-| `name` | lowercase-hyphen, ≤64 chars; user-supplied at `add`, mutable via `update` |
-| `description` | free text; the string Jev scores against — its quality determines matching quality |
-| `source` | where the content was imported from (internal only, not in output records) — lets the importer verify refreshes |
-| `addedAt` / `updatedAt` | ISO-8601 |
-| `contentDir` | store-relative path of the skill's directory (`skills/<id>`) |
+| GitHub (any transport) | `repo://github.com/<owner>/<repo>/<skill-name>` (lower-cased) |
+| Other git host | `repo://<host>/<repo-path>/<skill-name>` |
+| Folder inside the project (project scope only) | `local://<path-from-project-root>` |
+| Folder under `$HOME` | `home://<path-from-home>` |
+| Anything else | `path://<absolute-path>` |
 
-Output records are a **projection** of this: `{id, name, description, path, dir}`
-where `path` = `<store>/<contentDir>/SKILL.md` (what the LLM should Read) and
-`dir` = the skill's directory root (what `remove` deletes wholesale; handy for
-scripts that need to run sibling assets).
+For folder sources the id is the discovered skill folder, not the path given to
+`add`. Two folders in one source declaring the same name are refused.
 
-## ID generation
+## `index.json` (v2)
 
-- 8 chars from `crypto` randomness (lowercase a–z0–9).
-- On collision with an existing id, regenerate (loop; collision odds negligible).
-- Uniqueness is what allows duplicate names across skills without key conflicts —
-  though the importer flow keeps names unique in practice. `add` warns on a
-  duplicate name but does not block.
-
-## Write protocol (atomicity)
-
-Every mutation follows write-temp-then-rename, in the same directory:
-
+```jsonc
+{
+  "version": 2,
+  "skills": [{
+    "id": "repo://github.com/vercel-labs/agent-skills/react-best-practices",
+    "source": { "type": "git", "url": "https://github.com/vercel-labs/agent-skills.git",
+                "ref": null, "path": "skills/react-best-practices" },  // global follow target
+    "dir": "skills/react-best-practices-3f9c1a2e",
+    "versions": {
+      "3f2a9c1d07e4": { "commit": "3f2a…", "tree": "9b1c…", "hash": "sha256-…",
+                        "name": "react-best-practices", "description": "…", "addedAt": "…" }
+    },
+    "current": "3f2a9c1d07e4",
+    "global": true,
+    "agents": "all",
+    "addedAt": "…", "updatedAt": "…"
+  }]
+}
 ```
-write index.json.tmp            → fsync → rename over index.json
-stage skills/<id>.tmp/          → copy whole tree → rename over skills/<id>/
-                                  (update: old dir swapped out via skills/<id>.old)
+
+Name and description are per version, so a project pinned to an old version is
+scored on that version's description. `agents` here is global usage only.
+
+## `skill-library.json` (project, committed)
+
+```jsonc
+{
+  "version": 1,
+  "skills": {
+    "repo://github.com/vercel-labs/agent-skills/react-best-practices": {
+      "source": "https://github.com/vercel-labs/agent-skills.git",
+      "ref": null, "path": "skills/react-best-practices",
+      "commit": "3f2a…", "hash": "sha256-…", "agents": ["claude-code"]
+    },
+    "local://skills/foo": { "agents": "all" },
+    "home://my-skills/bar": { "source": "~/my-skills/bar", "hash": "sha256-…", "agents": "all" }
+  }
+}
 ```
 
-- Rename is atomic on the same filesystem → no torn index, even on crash mid-write.
-- `add` order: skill dir first, then index entry (a record always has content).
-- `remove` order: index entry first, then the skill dir (a dir without a record is
-  garbage, never a dangling record).
-- Import skips junk (`__pycache__`, `.git`, `node_modules`, `.DS_Store`); any other
-  non-regular file triggers a stderr warning and is skipped.
+Keys sorted, 2-space JSON, trailing newline. `local://` entries are read in
+place from the checkout.
 
-## Concurrency
+## Content hash
 
-No locking in v1. Assumption: single interactive user; the LLM runs commands
-sequentially. Atomic renames prevent corruption; last-writer-wins is acceptable.
-(Revisit only if background automation is added — see doc 07 future work.)
+Walk the skill folder (skip `.git`, `node_modules`, `__pycache__`, `.DS_Store`;
+regular files only); relative POSIX paths, UTF-8, sorted by byte value; per file
+feed `uint64-BE(len(path)) ‖ path ‖ uint64-BE(len(content)) ‖ content` into one
+SHA-256; written as `sha256-<hex>`. Git commands run with `core.autocrlf=false`.
 
-## Corruption & recovery
+## Writes
 
-- If `index.json` fails to parse: all commands exit 2 with
-  `error: index.json is corrupted — fix or restore <path>` and stop (never
-  silently rebuild, since name/description exist nowhere else).
-- Orphaned skill dirs (no index entry) are ignored by readers; `list` prints a
-  stderr warning when it detects any.
-- Backups: the importer stages every source it removes into the run dir
-  (`imports/<run>/removed-<name>/`) before deleting it (doc 06).
+Network work (clone, discovery, hashing) happens before the lock. Then
+`index.lock` is taken with `O_EXCL` (holds `pid@host`; a dead local holder is
+reclaimed, a foreign one is reported with exit 2), `index.json` is re-read, the
+staged folder is renamed into place, and `index.json` / `skill-library.json` are
+written to a temp file and renamed.
+
+## Migration from v1
+
+On first use of a v1 store (an array `index.json`): copy each skill into a new
+version folder, derive its id from the recorded source path (`home://`/`path://`
+only), keep the v1 name and description, drop copies of the old gateway and
+helper skills, and write the v2 index last. The v1 folders are kept next to
+`index.v1.json`, so the backup stays usable. A failure before the new index is
+written leaves the v1 store untouched.

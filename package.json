@@ -1,28 +1,63 @@
 {
   "name": "skill-library",
   "version": "0.1.0",
-  "description": "Skill library CLI: managed skill store + TypeSafe (Jev) catalog scoring",
+  "description": "A skill library for AI agents: skills load on demand through one query (vercel-labs/skills-compatible CLI)",
+  "keywords": [
+    "skills",
+    "agent-skills",
+    "ai-agents",
+    "claude-code",
+    "codex",
+    "opencode",
+    "cli"
+  ],
+  "homepage": "https://github.com/ianwijma/skill-library-skill#readme",
+  "bugs": {
+    "url": "https://github.com/ianwijma/skill-library-skill/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ianwijma/skill-library-skill.git"
+  },
+  "license": "MIT",
+  "author": "Ian Wijma",
   "type": "module",
-  "private": true,
   "engines": {
     "node": ">=22.18"
+  },
+  "main": "dist/index.js",
+  "types": "dist/api.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/api.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "skill-library": "dist/skill-library"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "ThirdPartyNotices.txt"
+  ],
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --banner:js=\"#!/usr/bin/env node\" --outfile=dist/skill-library && node -e \"require('fs').chmodSync('dist/skill-library', 0o755)\"",
+    "build": "node scripts/build.mjs",
     "start": "node src/index.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build && npm pack --dry-run"
   },
   "devDependencies": {
+    "@clack/prompts": "^1.8.1",
     "@types/node": "^22.18.0",
     "esbuild": "^0.28.2",
+    "picocolors": "^1.1.1",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
-  },
-  "dependencies": {
+    "vitest": "^5.1.0",
+    "yaml": "^2.9.1",
     "@typesafe-ai/sdk": "^0.6.0"
   }
 }

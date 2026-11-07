@@ -1,19 +1,16 @@
-export type ExitCode = 0 | 1 | 2;
+import { AsyncLocalStorage } from "node:async_hooks";
+import pc from "picocolors";
 
-export interface Globals {
-  store: string;
-  pretty: boolean;
-  returnContent: boolean;
-  verbose: boolean;
-}
-
+/** Error carrying the process exit code (1 = usage/validation, 2 = runtime). */
 export class CliError extends Error {
   readonly exitCode: 1 | 2;
+  readonly fix: string | undefined;
 
-  constructor(exitCode: 1 | 2, message: string) {
+  constructor(exitCode: 1 | 2, message: string, fix?: string) {
     super(message);
     this.name = "CliError";
     this.exitCode = exitCode;
+    this.fix = fix;
   }
 }
 
@@ -21,82 +18,51 @@ export function msgOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Render an error the way vercel's diagnostics do: the message, then the fix on its own line(s). */
+export function formatError(err: unknown): string {
+  if (err instanceof CliError) return err.fix ? `${err.message}\n${err.fix}` : err.message;
+  return msgOf(err);
+}
+
+const sinks = new AsyncLocalStorage<(message: string) => void>();
+
+/** Run `fn` with warnings routed to `sink` instead of stderr (per async context, so overlapping API calls stay separate). */
+export function withWarnSink<T>(sink: (message: string) => void, fn: () => Promise<T>): Promise<T> {
+  return sinks.run(sink, fn);
+}
+
 export function warn(message: string): void {
-  console.error(`warning: ${message}`);
+  const sink = sinks.getStore();
+  if (sink) sink(message);
+  else console.error(`${pc.yellow("warning:")} ${message}`);
 }
 
-export function printJson(value: unknown, pretty: boolean): void {
-  console.log(JSON.stringify(value, null, pretty ? 2 : undefined));
+/** Notices that must never reach stdout (JSON mode keeps stdout to one value). */
+export function note(message: string): void {
+  const sink = sinks.getStore();
+  if (sink) sink(message);
+  else console.error(message);
 }
 
-export type FlagKind = "string" | "boolean";
+// 256-color grays used by vercel's CLI — visible on light and dark backgrounds.
+export const RESET = "\x1b[0m";
+export const BOLD = "\x1b[1m";
+export const DIM = "\x1b[38;5;102m";
+export const TEXT = "\x1b[38;5;145m";
+export const CYAN = "\x1b[36m";
+export const YELLOW = "\x1b[33m";
 
-export interface ArgSpec {
-  flags?: Record<string, FlagKind>;
-  minPositionals?: number;
-  maxPositionals?: number;
-  positionalHint?: string;
+/** Strip terminal escapes from untrusted strings (port of vercel's sanitize.ts, MIT). */
+export function stripTerminalEscapes(str: string): string {
+  return str
+    .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b[P^_][\s\S]*?(?:\x1b\\)/g, "")
+    .replace(/\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, "")
+    .replace(/\x1b[\x20-\x7e]/g, "")
+    .replace(/[\x80-\x9f]/g, "")
+    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
 }
 
-export interface ParsedArgs {
-  positionals: string[];
-  values: Map<string, string>;
-  booleans: Set<string>;
-}
-
-export function parseArgs(argv: string[], spec: ArgSpec): ParsedArgs {
-  const flags = spec.flags ?? {};
-  const positionals: string[] = [];
-  const values = new Map<string, string>();
-  const booleans = new Set<string>();
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!;
-    if (arg === "--") {
-      for (let j = i + 1; j < argv.length; j++) positionals.push(argv[j]!);
-      break;
-    }
-    if (!arg.startsWith("--")) {
-      positionals.push(arg);
-      continue;
-    }
-    let name = arg.slice(2);
-    let inline: string | undefined;
-    const eq = name.indexOf("=");
-    if (eq !== -1) {
-      inline = name.slice(eq + 1);
-      name = name.slice(0, eq);
-    }
-    const kind = flags[name];
-    if (!kind) throw new CliError(1, `unknown flag '--${name}'`);
-    if (kind === "boolean") {
-      if (inline !== undefined) throw new CliError(1, `flag '--${name}' does not take a value`);
-      booleans.add(name);
-    } else {
-      const value = inline !== undefined ? inline : argv[++i];
-      if (value === undefined) throw new CliError(1, `flag '--${name}' requires a value`);
-      values.set(name, value);
-    }
-  }
-  const min = spec.minPositionals ?? 0;
-  const max = spec.maxPositionals ?? Infinity;
-  if (positionals.length < min) {
-    throw new CliError(1, `missing required argument: ${spec.positionalHint ?? "positional"}`);
-  }
-  if (positionals.length > max) {
-    const extra = positionals[max] ?? "";
-    throw new CliError(1, `unexpected argument '${extra}'${spec.positionalHint ? ` (expected ${spec.positionalHint})` : ""}`);
-  }
-  return { positionals, values, booleans };
-}
-
-export function requireFlag(values: Map<string, string>, name: string): string {
-  const value = values.get(name);
-  if (value === undefined) throw new CliError(1, `missing required flag --${name}`);
-  return value;
-}
-
-export function validateName(name: string): void {
-  if (name.length === 0 || name.length > 64 || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) {
-    throw new CliError(1, `--name must be lowercase-hyphen, at most 64 chars (got '${name}')`);
-  }
+export function sanitizeMetadata(str: string): string {
+  return stripTerminalEscapes(str).replace(/[\r\n]+/g, " ").trim();
 }

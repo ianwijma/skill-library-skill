@@ -1,36 +1,70 @@
 import { promises as fsp } from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { CliError, msgOf, warn, type Globals } from "./cli.ts";
-import { entryFilePath, indexPath, skillDirPath } from "./paths.ts";
+import { randomBytes } from "node:crypto";
+import { CliError, msgOf, warn } from "./cli.ts";
+import { SKIP_BASENAMES, hashSkillDir, hexOf } from "./hash.ts";
+import { indexPath, lockPath, skillsRoot } from "./paths.ts";
 
-export interface IndexEntry {
-  id: string;
+/** `"all"` = every agent; otherwise the agent ids the skill is for. */
+export type AgentsValue = "all" | string[];
+
+export interface SourceInfo {
+  type: "git" | "folder" | "file";
+  /** Clone URL (git) or absolute path (folder/file). */
+  url: string;
+  /** Branch/tag followed by update; null = default branch. A full SHA is fixed. */
+  ref: string | null;
+  /** Skill folder inside the repository ("" = repository root). Unused for local sources. */
+  path: string;
+}
+
+export interface VersionInfo {
+  commit?: string;
+  tree?: string;
+  hash: string;
   name: string;
   description: string;
-  source: string;
+  addedAt: string;
+}
+
+export interface StoreRecord {
+  id: string;
+  /** Global follow target (project operations follow their manifest entry instead). */
+  source: SourceInfo;
+  /** Skill folder relative to the store, e.g. "skills/react-best-practices-3f9c1a2e". */
+  dir: string;
+  versions: Record<string, VersionInfo>;
+  /** Version used in global scope. */
+  current: string;
+  global: boolean;
+  /** Global usage only; project assignments live in each skill-library.json. */
+  agents: AgentsValue;
   addedAt: string;
   updatedAt: string;
-  contentDir: string;
 }
 
-export interface OutRecord {
-  id: string;
-  name: string;
-  description: string;
-  path: string;
-  dir: string;
-  content?: string;
+export interface StoreIndex {
+  version: 2;
+  skills: StoreRecord[];
 }
 
-const SKIP_BASENAMES = new Set([".git", "node_modules", "__pycache__", ".DS_Store"]);
+export function isEnoent(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: string }).code === "ENOENT";
+}
 
-export async function loadIndex(store: string): Promise<IndexEntry[]> {
+export function now(): string {
+  return new Date().toISOString();
+}
+
+/** Read index.json as-is: a v2 index, a raw v1 array, or null when absent. */
+export async function readRawIndex(store: string): Promise<StoreIndex | unknown[] | null> {
   const file = indexPath(store);
   let text: string;
   try {
     text = await fsp.readFile(file, "utf8");
   } catch (err) {
-    if (isEnoent(err)) return [];
+    if (isEnoent(err)) return null;
     throw new CliError(2, `cannot read ${file}: ${msgOf(err)}`);
   }
   let data: unknown;
@@ -39,29 +73,44 @@ export async function loadIndex(store: string): Promise<IndexEntry[]> {
   } catch {
     throw new CliError(2, `index.json is corrupted — fix or restore ${file}`);
   }
-  if (!Array.isArray(data) || !data.every(isValidEntry)) {
-    throw new CliError(2, `index.json is corrupted — fix or restore ${file}`);
-  }
-  return data as IndexEntry[];
+  if (Array.isArray(data)) return data;
+  if (isIndex(data)) return data;
+  throw new CliError(2, `index.json is corrupted — fix or restore ${file}`);
 }
 
-function isValidEntry(entry: unknown): boolean {
-  if (typeof entry !== "object" || entry === null) return false;
-  const e = entry as Record<string, unknown>;
-  return typeof e.id === "string" && typeof e.name === "string" && typeof e.description === "string" && typeof e.contentDir === "string";
+function isIndex(data: unknown): data is StoreIndex {
+  if (typeof data !== "object" || data === null) return false;
+  const d = data as Record<string, unknown>;
+  return d.version === 2 && Array.isArray(d.skills) && d.skills.every(isRecord);
 }
 
-function isEnoent(err: unknown): boolean {
-  return typeof err === "object" && err !== null && (err as { code?: string }).code === "ENOENT";
+function isRecord(r: unknown): boolean {
+  if (typeof r !== "object" || r === null) return false;
+  const e = r as Record<string, unknown>;
+  return (
+    typeof e.id === "string" &&
+    typeof e.dir === "string" &&
+    typeof e.current === "string" &&
+    typeof e.versions === "object" &&
+    e.versions !== null &&
+    typeof e.source === "object" &&
+    e.source !== null
+  );
 }
 
-export async function saveIndex(store: string, entries: IndexEntry[]): Promise<void> {
-  await writeFileAtomic(indexPath(store), `${JSON.stringify(entries, null, 2)}\n`);
+export function emptyIndex(): StoreIndex {
+  return { version: 2, skills: [] };
+}
+
+export async function saveIndex(store: string, index: StoreIndex): Promise<void> {
+  index.skills.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  await writeFileAtomic(indexPath(store), `${JSON.stringify(index, null, 2)}\n`);
 }
 
 export async function writeFileAtomic(file: string, data: string): Promise<void> {
-  const tmp = `${file}.tmp`;
+  const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
   try {
+    await fsp.mkdir(path.dirname(file), { recursive: true });
     const fh = await fsp.open(tmp, "w");
     try {
       await fh.writeFile(data, "utf8");
@@ -76,86 +125,180 @@ export async function writeFileAtomic(file: string, data: string): Promise<void>
   }
 }
 
-export function findEntry(index: IndexEntry[], id: string): IndexEntry {
-  const entry = index.find((e) => e.id === id);
-  if (!entry) throw new CliError(1, `unknown skill id '${id}'`);
-  return entry;
+// ---------------------------------------------------------------------------
+// Lock
+// ---------------------------------------------------------------------------
+
+interface LockInfo {
+  pid: number;
+  host: string;
+  at: string;
+  token?: string;
 }
 
-export async function readContent(store: string, entry: IndexEntry): Promise<string | undefined> {
-  const file = entryFilePath(store, entry.contentDir);
+function pidAlive(pid: number): boolean {
   try {
-    return await fsp.readFile(file, "utf8");
+    process.kill(pid, 0);
+    return true;
   } catch (err) {
-    if (isEnoent(err)) return undefined;
-    throw new CliError(2, `cannot read ${file}: ${msgOf(err)}`);
+    return (err as { code?: string }).code === "EPERM";
   }
 }
 
-export async function projection(entry: IndexEntry, globals: Globals): Promise<OutRecord> {
-  const record: OutRecord = {
-    id: entry.id,
-    name: entry.name,
-    description: entry.description,
-    path: entryFilePath(globals.store, entry.contentDir),
-    dir: skillDirPath(globals.store, entry.contentDir),
-  };
-  if (globals.returnContent) {
-    const content = await readContent(globals.store, entry);
-    if (content !== undefined) record.content = content;
-  }
-  return record;
+const LOCK_WAIT_MS = 15_000;
+
+/** Take index.lock, run `fn`, release. Waits while a live local holder has it. */
+export async function withLock<T>(store: string, fn: () => Promise<T>): Promise<T> {
+  await fsp.mkdir(store, { recursive: true }).catch((err) => {
+    throw new CliError(2, `cannot create store directory ${store}: ${msgOf(err)}`);
+  });
+  return withFileLock(lockPath(store), fn);
 }
 
-export interface ResolvedSource {
-  kind: "file" | "dir";
-  abs: string;
-}
-
-export async function resolveSource(raw: string): Promise<ResolvedSource> {
-  const abs = path.resolve(raw);
-  let st: Awaited<ReturnType<typeof fsp.stat>>;
+async function readHolder(file: string): Promise<LockInfo | null | "gone"> {
   try {
-    st = await fsp.stat(abs);
+    return JSON.parse(await fsp.readFile(file, "utf8")) as LockInfo;
+  } catch (err) {
+    return isEnoent(err) ? "gone" : null;
+  }
+}
+
+/**
+ * Remove a dead holder's lock. Reclamation is serialised by an atomic `mkdir` guard and the lock
+ * is re-read under it, so a contender that decided "stale" earlier can never delete a newer,
+ * live owner's lock.
+ */
+async function reclaimStale(file: string, stale: LockInfo): Promise<void> {
+  const guard = `${file}.reclaim`;
+  try {
+    await fsp.mkdir(guard);
+  } catch (err) {
+    if ((err as { code?: string }).code !== "EEXIST") throw err;
+    // Another process is reclaiming. Never remove its guard (fail closed): the caller waits,
+    // and an abandoned guard is reported with the path to delete once the wait runs out.
+    return;
+  }
+  try {
+    const now = await readHolder(file);
+    if (now !== null && now !== "gone" && now.token === stale.token && now.pid === stale.pid) await fsp.rm(file, { force: true });
+  } finally {
+    await fsp.rmdir(guard).catch(() => {});
+  }
+}
+
+/** Lock file holding pid@host and a unique token. Dead local holders are reclaimed; foreign ones fail (exit 2). */
+export async function withFileLock<T>(file: string, fn: () => Promise<T>, waitMs: number = LOCK_WAIT_MS): Promise<T> {
+  const mine: LockInfo = { pid: process.pid, host: os.hostname(), at: now(), token: randomBytes(12).toString("hex") };
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    // Write the holder info first, then hard-link it into place: the lock never exists empty.
+    const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}`;
+    try {
+      await fsp.writeFile(tmp, JSON.stringify(mine));
+      await fsp.link(tmp, file);
+      await fsp.rm(tmp, { force: true });
+      break;
+    } catch (err) {
+      await fsp.rm(tmp, { force: true }).catch(() => {});
+      if ((err as { code?: string }).code !== "EEXIST") {
+        throw new CliError(2, `cannot create ${file}: ${msgOf(err)}`);
+      }
+    }
+    const holder = await readHolder(file);
+    if (holder === "gone") continue; // released between our attempt and the read: try again
+    if (holder && holder.host === os.hostname() && typeof holder.pid === "number" && !pidAlive(holder.pid)) {
+      if (Date.now() >= deadline) {
+        throw new CliError(2, `${path.basename(file)} is held by a crashed process and could not be reclaimed; delete ${file} and ${file}.reclaim if no skill-library is running`);
+      }
+      await reclaimStale(file, holder);
+      await new Promise((r) => setTimeout(r, 25));
+      continue;
+    }
+    if (holder && holder.host === os.hostname() && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
+      continue;
+    }
+    const who = holder ? `${holder.pid}@${holder.host}` : "an unknown process";
+    throw new CliError(2, `${path.basename(file)} held by ${who}; delete ${file} if no skill-library is running`);
+  }
+  try {
+    return await fn();
+  } finally {
+    // Release only our own lock.
+    const holder = await readHolder(file);
+    if (holder !== null && holder !== "gone" && holder.token === mine.token) await fsp.rm(file, { force: true }).catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Versions and content
+// ---------------------------------------------------------------------------
+
+export function findRecord(index: StoreIndex, id: string): StoreRecord | undefined {
+  return index.skills.find((r) => r.id === id);
+}
+
+/** Version key for content: git → 12 hex of the commit, local → "h-" + 12 hex of the hash. */
+export function versionKeyFor(record: StoreRecord | undefined, info: { commit?: string; hash: string }): string {
+  const full = info.commit ?? hexOf(info.hash);
+  const prefix = info.commit ? "" : "h-";
+  for (const len of [12, 16, 24, full.length]) {
+    const key = `${prefix}${full.slice(0, len)}`;
+    const existing = record?.versions[key];
+    if (!existing || sameVersion(existing, info)) return key;
+  }
+  return `${prefix}${full}`;
+}
+
+export function sameVersion(v: VersionInfo, info: { commit?: string; hash: string }): boolean {
+  if (info.commit !== undefined) return v.commit === info.commit && v.hash === info.hash;
+  return v.commit === undefined && v.hash === info.hash;
+}
+
+/** The version a pin (commit for git, hash for local) points at, if it is in the record. */
+export function findVersion(record: StoreRecord, pin: { commit?: string; hash?: string }): string | undefined {
+  for (const [key, v] of Object.entries(record.versions)) {
+    if (pin.commit !== undefined) {
+      if (v.commit === pin.commit && (pin.hash === undefined || v.hash === pin.hash)) return key;
+    } else if (pin.hash !== undefined && v.commit === undefined && v.hash === pin.hash) {
+      return key;
+    }
+  }
+  return undefined;
+}
+
+export function versionDir(store: string, record: StoreRecord, key: string): string {
+  return path.join(store, record.dir, key);
+}
+
+export function versionSkillMd(store: string, record: StoreRecord, key: string): string {
+  return path.join(versionDir(store, record, key), "SKILL.md");
+}
+
+export async function exists(p: string): Promise<boolean> {
+  try {
+    await fsp.access(p);
+    return true;
   } catch {
-    throw new CliError(1, `--path not found: ${abs}`);
+    return false;
   }
-  if (st.isFile()) {
-    try {
-      await fsp.access(abs, fsp.constants.R_OK);
-    } catch {
-      throw new CliError(1, `--path not readable: ${abs}`);
-    }
-    return { kind: "file", abs };
-  }
-  if (st.isDirectory()) {
-    try {
-      await fsp.access(entryFilePath(abs, ""), fsp.constants.R_OK);
-    } catch {
-      throw new CliError(1, `--path directory has no readable SKILL.md: ${abs}`);
-    }
-    return { kind: "dir", abs };
-  }
-  throw new CliError(1, `--path not a file or directory: ${abs}`);
 }
 
-export async function stageSkillDir(source: ResolvedSource, store: string, id: string): Promise<string> {
-  const contentDir = `skills/${id}`;
-  const dest = skillDirPath(store, contentDir);
-  const tmp = `${dest}.tmp`;
-  try {
-    await fsp.rm(tmp, { recursive: true, force: true });
-    if (source.kind === "dir") {
-      await copyTree(source.abs, tmp);
-    } else {
-      await fsp.mkdir(tmp, { recursive: true });
-      await fsp.copyFile(source.abs, path.join(tmp, "SKILL.md"));
-    }
-  } catch (err) {
-    await fsp.rm(tmp, { recursive: true, force: true }).catch(() => {});
-    throw new CliError(2, `cannot import ${source.abs}: ${msgOf(err)}`);
+/** Fresh staging folder inside the store (same filesystem, so renames are atomic). */
+export async function stagingDir(store: string): Promise<string> {
+  const dir = path.join(store, ".staging", `${process.pid}-${randomBytes(6).toString("hex")}`);
+  await fsp.mkdir(path.dirname(dir), { recursive: true });
+  return dir;
+}
+
+/** Copy a skill folder (or a single markdown file as SKILL.md) into `dest`, skipping junk. */
+export async function copySkill(src: string, dest: string, kind: "folder" | "file"): Promise<void> {
+  if (kind === "file") {
+    await fsp.mkdir(dest, { recursive: true });
+    await fsp.copyFile(src, path.join(dest, "SKILL.md"));
+    return;
   }
-  return contentDir;
+  await copyTree(src, dest);
 }
 
 async function copyTree(src: string, dest: string): Promise<void> {
@@ -167,69 +310,80 @@ async function copyTree(src: string, dest: string): Promise<void> {
     const d = path.join(dest, e.name);
     if (e.isDirectory()) await copyTree(s, d);
     else if (e.isFile()) await fsp.copyFile(s, d);
-    else warn(`skipped non-regular file during import: ${s}`);
+    else warn(`skipped non-regular file: ${s}`);
   }
 }
 
-export async function commitSkillDir(store: string, contentDir: string, replace = false): Promise<void> {
-  const dest = skillDirPath(store, contentDir);
-  const tmp = `${dest}.tmp`;
+/**
+ * Move a staged copy into place as a version folder. If the version folder already
+ * exists (same full version), the staged copy is discarded.
+ */
+export async function commitVersionDir(staged: string, dest: string): Promise<void> {
   try {
-    await fsp.access(tmp);
-  } catch {
-    throw new CliError(2, `cannot write ${dest}: staged copy missing`);
-  }
-  try {
-    if (replace) {
-      const old = `${dest}.old`;
-      await fsp.rm(old, { recursive: true, force: true });
-      let hadOld = false;
-      try {
-        await fsp.rename(dest, old);
-        hadOld = true;
-      } catch (err) {
-        if (!isEnoent(err)) throw err;
-      }
-      try {
-        await fsp.rename(tmp, dest);
-      } catch (err) {
-        if (hadOld) await fsp.rename(old, dest).catch(() => {});
-        throw err;
-      }
-      if (hadOld) await fsp.rm(old, { recursive: true, force: true }).catch(() => {});
-    } else {
-      await fsp.rename(tmp, dest);
+    if (await exists(dest)) {
+      await fsp.rm(staged, { recursive: true, force: true });
+      return;
     }
+    await fsp.mkdir(path.dirname(dest), { recursive: true });
+    await fsp.rename(staged, dest);
   } catch (err) {
-    await fsp.rm(tmp, { recursive: true, force: true }).catch(() => {});
+    await fsp.rm(staged, { recursive: true, force: true }).catch(() => {});
     throw new CliError(2, `cannot write ${dest}: ${msgOf(err)}`);
   }
 }
 
-export async function listSkillFiles(store: string, entry: IndexEntry): Promise<string[]> {
-  const root = skillDirPath(store, entry.contentDir);
-  const files: string[] = [];
-  async function walk(rel: string): Promise<void> {
-    const entries = await fsp.readdir(path.join(root, rel), { withFileTypes: true });
-    for (const e of entries) {
-      const relPath = rel === "" ? e.name : `${rel}/${e.name}`;
-      if (e.isDirectory()) await walk(relPath);
-      else if (e.isFile()) files.push(relPath);
-    }
+/**
+ * Put a verified staged copy at `dest` (caller holds the store lock). An existing folder is kept
+ * only when it is intact (regular SKILL.md and the same content hash); otherwise it is replaced
+ * with rollback. Returns what happened.
+ */
+export async function placeVersion(staged: string, dest: string, hash: string): Promise<"kept" | "placed" | "repaired"> {
+  if (!(await exists(dest))) {
+    await commitVersionDir(staged, dest);
+    return "placed";
   }
-  try {
-    await walk("");
-  } catch {
-    return [];
+  const md = await fsp.lstat(path.join(dest, "SKILL.md")).catch(() => null);
+  if (md?.isFile() && (await hashSkillDir(dest)) === hash) {
+    await fsp.rm(staged, { recursive: true, force: true }).catch(() => {});
+    return "kept";
   }
-  return files.sort();
+  await replaceVersionDir(staged, dest);
+  return "repaired";
 }
 
-export async function removeSkillDir(store: string, contentDir: string): Promise<void> {
-  const dir = skillDirPath(store, contentDir);
+/** Repair: swap a staged copy over an existing version folder, rolling back on failure. */
+export async function replaceVersionDir(staged: string, dest: string): Promise<void> {
+  const backup = `${dest}.old-${randomBytes(4).toString("hex")}`;
+  let hadOld = false;
+  try {
+    try {
+      await fsp.rename(dest, backup);
+      hadOld = true;
+    } catch (err) {
+      if (!isEnoent(err)) throw err;
+    }
+    try {
+      await fsp.mkdir(path.dirname(dest), { recursive: true });
+      await fsp.rename(staged, dest);
+    } catch (err) {
+      if (hadOld) await fsp.rename(backup, dest).catch(() => {});
+      throw err;
+    }
+    if (hadOld) await fsp.rm(backup, { recursive: true, force: true }).catch(() => {});
+  } catch (err) {
+    await fsp.rm(staged, { recursive: true, force: true }).catch(() => {});
+    throw new CliError(2, `cannot replace ${dest}: ${msgOf(err)}`);
+  }
+}
+
+export async function removeDir(dir: string): Promise<void> {
   try {
     await fsp.rm(dir, { recursive: true, force: true });
   } catch (err) {
     throw new CliError(2, `cannot delete ${dir}: ${msgOf(err)}`);
   }
+}
+
+export function storeSkillsRoot(store: string): string {
+  return skillsRoot(store);
 }
