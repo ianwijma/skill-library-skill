@@ -7,7 +7,7 @@ import { loadProject, mutateManifest, type Project } from "../lib/manifest.ts";
 import { requireStagedSkill } from "../lib/discover.ts";
 import { isCommitSha } from "../lib/source.ts";
 import {
-  commitVersionDir,
+  placeVersion,
   copySkill,
   exists,
   findRecord,
@@ -177,7 +177,7 @@ export async function updateSkills(opts: UpdateOptions = {}): Promise<UpdateResu
         const info = { commit, hash };
         const key = findVersion(record, info) ?? versionKeyFor(record, info);
         const dest = versionDir(store, record, key);
-        await commitVersionDir(stagedDir, dest);
+        await placeVersion(stagedDir, dest, hash);
         record.versions[key] ??= {
           commit,
           ...(tree ? { tree } : {}),

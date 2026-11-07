@@ -10,12 +10,11 @@ import { isReservedSkillName } from "../lib/migrate.ts";
 import { tildify, toPosix } from "../lib/paths.ts";
 import { parseSource, type ParsedSource } from "../lib/source.ts";
 import {
-  commitVersionDir,
+  placeVersion,
   copySkill,
   exists,
   findRecord,
   now,
-  replaceVersionDir,
   stagingDir,
   versionDir,
   versionKeyFor,
@@ -289,14 +288,7 @@ async function commitOne(store: string, index: StoreIndex, p: Prepared, scope: "
   }
   const key = versionKeyFor(record, versionInfo);
   const dest = versionDir(store, record, key);
-  const intact = record.versions[key] !== undefined && (await exists(path.join(dest, "SKILL.md"))) && (await hashSkillDir(dest)) === p.hash;
-  if (intact) {
-    await fsp.rm(p.staged!, { recursive: true, force: true }).catch(() => {});
-  } else if (await exists(dest)) {
-    await replaceVersionDir(p.staged!, dest); // incomplete or damaged version folder: repair
-  } else {
-    await commitVersionDir(p.staged!, dest);
-  }
+  await placeVersion(p.staged!, dest, p.hash!);
   p.staged = null;
   record.versions[key] ??= {
     ...(p.commit ? { commit: p.commit } : {}),

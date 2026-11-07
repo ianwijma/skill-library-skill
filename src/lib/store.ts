@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { CliError, msgOf, warn } from "./cli.ts";
-import { SKIP_BASENAMES, hexOf } from "./hash.ts";
+import { SKIP_BASENAMES, hashSkillDir, hexOf } from "./hash.ts";
 import { indexPath, lockPath, skillsRoot } from "./paths.ts";
 
 /** `"all"` = every agent; otherwise the agent ids the skill is for. */
@@ -174,9 +174,8 @@ async function reclaimStale(file: string, stale: LockInfo): Promise<void> {
     await fsp.mkdir(guard);
   } catch (err) {
     if ((err as { code?: string }).code !== "EEXIST") throw err;
-    // Another process is reclaiming; a guard left by a crash is cleared after a few seconds.
-    const st = await fsp.stat(guard).catch(() => null);
-    if (st && Date.now() - st.mtimeMs > 5_000) await fsp.rmdir(guard).catch(() => {});
+    // Another process is reclaiming. Never remove its guard (fail closed): the caller waits,
+    // and an abandoned guard is reported with the path to delete once the wait runs out.
     return;
   }
   try {
@@ -188,9 +187,9 @@ async function reclaimStale(file: string, stale: LockInfo): Promise<void> {
 }
 
 /** Lock file holding pid@host and a unique token. Dead local holders are reclaimed; foreign ones fail (exit 2). */
-export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promise<T> {
+export async function withFileLock<T>(file: string, fn: () => Promise<T>, waitMs: number = LOCK_WAIT_MS): Promise<T> {
   const mine: LockInfo = { pid: process.pid, host: os.hostname(), at: now(), token: randomBytes(12).toString("hex") };
-  const deadline = Date.now() + LOCK_WAIT_MS;
+  const deadline = Date.now() + waitMs;
   for (;;) {
     // Write the holder info first, then hard-link it into place: the lock never exists empty.
     const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}`;
@@ -208,8 +207,11 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
     const holder = await readHolder(file);
     if (holder === "gone") continue; // released between our attempt and the read: try again
     if (holder && holder.host === os.hostname() && typeof holder.pid === "number" && !pidAlive(holder.pid)) {
+      if (Date.now() >= deadline) {
+        throw new CliError(2, `${path.basename(file)} is held by a crashed process and could not be reclaimed; delete ${file} and ${file}.reclaim if no skill-library is running`);
+      }
       await reclaimStale(file, holder);
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 25));
       continue;
     }
     if (holder && holder.host === os.hostname() && Date.now() < deadline) {
@@ -328,6 +330,25 @@ export async function commitVersionDir(staged: string, dest: string): Promise<vo
     await fsp.rm(staged, { recursive: true, force: true }).catch(() => {});
     throw new CliError(2, `cannot write ${dest}: ${msgOf(err)}`);
   }
+}
+
+/**
+ * Put a verified staged copy at `dest` (caller holds the store lock). An existing folder is kept
+ * only when it is intact (regular SKILL.md and the same content hash); otherwise it is replaced
+ * with rollback. Returns what happened.
+ */
+export async function placeVersion(staged: string, dest: string, hash: string): Promise<"kept" | "placed" | "repaired"> {
+  if (!(await exists(dest))) {
+    await commitVersionDir(staged, dest);
+    return "placed";
+  }
+  const md = await fsp.lstat(path.join(dest, "SKILL.md")).catch(() => null);
+  if (md?.isFile() && (await hashSkillDir(dest)) === hash) {
+    await fsp.rm(staged, { recursive: true, force: true }).catch(() => {});
+    return "kept";
+  }
+  await replaceVersionDir(staged, dest);
+  return "repaired";
 }
 
 /** Repair: swap a staged copy over an existing version folder, rolling back on failure. */

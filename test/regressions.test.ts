@@ -316,3 +316,52 @@ describe("second review", () => {
     expect(broken.stderr).toContain("not valid JSON");
   });
 });
+
+describe("third review", () => {
+  test("an abandoned reclaim guard is never removed automatically; contenders fail closed", async () => {
+    const { withFileLock } = await import("../src/lib/store.ts");
+    const sb = await sandbox();
+    const os = await import("node:os");
+    const file = path.join(sb.root, "y.lock");
+    await fsp.writeFile(file, JSON.stringify({ pid: 2 ** 22 + 54321, host: os.hostname(), at: "", token: "dead" }));
+    await fsp.mkdir(`${file}.reclaim`);
+    const old = new Date(Date.now() - 60_000);
+    await fsp.utimes(`${file}.reclaim`, old, old);
+    let entered = 0;
+    const results = await Promise.allSettled(
+      [0, 1].map(() =>
+        withFileLock(
+          file,
+          async () => {
+            entered++;
+          },
+          300,
+        ),
+      ),
+    );
+    expect(entered).toBe(0);
+    for (const r of results) {
+      expect(r.status).toBe("rejected");
+      expect(String((r as PromiseRejectedResult).reason)).toContain("could not be reclaimed");
+    }
+    await fsp.access(`${file}.reclaim`);
+    await fsp.access(file);
+  });
+
+  test("update never advances to a damaged version already cached by another scope", async () => {
+    const sb = await sandbox();
+    const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "v1") });
+    const dir = await project(sb);
+    await run(sb, ["add", repo.url, "-g", "-y"]);
+    const c2 = await repo.commit({ "SKILL.md": skillMd("solo", "v2") });
+    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    const index = await readJson(path.join(sb.store, "index.json"));
+    const rec = index.skills[0];
+    await fsp.rm(path.join(sb.store, rec.dir, c2.slice(0, 12), "SKILL.md"));
+    const u = await run(sb, ["update", "-g", "-y"]);
+    expect(u.code).toBe(0);
+    const rows = JSON.parse((await run(sb, ["ls", "-g", "--json"])).stdout);
+    expect(rows[0].status).toBe("tracked");
+    expect(await fsp.readFile(path.join(rows[0].path, "SKILL.md"), "utf8")).toContain("v2");
+  });
+});

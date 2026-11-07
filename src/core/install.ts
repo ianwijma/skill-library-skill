@@ -8,13 +8,12 @@ import { skillDirFor } from "../lib/ids.ts";
 import { loadProject, type ManifestEntry } from "../lib/manifest.ts";
 import { expandHome } from "../lib/paths.ts";
 import {
-  commitVersionDir,
+  placeVersion,
   copySkill,
   exists,
   findRecord,
   findVersion,
   now,
-  replaceVersionDir,
   stagingDir,
   versionDir,
   versionKeyFor,
@@ -203,9 +202,8 @@ async function place(store: string, index: StoreIndex, id: string, entry: Manife
   const info = { ...(entry.commit !== undefined ? { commit: entry.commit } : {}), hash: f.hash };
   const key = findVersion(record, info) ?? versionKeyFor(record, info);
   const dest = versionDir(store, record, key);
-  // Re-check under the lock: anything already at `dest` is replaced (with rollback), never trusted.
-  if (await exists(dest)) await replaceVersionDir(f.staged, dest);
-  else await commitVersionDir(f.staged, dest);
+  // Re-check under the lock: an existing folder is kept only if intact, else replaced with rollback.
+  await placeVersion(f.staged, dest, f.hash);
   record.versions[key] ??= {
     ...(entry.commit !== undefined ? { commit: entry.commit } : {}),
     ...(f.tree ? { tree: f.tree } : {}),
