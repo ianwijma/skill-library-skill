@@ -1,7 +1,6 @@
 import { querySkills } from "../core/query.ts";
 import { CliError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { parseFlags } from "./args.ts";
-import { oldCommandGuard } from "./legacy.ts";
 import type { GlobalOpts } from "./index.ts";
 
 async function readStdin(): Promise<string> {
@@ -24,7 +23,6 @@ function parseTop(raw: string): number {
 
 /** `query` keeps its own exit codes: 0 ok, 1 usage (incl. invalid agent), 2 runtime. */
 export async function runQuery(args: string[], g: GlobalOpts): Promise<number> {
-  oldCommandGuard("query", args);
   const f = parseFlags(args, {
     booleans: { json: ["--json"] },
     values: { agent: ["-a", "--agent"], threshold: ["--threshold"], top: ["--top"] },

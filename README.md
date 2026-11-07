@@ -74,26 +74,6 @@ library; when both have a skill with the same name, the project's wins.
 `query -a codex`. Skills without `-a` are for every agent. Each agent passes its
 own id; an unknown id prints the valid list.
 
-## Upgrading from the `npx skills add` install
-
-Earlier versions were installed with `npx skills add ianwijma/skill-library-skill`,
-which put the gateway and eight helper skills into your agent folders. Upgrade in
-this order:
-
-```sh
-# 1. Let vercel's CLI forget the old install (it force-deletes these folders,
-#    so do this before the new gateway exists).
-npx skills remove -g skill-library skill-library-add skill-library-get skill-library-list \
-  skill-library-update skill-library-remove skill-library-query skill-importer skill-importer-undo -y
-# 2. Install the CLI.
-npm i -g skill-library
-# 3. Any add places the new gateway (re-adding a skill you already have is fine).
-skill-library add <any source> -g
-```
-
-Your existing library migrates automatically on first use (the old index is kept
-as `index.v1.json`). Agents installed later get the gateway on the next `add`.
-
 ## Programmatic API
 
 ```ts

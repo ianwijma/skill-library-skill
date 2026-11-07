@@ -4,14 +4,12 @@ import { agentIds } from "../lib/agents.ts";
 import { CliError } from "../lib/cli.ts";
 import { filterSkills, parseSkillFile } from "../lib/discover.ts";
 import { loadProject, type ManifestEntry, type Project } from "../lib/manifest.ts";
-import { openIndex } from "../lib/migrate.ts";
 import { resolveStore } from "../lib/paths.ts";
 import {
-  emptyIndex,
   exists,
   findRecord,
   findVersion,
-  readRawIndex,
+  openIndex,
   saveIndex,
   versionDir,
   withLock,
@@ -36,12 +34,10 @@ export function ctxOf(opts: BaseOptions): Ctx {
   return { cwd: path.resolve(opts.cwd ?? process.cwd()), store: resolveStore(opts.store) };
 }
 
-/** Migrate if needed, then run `fn` on the index under the store lock and save it. */
+/** Run `fn` on the index under the store lock and save it. */
 export async function mutateIndex<T>(store: string, fn: (index: StoreIndex) => Promise<T>): Promise<T> {
-  await openIndex(store);
   return withLock(store, async () => {
-    const raw = await readRawIndex(store);
-    const index = raw === null || Array.isArray(raw) ? emptyIndex() : raw;
+    const index = await openIndex(store);
     const out = await fn(index);
     await saveIndex(store, index);
     return out;

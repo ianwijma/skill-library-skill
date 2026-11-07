@@ -64,11 +64,6 @@ archives, skills.sh packs, Notion and GitLab `/-/tree/` URLs print
 `… not supported by skill-library yet` and exit 1. Private GitHub repos use
 `GITHUB_TOKEN` / `GH_TOKEN` (sent only to github.com, never on the command line).
 
-## Old commands
-
-`get <id>`, `update <id> --name/--description/--path`, `add --name/--description/--path`,
-`--pretty`, `--return-content` print their replacement and exit 1 without changing anything.
-
 ## Exit codes
 
 vercel's for the vercel commands (`remove` with no match → 0, `check` with updates → 1,

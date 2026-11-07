@@ -162,7 +162,7 @@ describe("selectors and reserved names", () => {
     expect((await readJson(path.join(sb.store, "index.json"))).skills.map((s: any) => s.id)).toContain(lid);
   });
 
-  test("a bare gateway or helper markdown file is never stored", async () => {
+  test("a bare gateway or reserved-name markdown file is never stored", async () => {
     const sb = await sandbox();
     await writeFiles(path.join(sb.root, "f"), { "gw.md": skillMd("skill-library", "gateway"), "h.md": skillMd("skill-library-get", "helper") });
     for (const f of ["gw.md", "h.md"]) {

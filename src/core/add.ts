@@ -4,9 +4,8 @@ import { CliError, msgOf, note } from "../lib/cli.ts";
 import { discoverSkills, filterSkills, parseSkillFile, requireStagedSkill, type DiscoveredSkill } from "../lib/discover.ts";
 import { cleanup, cloneRepo, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
-import { gitSkillId, localSkillId, skillDirFor } from "../lib/ids.ts";
+import { gitSkillId, isReservedSkillName, localSkillId, skillDirFor } from "../lib/ids.ts";
 import { loadProject, mutateManifest, type ManifestEntry, type Project } from "../lib/manifest.ts";
-import { isReservedSkillName } from "../lib/migrate.ts";
 import { tildify, toPosix } from "../lib/paths.ts";
 import { parseSource, type ParsedSource } from "../lib/source.ts";
 import {

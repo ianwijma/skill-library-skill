@@ -175,10 +175,4 @@ describe("query", () => {
     expect(nokey.stderr).toContain("TYPESAFE_API_KEY is not set");
   });
 
-  test("old query flags are refused with a pointer", async () => {
-    const sb = await sandbox();
-    const res = await run(sb, ["query", "task", "--return-content"]);
-    expect(res.code).toBe(1);
-    expect(res.stderr).toContain("--return-content is no longer supported");
-  });
 });

@@ -5,6 +5,11 @@ import { isInside, toPosix } from "./paths.ts";
 
 export const ID_PREFIXES = ["repo://", "local://", "home://", "path://"] as const;
 
+/** The gateway's own name and its namespace; never stored. */
+export function isReservedSkillName(name: string): boolean {
+  return name === "skill-library" || name.startsWith("skill-library-");
+}
+
 export function isId(value: string): boolean {
   return ID_PREFIXES.some((p) => value.startsWith(p));
 }

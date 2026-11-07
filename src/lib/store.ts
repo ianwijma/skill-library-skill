@@ -45,7 +45,7 @@ export interface StoreRecord {
 }
 
 export interface StoreIndex {
-  version: 2;
+  version: 1;
   skills: StoreRecord[];
 }
 
@@ -57,14 +57,14 @@ export function now(): string {
   return new Date().toISOString();
 }
 
-/** Read index.json as-is: a v2 index, a raw v1 array, or null when absent. */
-export async function readRawIndex(store: string): Promise<StoreIndex | unknown[] | null> {
+/** Read index.json; an absent file is an empty index. */
+export async function openIndex(store: string): Promise<StoreIndex> {
   const file = indexPath(store);
   let text: string;
   try {
     text = await fsp.readFile(file, "utf8");
   } catch (err) {
-    if (isEnoent(err)) return null;
+    if (isEnoent(err)) return emptyIndex();
     throw new CliError(2, `cannot read ${file}: ${msgOf(err)}`);
   }
   let data: unknown;
@@ -73,7 +73,6 @@ export async function readRawIndex(store: string): Promise<StoreIndex | unknown[
   } catch {
     throw new CliError(2, `index.json is corrupted — fix or restore ${file}`);
   }
-  if (Array.isArray(data)) return data;
   if (isIndex(data)) return data;
   throw new CliError(2, `index.json is corrupted — fix or restore ${file}`);
 }
@@ -81,7 +80,7 @@ export async function readRawIndex(store: string): Promise<StoreIndex | unknown[
 function isIndex(data: unknown): data is StoreIndex {
   if (typeof data !== "object" || data === null) return false;
   const d = data as Record<string, unknown>;
-  return d.version === 2 && Array.isArray(d.skills) && d.skills.every(isRecord);
+  return d.version === 1 && Array.isArray(d.skills) && d.skills.every(isRecord);
 }
 
 function isRecord(r: unknown): boolean {
@@ -99,7 +98,7 @@ function isRecord(r: unknown): boolean {
 }
 
 export function emptyIndex(): StoreIndex {
-  return { version: 2, skills: [] };
+  return { version: 1, skills: [] };
 }
 
 export async function saveIndex(store: string, index: StoreIndex): Promise<void> {

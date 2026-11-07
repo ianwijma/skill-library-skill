@@ -5,7 +5,7 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { CliError, sanitizeMetadata, warn } from "./cli.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
-import { isReservedSkillName } from "./migrate.ts";
+import { isReservedSkillName } from "./ids.ts";
 import { getAgents } from "./agents.ts";
 
 export interface DiscoveredSkill {
@@ -107,7 +107,7 @@ async function findSkillDirs(dir: string, depth = 0, maxDepth = 5): Promise<stri
 
 export interface DiscoverOptions {
   fullDepth?: boolean;
-  /** Keep the gateway and retired helper skills (used by `use`). */
+  /** Keep skills with reserved names, i.e. the gateway (used by `use`). */
   includeReserved?: boolean;
 }
 

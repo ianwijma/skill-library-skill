@@ -16,9 +16,9 @@ import {
   stagingDir,
   versionDir,
   versionKeyFor,
+  openIndex,
 } from "../lib/store.ts";
 import { ctxOf, mutateIndex, resolveSelectors, type BaseOptions } from "./context.ts";
-import { openIndex } from "../lib/migrate.ts";
 
 export interface UpdateOptions extends BaseOptions {
   /** Skill names or ids; empty = all in scope. */

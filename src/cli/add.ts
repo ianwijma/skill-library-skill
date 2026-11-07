@@ -9,7 +9,6 @@ import { placeGateway } from "../lib/gateway.ts";
 import { loadProject } from "../lib/manifest.ts";
 import type { AgentsValue } from "../lib/store.ts";
 import { parseFlags } from "./args.ts";
-import { oldCommandGuard } from "./legacy.ts";
 import { showLogo } from "./ui.ts";
 import type { GlobalOpts } from "./index.ts";
 
@@ -39,7 +38,6 @@ function jsonRow(r: AddedSkill): Record<string, unknown> {
 }
 
 export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
-  oldCommandGuard("add", args);
   const f = parseFlags(args, {
     booleans: {
       global: ["-g", "--global"],
@@ -161,7 +159,6 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   if (!result.cancelled && (result.gatewayOnly || result.skills.some((r) => r.status === "installed"))) {
     const gw = await placeGateway(placeAgents);
     if (gw.updated.length > 0) note(`Updated skill-library gateway for ${gw.updated.join(", ")}`);
-    if (gw.removedHelpers.length > 0) note(`Removed ${gw.removedHelpers.length} old skill-library helper skill(s) from agent folders`);
     for (const e of gw.errors) note(`gateway: ${e}`);
   }
 
