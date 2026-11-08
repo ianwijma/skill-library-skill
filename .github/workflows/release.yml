@@ -1,0 +1,194 @@
+name: Release
+
+# Run from the GitHub UI: Actions → Release → "Run workflow", pick a bump.
+#
+# 1. `version` bumps package.json on the default branch, then pushes the release
+#    commit and the `vX.Y.Z` tag.
+# 2. `publish` checks out that tag, publishes it to npm with trusted publishing
+#    (OIDC, no token, provenance included), and creates the GitHub Release.
+#
+# If `publish` fails, use "Re-run failed jobs": it publishes the tag that was
+# already pushed and does not bump the version again.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+          - prepatch
+          - preminor
+          - premajor
+          - prerelease
+      preid:
+        description: Prerelease identifier (pre* bumps only, e.g. rc → 1.2.0-rc.0)
+        type: string
+        required: false
+        default: rc
+      dry-run:
+        description: Dry run (no push, no publish, no GitHub Release)
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+# One release at a time, and never cancel one halfway through.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Bump version (${{ inputs.bump }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+      prerelease: ${{ steps.bump.outputs.prerelease }}
+    steps:
+      # Running a workflow already needs write access to the repository. This also
+      # limits releases to the logins in the RELEASE_ACTORS repository variable
+      # (space- or comma-separated), or to the repository owner when it is unset.
+      - name: Require an allowed releaser
+        env:
+          ACTOR: ${{ github.actor }}
+          ALLOWED: ${{ vars.RELEASE_ACTORS || github.repository_owner }}
+        run: |
+          for login in ${ALLOWED//,/ }; do
+            if [[ "${login,,}" == "${ACTOR,,}" ]]; then exit 0; fi
+          done
+          echo "::error::${ACTOR} may not run releases (allowed: ${ALLOWED})."
+          exit 1
+
+      - name: Require the default branch
+        if: github.ref_name != github.event.repository.default_branch
+        run: |
+          echo "::error::Releases run from '${{ github.event.repository.default_branch }}' only (got '${{ github.ref_name }}')."
+          exit 1
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Check types
+        run: npm run typecheck
+
+      - name: Build CLI
+        run: npm run build
+
+      - name: Bump version
+        id: bump
+        env:
+          BUMP: ${{ inputs.bump }}
+          PREID: ${{ inputs.preid }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          args=("$BUMP" -m "chore(release): v%s")
+          if [[ "$BUMP" == pre* ]]; then
+            args+=(--preid "${PREID:-rc}")
+          fi
+          # Commits package.json + package-lock.json and creates the annotated tag.
+          npm version "${args[@]}"
+
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+          if npm view "skill-library@${version}" version >/dev/null 2>&1; then
+            echo "::error::skill-library@${version} is already on npm."
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$([[ "$version" == *-* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "### Releasing \`${tag}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push release commit and tag
+        if: ${{ !inputs.dry-run }}
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+          BRANCH: ${{ github.ref_name }}
+        # Atomic: either both land or neither does (e.g. the branch moved meanwhile).
+        run: git push --atomic origin "HEAD:refs/heads/${BRANCH}" "refs/tags/${TAG}"
+
+  publish:
+    name: Publish ${{ needs.version.outputs.tag }}
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Must match the environment set on the npm trusted publisher (if any).
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/skill-library/v/${{ needs.version.outputs.version }}
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # npm trusted publishing (OIDC) and provenance
+    steps:
+      - name: Check out ${{ needs.version.outputs.tag }}
+        uses: actions/checkout@v7
+        with:
+          # In a dry run the tag was never pushed; use the commit being released.
+          ref: ${{ inputs.dry-run && github.sha || needs.version.outputs.tag }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Node 24 ships npm 11, which trusted publishing needs (>= 11.5.1).
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply the bumped version (dry run only)
+        if: ${{ inputs.dry-run }}
+        run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version
+
+      - name: Publish to npm
+        env:
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          npm --version
+          args=(--access public)
+          # Prereleases go to the `next` dist-tag so `npm i skill-library` stays on stable.
+          if [[ "$PRERELEASE" == "true" ]]; then args+=(--tag next); fi
+          if [[ "$DRY_RUN" == "true" ]]; then args+=(--dry-run); fi
+          # prepublishOnly runs typecheck, tests, build, and `npm pack --dry-run`.
+          npm publish "${args[@]}"
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry-run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          args=(--verify-tag --generate-notes --title "$TAG")
+          if [[ "$PRERELEASE" == "true" ]]; then args+=(--prerelease); else args+=(--latest); fi
+          gh release create "$TAG" "${args[@]}"
