@@ -22,7 +22,7 @@ package or copy its repository, logo, telemetry or security audit. Deliberate di
 | D7 | Project skills work on another machine: `skill-library install` fetches every referenced skill that is missing, at the **pinned version**, and verifies its content hash (protection against tampered sources). |
 | D8 | `-a, --agent` on `add` records which agents a skill is for. `query -a <agent>` filters on that. Unknown agent names fail with the list of valid names so the LLM can retry. Jev scoring is unchanged and knows nothing about agents. |
 | D9 | One gateway skill = today's `skill-library` skill with the `skill-library-query` content merged in. Only `add` places the gateway (§6); no other command writes agent folders. |
-| D10 | Only the `skill-library` binary. No telemetry. No security audit. Our own logo. Node floor stays `>=22.18`. No refresh of local skills. No description editing. |
+| D10 | Only the `skill-library` binary. No telemetry. No security audit. Our own logo. Node floor `>=22`. No refresh of local skills. No description editing. |
 | D11 | `query` prints plain text: path lines plus an instruction for the agent to read them. |
 | D12 | Programmatic API exported from the package. |
 | D13 | Publish to npm as `skill-library@0.1.0`, MIT license, with `repository` set. |
