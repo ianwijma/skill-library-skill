@@ -3,6 +3,7 @@ import { checkSkills, updateSkills, type UpdateRow } from "../core/update.ts";
 import { CliError, DIM, RESET, formatError, sanitizeMetadata } from "../lib/cli.ts";
 import { parseFlags } from "./args.ts";
 import { pickAmbiguous } from "./remove.ts";
+import { afterGlobalChange } from "./sync.ts";
 import type { GlobalOpts } from "./index.ts";
 
 export async function runUpdate(args: string[], g: GlobalOpts, mode: "update" | "check"): Promise<number> {
@@ -43,6 +44,7 @@ export async function runUpdate(args: string[], g: GlobalOpts, mode: "update" | 
       }
     }
     const failed = res.skills.some((r) => r.status === "failed");
+    if (mode === "update" && res.skills.some((r) => r.scope === "global" && r.status === "updated")) await afterGlobalChange({}, g);
     if (mode === "check") {
       const n = res.skills.filter((r) => r.status === "has-update").length;
       console.log();

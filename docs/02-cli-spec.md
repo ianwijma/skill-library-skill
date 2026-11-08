@@ -25,6 +25,7 @@ are marked **(differs)**. Global options anywhere on the line: `--store <dir>`
 | `init [name]` | | | Create `<name>/SKILL.md` or `./SKILL.md`. |
 | `use <source>[@skill]` | | `-s <skill>`, `-a <claude-code\|codex\|sarvam-code>`, `--full-depth` | Print a prompt for one skill (pipe it into an agent), or start the agent with `-a`. Writes nothing to the library. Unknown options are errors. |
 | `query "<task>" \| -` | | `-a <agent>`, `--threshold <0..1>`, `--top <n>`, `--json` | Add-on. See [04](04-typesafe-query.md). |
+| `sync [init <git-url> \| enable \| disable \| status]` | | `--json` | Add-on. Keep global skills in a git repository. See [09](09-global-sync-options.md). |
 
 Scope rules for `update`/`check`: `-g -p` = both; no flag → project if
 `skill-library.json` has entries, else global; named skills → both **(differs**:

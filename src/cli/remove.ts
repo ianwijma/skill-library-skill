@@ -4,6 +4,7 @@ import { removableSkills, removeSkills } from "../core/remove.ts";
 import { CliError, DIM, RESET, formatError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { isRunningInAgent } from "../lib/detect-agent.ts";
 import { parseFlags } from "./args.ts";
+import { afterGlobalChange } from "./sync.ts";
 import type { GlobalOpts } from "./index.ts";
 
 /** TTY picker for a name that matches several skills. */
@@ -63,6 +64,8 @@ export async function runRemove(args: string[], g: GlobalOpts): Promise<number> 
       ...(process.stdin.isTTY ? { chooseAmbiguous: pickAmbiguous } : {}),
     });
     for (const n of res.notes) note(n);
+    const globalRows = res.removed.filter((r) => r.scope === "global" && r.action !== "kept");
+    if (globalRows.length > 0) await afterGlobalChange({ removed: globalRows.filter((r) => r.action === "removed").map((r) => r.id) }, g);
     if (res.unmatched.length > 0 && res.removed.length === 0) {
       console.log(`No matching skills found for: ${res.unmatched.join(", ")}`);
       return 0;

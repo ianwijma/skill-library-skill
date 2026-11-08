@@ -146,7 +146,7 @@ export async function readManifest(file: string): Promise<Manifest> {
   return { version: 1, skills };
 }
 
-function serialize(manifest: Manifest): string {
+export function serializeManifest(manifest: Manifest): string {
   const sorted: Record<string, unknown> = {};
   for (const key of Object.keys(manifest.skills).sort()) {
     const e = manifest.skills[key]!;
@@ -167,7 +167,7 @@ export async function mutateManifest<T>(project: Project, fn: (manifest: Manifes
   return withFileLock(`${project.file}.lock`, async () => {
     const fresh = await readManifest(project.file);
     const out = await fn(fresh);
-    await writeFileAtomic(project.file, serialize(fresh));
+    await writeFileAtomic(project.file, serializeManifest(fresh));
     project.manifest = fresh;
     project.exists = true;
     return out;

@@ -40,6 +40,7 @@ export function showBanner(): void {
   row("update", "", "Update skills");
   console.log();
   row("install", "", "Restore from skill-library.json");
+  row("sync", "init <git-url>", "Sync global skills through a git repo");
   row("init", "[name]", "Create a new skill");
   console.log();
   console.log(`${DIM}try:${RESET} skill-library add vercel-labs/agent-skills`);
@@ -67,6 +68,7 @@ export function showHelp(): void {
     ["skill-library check -g"],
     ["skill-library install", "restore from skill-library.json"],
     ["skill-library init my-skill"],
+    ["skill-library sync init git@bitbucket.org:me/my-skills.git", "sync global skills"],
   ];
   const width = Math.max(...examples.filter(([, d]) => d).map(([c]) => c.length));
   const formatted = examples
@@ -101,6 +103,13 @@ ${BOLD}Update Options:${RESET}
 ${BOLD}Project:${RESET}
   install              Restore skills from skill-library.json (alias: i, experimental_install)
   init [name]          Initialize a skill (creates <name>/SKILL.md or ./SKILL.md)
+
+${BOLD}Sync:${RESET}
+  sync init <git-url>  Keep global skills in a git repository (any host, HTTPS or SSH)
+  sync                 Pull, install, update and push now (also runs on its own from query)
+  sync disable         Stop syncing (add/remove/update -g stay local)
+  sync enable          Start syncing again
+  sync status          Show the repository, last sync and last error
 
 ${BOLD}Install Options:${RESET}
   --dry-run              Show what would be restored without installing anything

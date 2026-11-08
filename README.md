@@ -53,6 +53,7 @@ remote sources).
 | `init [name]` | Create a new `SKILL.md`. |
 | `use <source>@<skill>` | Print a prompt for one skill without adding it (`| claude`), or start an agent with `-a`. |
 | `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. |
+| `sync init <git-url>` | Keep your global skills in a git repository (any host) and sync them across machines automatically. `sync disable` / `sync enable` / `sync status`. |
 
 `skill-library --help` lists every flag. Details: [CLI spec](docs/02-cli-spec.md).
 
@@ -66,6 +67,21 @@ commit and a content hash, so a teammate (or your other machine) runs
 Folders inside the repository (`skill-library add ./skills/foo`) are read in
 place. Inside the project, `query` sees the project's skills plus your global
 library; when both have a skill with the same name, the project's wins.
+
+## Syncing global skills across machines
+
+```sh
+skill-library sync init git@bitbucket.org:me/my-skills.git   # once per machine, any git URL
+```
+
+The repository holds a `skill-library.json` (skills from other repos, pinned)
+and a `skills/` folder (your own skills). Every machine keeps a clone. From then
+on `add -g`, `remove -g` and `update -g` commit and push, and `query` starts a
+background sync at most once an hour (`SKILL_LIBRARY_SYNC_TTL`, in seconds), so
+new skills and newer versions show up everywhere on their own.
+
+`skill-library sync disable` stops all pulling and pushing while you test;
+`skill-library sync enable` turns it back on. Details: [09 — global sync](docs/09-global-sync-options.md).
 
 ## Agents
 
@@ -107,6 +123,7 @@ If online scoring is unavailable, `skill-library list --json` and
 | [03 — data store](docs/03-data-store.md) | Store layout, ids, versions, `skill-library.json` |
 | [04 — query](docs/04-typesafe-query.md) | Jev integration, candidates, thresholds |
 | [08 — vercel parity plan](docs/08-vercel-parity-plan.md) | The design behind this version |
+| [09 — global sync](docs/09-global-sync-options.md) | Sync global skills through a git repo |
 
 ## Development
 
