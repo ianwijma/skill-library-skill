@@ -16,7 +16,7 @@ into your agents' skills folders.
 
 ## Quick start
 
-Requires [Node.js](https://nodejs.org) >= 22.18 and `git` (for remote sources).
+Requires [Node.js](https://nodejs.org) >= 22 and `git` (for remote sources).
 
 ```sh
 npm i -g skill-library            # or run it with npx skill-library …
@@ -126,6 +126,10 @@ If online scoring is unavailable, `skill-library list --json` and
 | [09 — global sync](docs/09-global-sync-options.md) | Sync global skills through a git repo |
 
 ## Development
+
+Working on the repository needs Node.js >= 22.18: `npm start` runs the TypeScript
+source directly, and vitest needs 22.12+. The published package itself runs on any
+Node.js 22 or newer; CI tests it on 22.0.0 and the latest 24 and 26.
 
 ```sh
 npm install

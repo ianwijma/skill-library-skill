@@ -15,21 +15,47 @@ concurrency:
 
 jobs:
   test:
-    name: Tests, typecheck, and build
+    name: Tests, typecheck, and build (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Every supported release line (https://nodejs.org/en/about/previous-releases).
+          # 22 is tested as 22.0.0, the oldest Node the package supports (engines: >=22).
+          # The dev tools (vitest's rolldown) need 22.12+ to install, so install
+          # with the latest 22, then run everything on 22.0.0.
+          - node: "22"
+            version: "22.0.0"
+            install-node: "22"
+          - node: "24"
+            version: "24"
+            install-node: "24"
+          - node: "26"
+            version: "26"
+            install-node: "26"
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up Node.js
+      - name: Set up Node.js ${{ matrix.install-node }} (install)
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.install-node }}
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Switch to Node.js ${{ matrix.version }}
+        if: matrix.version != matrix.install-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.version }}
+
+      - name: Show Node.js version
+        run: node --version
 
       - name: Run tests
         run: npm test
