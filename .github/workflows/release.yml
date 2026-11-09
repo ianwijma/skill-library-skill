@@ -18,7 +18,8 @@ on:
         type: choice
         required: true
         default: patch
-        # Examples from 1.2.3, with the default prerelease identifier `rc`:
+        # Each run bumps the current version in package.json. Examples from 1.2.3, with
+        # the default prerelease identifier `rc` (see scripts/next-version.mjs):
         options:
           - patch # 1.2.3 → 1.2.4 (bug fixes)
           - minor # 1.2.3 → 1.3.0 (new features, backwards compatible)
@@ -113,14 +114,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          args=("$BUMP" -m "chore(release): v%s")
-          if [[ "$BUMP" == pre* ]]; then
-            args+=(--preid "${PRERELEASE_IDENTIFIER:-rc}")
-          fi
-          # Commits package.json + package-lock.json and creates the annotated tag.
-          npm version "${args[@]}"
+          # Works out the next version from package.json (tested in test/next-version.test.ts).
+          version="$(node scripts/next-version.mjs "$BUMP" "$PRERELEASE_IDENTIFIER")"
+          # Sets that exact version in package.json + package-lock.json, commits it,
+          # and creates the annotated tag.
+          npm version "$version" -m "chore(release): v%s"
 
-          version="$(node -p "require('./package.json').version")"
           tag="v${version}"
           # `npm view <package>@<version> version` prints the version if it is published.
           if [[ "$(npm view "skill-library@${version}" version 2>/dev/null)" == "$version" ]]; then

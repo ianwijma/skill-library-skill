@@ -146,9 +146,22 @@ npm run build       # dist/skill-library (CLI), dist/index.js + dist/api.d.ts (A
 - **Run a release:**
   - Open **Actions → Release → Run workflow**.
   - Leave the branch on `develop`.
-  - Pick a **Version bump**: `patch`, `minor` or `major`.
-  - For a prerelease, pick a `pre*` bump and set the **Prerelease identifier**
-    (default `rc`).
+  - Pick a **Version bump**. Each run bumps the current version in
+    `package.json`; examples from `1.2.3`:
+    - `patch`: `1.2.3` → `1.2.4`, for bug fixes.
+    - `minor`: `1.2.3` → `1.3.0`, for new features that don't break anything.
+    - `major`: `1.2.3` → `2.0.0`, for breaking changes.
+    - `prepatch`: `1.2.3` → `1.2.4-rc.0`, the first release candidate of a patch.
+    - `preminor`: `1.2.3` → `1.3.0-rc.0`, the first release candidate of a minor.
+    - `premajor`: `1.2.3` → `2.0.0-rc.0`, the first release candidate of a major.
+    - `prerelease`: `1.3.0-rc.0` → `1.3.0-rc.1`, the next release candidate.
+  - For a `pre*` bump, set the **Prerelease identifier** (default `rc`; `beta`
+    gives `1.3.0-beta.0`).
+  - Release candidates, step by step:
+    - Run `preminor` once to get `1.3.0-rc.0`.
+    - Run `prerelease` for each next candidate: `1.3.0-rc.1`, `1.3.0-rc.2`, ...
+    - Run `minor` to release it: `1.3.0-rc.2` → `1.3.0`.
+    - Don't run `preminor` again on a candidate: that starts `1.4.0-rc.0`.
   - Optional: tick **Dry run** to check everything without pushing or publishing.
   - Click **Run workflow** and wait for both jobs to go green.
   - Check the new version on [npm](https://www.npmjs.com/package/skill-library)
