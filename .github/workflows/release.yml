@@ -2,9 +2,13 @@ name: Release
 
 # Run from the GitHub UI: Actions → Release → "Run workflow", pick a bump.
 #
-# 1. `version` bumps package.json on the default branch, then pushes the release
-#    commit and the `vX.Y.Z` tag.
-# 2. `publish` checks out that tag, publishes it to npm with trusted publishing
+# 1. `plan` tests and builds, works out the new version, and writes a summary of
+#    what is published now and what this run will publish. It fails on blockers
+#    (e.g. the version is already on npm). Nothing is changed yet.
+# 2. `version` waits for approval on the `release` environment. Read the summary,
+#    then approve or reject under "Review deployments". Once approved, it commits
+#    the new version to the default branch and pushes the `vX.Y.Z` tag.
+# 3. `publish` checks out that tag, publishes it to npm with trusted publishing
 #    (OIDC, no token, provenance included), and creates the GitHub Release.
 #
 # If `publish` fails, use "Re-run failed jobs": it publishes the tag that was
@@ -48,16 +52,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  version:
-    name: Bump version (${{ inputs.bump }})
+  plan:
+    name: Plan release (${{ inputs.bump }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write
     outputs:
-      version: ${{ steps.bump.outputs.version }}
-      tag: ${{ steps.bump.outputs.tag }}
-      prerelease: ${{ steps.bump.outputs.prerelease }}
+      version: ${{ steps.next.outputs.version }}
+      tag: ${{ steps.next.outputs.tag }}
+      prerelease: ${{ steps.next.outputs.prerelease }}
     steps:
       # Running a workflow already needs write access to the repository. This also
       # limits releases to the logins in the RELEASE_ACTORS repository variable
@@ -82,7 +84,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # all tags, for the changes since the last release
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -103,60 +105,146 @@ jobs:
       - name: Build CLI
         run: npm run build
 
-      - name: Bump version
-        id: bump
+      - name: Work out the new version
+        id: next
         env:
           BUMP: ${{ inputs.bump }}
           PRERELEASE_IDENTIFIER: ${{ inputs.prerelease-identifier }}
+        run: |
+          # Works out the next version from package.json (tested in test/next-version.test.ts).
+          version="$(node scripts/next-version.mjs "$BUMP" "$PRERELEASE_IDENTIFIER")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$([[ "$version" == *-* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize the release and check for blockers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUMP: ${{ inputs.bump }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          VERSION: ${{ steps.next.outputs.version }}
+          TAG: ${{ steps.next.outputs.tag }}
+          PRERELEASE: ${{ steps.next.outputs.prerelease }}
+        run: |
+          package="$(node -p "require('./package.json').name")"
+          current="$(node -p "require('./package.json').version")"
+          dist_tags="$(npm view "$package" dist-tags --json 2>/dev/null || echo '{}')"
+          npm_latest="$(jq -r '.latest // "none"' <<<"$dist_tags")"
+          npm_next="$(jq -r '.next // "none"' <<<"$dist_tags")"
+          gh_release="$(gh release view --json tagName --jq .tagName 2>/dev/null || echo none)"
+          last_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo none)"
+          if [[ "$PRERELEASE" == "true" ]]; then dist_tag=next; release_kind=prerelease; else dist_tag=latest; release_kind=latest; fi
+
+          # Each check is a blocker: the run stops here and nothing is pushed or published.
+          blockers=()
+          if [[ "$(npm view "${package}@${VERSION}" version 2>/dev/null)" == "$VERSION" ]]; then
+            blockers+=("\`${package}@${VERSION}\` is already on npm.")
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
+            blockers+=("The tag \`${TAG}\` already exists.")
+          fi
+          if [[ "$PRERELEASE" != "true" && "$npm_latest" != "none" ]] \
+            && ! node -e 'process.exit(require("semver").gt(process.argv[1], process.argv[2]) ? 0 : 1)' "$VERSION" "$npm_latest"; then
+            blockers+=("\`${VERSION}\` is not newer than the published \`latest\` (\`${npm_latest}\`).")
+          fi
+
+          {
+            echo "## Release plan: \`${current}\` → \`${VERSION}\`"
+            [[ "$DRY_RUN" == "true" ]] && echo "> **Dry run:** nothing will be pushed, published, or released."
+            echo
+            echo "| | Now | After this release |"
+            echo "|---|---|---|"
+            echo "| \`package.json\` on \`${GITHUB_REF_NAME}\` | \`${current}\` | \`${VERSION}\` |"
+            echo "| npm \`latest\` | \`${npm_latest}\` | \`$([[ "$dist_tag" == latest ]] && echo "$VERSION" || echo "$npm_latest")\` |"
+            echo "| npm \`next\` | \`${npm_next}\` | \`$([[ "$dist_tag" == next ]] && echo "$VERSION" || echo "$npm_next")\` |"
+            echo "| Latest GitHub Release | \`${gh_release}\` | $([[ "$release_kind" == latest ]] && echo "\`${TAG}\`" || echo "\`${gh_release}\` (\`${TAG}\` as a prerelease)") |"
+            echo "| Git tag | \`${last_tag}\` | \`${TAG}\` |"
+            echo
+            echo "- **Bump:** \`${BUMP}\`"
+            echo "- **Commit:** \`${GITHUB_SHA::7}\` on \`${GITHUB_REF_NAME}\`"
+            echo "- **npm:** \`npm publish --tag ${dist_tag}\`, with provenance"
+            echo
+            echo "### Blockers"
+            if (( ${#blockers[@]} )); then
+              for b in "${blockers[@]}"; do echo "- ❌ ${b}"; done
+            else
+              echo "- ✅ None. Approve the \`release\` environment under **Review deployments** to continue, or reject it to stop."
+            fi
+            echo
+            echo "### Changes since \`${last_tag}\`"
+            if [[ "$last_tag" == none ]]; then range=HEAD; else range="${last_tag}..HEAD"; fi
+            git log --no-merges --format='- %s (`%h`)' "$range" | head -n 50
+            echo
+            echo "<details><summary>Files in the npm package</summary>"
+            echo
+            echo '```'
+            npm pack --dry-run --ignore-scripts 2>&1 | sed -n '/Tarball Contents/,/Tarball Details/p' | sed '1d;$d' | sed 's/^npm notice //'
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for b in "${blockers[@]}"; do echo "::error::${b//\`/}"; done
+          (( ${#blockers[@]} == 0 ))
+
+  version:
+    name: Commit and tag ${{ needs.plan.outputs.tag }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The approval gate: give this environment required reviewers so the run waits
+    # here until someone has checked the plan summary and approved it.
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Node.js 22, the oldest supported version.
+          node-version: "22"
+
+      - name: Bump version
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
           # GitHub's documented identity for the github-actions[bot] account
           # (41898282 is its user id), so the commit shows up as made by the bot.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Works out the next version from package.json (tested in test/next-version.test.ts).
-          version="$(node scripts/next-version.mjs "$BUMP" "$PRERELEASE_IDENTIFIER")"
-          # Sets that exact version in package.json + package-lock.json, commits it,
+          # Sets the approved version in package.json + package-lock.json, commits it,
           # and creates the annotated tag.
-          npm version "$version" -m "chore(release): v%s"
-
-          tag="v${version}"
-          # `npm view <package>@<version> version` prints the version if it is published.
-          if [[ "$(npm view "skill-library@${version}" version 2>/dev/null)" == "$version" ]]; then
-            echo "::error::skill-library@${version} is already on npm."
-            exit 1
-          fi
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$([[ "$version" == *-* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "### Releasing \`${tag}\`" >> "$GITHUB_STEP_SUMMARY"
+          npm version "$VERSION" -m "chore(release): v%s"
 
       - name: Push release commit and tag
         if: ${{ !inputs.dry-run }}
         env:
-          TAG: ${{ steps.bump.outputs.tag }}
+          TAG: ${{ needs.plan.outputs.tag }}
           BRANCH: ${{ github.ref_name }}
-        # Atomic: either both land or neither does (e.g. the branch moved meanwhile).
+        # Atomic: either both land or neither does. It also fails if the branch moved
+        # since the plan, so only the commit that was reviewed gets released.
         run: git push --atomic origin "HEAD:refs/heads/${BRANCH}" "refs/tags/${TAG}"
 
   publish:
-    name: Publish ${{ needs.version.outputs.tag }}
-    needs: version
+    name: Publish ${{ needs.plan.outputs.tag }}
+    needs: [plan, version]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Must match the environment set on the npm trusted publisher (if any).
     environment:
       name: npm
-      url: https://www.npmjs.com/package/skill-library/v/${{ needs.version.outputs.version }}
+      url: https://www.npmjs.com/package/skill-library/v/${{ needs.plan.outputs.version }}
     permissions:
       contents: write # create the GitHub Release
       id-token: write # npm trusted publishing (OIDC) and provenance
     steps:
-      - name: Check out ${{ needs.version.outputs.tag }}
+      - name: Check out ${{ needs.plan.outputs.tag }}
         uses: actions/checkout@v7
         with:
           # In a dry run the tag was never pushed; use the commit being released.
-          ref: ${{ inputs.dry-run && github.sha || needs.version.outputs.tag }}
+          ref: ${{ inputs.dry-run && github.sha || needs.plan.outputs.tag }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -175,11 +263,11 @@ jobs:
 
       - name: Apply the bumped version (dry run only)
         if: ${{ inputs.dry-run }}
-        run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version
+        run: npm version "${{ needs.plan.outputs.version }}" --no-git-tag-version
 
       - name: Publish to npm
         env:
-          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
           DRY_RUN: ${{ inputs.dry-run }}
         run: |
           npm --version
@@ -194,8 +282,8 @@ jobs:
         if: ${{ !inputs.dry-run }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.version.outputs.tag }}
-          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
         run: |
           args=(--verify-tag --generate-notes --title "$TAG")
           if [[ "$PRERELEASE" == "true" ]]; then args+=(--prerelease); else args+=(--latest); fi

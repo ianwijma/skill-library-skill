@@ -21,13 +21,20 @@ This lets GitHub Actions publish without an npm token.
    - Environment name: `npm`
 3. Save.
 
-## 3. Create the `npm` environment on GitHub
+## 3. Create the `release` and `npm` environments on GitHub
 
-1. Go to the repository's **Settings → Environments → New environment** and name it `npm`.
-2. Under **Deployment branches and tags**, choose **Selected branches and tags**
+The `release` environment is the approval gate: the workflow stops there until you
+have checked the release plan summary.
+
+1. Go to the repository's **Settings → Environments → New environment** and name it `release`.
+2. Tick **Required reviewers** and add yourself.
+3. Leave **Prevent self-review** unticked, or you can't approve your own releases.
+4. Under **Deployment branches and tags**, choose **Selected branches and tags**
    and add `develop`.
-3. Optional: tick **Required reviewers** and add yourself to approve each
-   publish. The version commit and tag are already pushed when it asks.
+5. Save, then create a second environment named `npm` with the same branch rule
+   (step 4) and no reviewers. npm's trusted publisher checks for this name.
+
+Without required reviewers on `release`, the workflow doesn't wait for approval.
 
 ## 4. Check the Actions settings
 
@@ -55,9 +62,12 @@ git push origin v0.1.0
 ## 7. Try it
 
 1. **Actions → Release → Run workflow**, branch `develop`, bump `patch`, tick
-   **Dry run**. It should go green without pushing or publishing anything.
-2. Run it again without **Dry run**. Check the new version on npm (with a
-   provenance badge) and the new GitHub Release.
+   **Dry run**.
+2. When **Plan release** finishes, check the summary, then approve under
+   **Review deployments**. It should go green without pushing or publishing
+   anything.
+3. Run it again without **Dry run**, check the summary, approve, and check the
+   new version on npm (with a provenance badge) and the new GitHub Release.
 
 ## 8. Lock down npm
 
