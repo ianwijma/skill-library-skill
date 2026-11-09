@@ -28,9 +28,11 @@ skill-library sync init ssh://git@git.example.com:2222/me/my-skills.git
 - Writes `<library>/sync.json` (`url`, `enabled`, and the ids the repo
   manages).
 - Installs the repo's skills and places the gateway.
-- If the repo is empty, first commits this machine's global skills into it.
-  Git skills become manifest entries. Folder skills are copied into
-  `skills/`.
+- If the repo is empty, first commits this machine's global git skills into it
+  as manifest entries. Global skills from a local folder are listed, and you
+  pick the ones to share (they are copied into `skills/`). The rest stay
+  machine-only. Without a terminal none are shared, unless you pass
+  `--share <names>` (`--share '*'` = all).
 
 If `sync` is already set up with the same URL, `init` says so and exits
 successfully without changing anything. With a different URL it refuses and
@@ -58,6 +60,44 @@ skill-library sync update git@github.com:me/my-skills.git
 With the URL already in use, it says so and changes nothing. Sync must be
 enabled. Run `sync update` with the same URL on each of your other machines.
 Until you do, they keep syncing with the old repository.
+
+## Three kinds of global skill
+
+A skill is synced only when it has a source of truth it can be updated from.
+
+| Kind | Example | Synced | Source of truth |
+|---|---|---|---|
+| **Remote** | `typesafe-ai` from `typesafe-ai/skills` | yes, as a manifest entry | its upstream git repo |
+| **Own** | a skill you wrote | yes, as a folder under `skills/` | your sync repo |
+| **Machine-only** | a skill you are trying out | no | a folder on this machine |
+
+The CLI can't tell a skill you wrote from a copy of someone else's: both are a
+folder with a `SKILL.md`. So a folder skill becomes **own** only when you say so:
+
+- `add -g <folder>` asks "Share across your devices?" (default yes). `--share` /
+  `--no-share` answer it up front. With `-y` or inside an agent, the answer is
+  no unless `--share` is passed, so an agent never publishes a copy as yours.
+- `skill-library sync share <name...>` shares a machine-only skill later.
+- Once shared, the repo is its source of truth: the original folder is no
+  longer read. The CLI prints where to edit it (`<library>/sync/skills/<name>`).
+  Re-sharing the same folder (`add -g <folder> --share`) updates it.
+
+Copies of other people's skills are better added from their git repo: they
+then become remote skills and keep getting updates. You can also keep your own
+skills in a separate git repo and add that like any remote; that suits a real
+workflow (history, reviews per skill) better than editing in the sync repo.
+
+### Same name, different source
+
+- `add -g` of a skill whose name another global skill already uses offers to
+  **replace** it, and says whether the files differ. `-y` replaces. The old
+  skill is kept in the store, just not global (`list -g` shows it as not
+  global). Replacing an own or remote skill removes it from the repo.
+- `query` sends one skill per name to the model: remote beats own beats
+  machine-only.
+- When a sync (often a background one) brings in a skill whose name another
+  global skill already uses, nothing is replaced: it is reported (`sync`
+  output, and the next `query` tells the agent) so the user can pick.
 
 ## The repo
 
@@ -100,7 +140,8 @@ While sync is enabled, the regular commands write to the repo:
 | Command | Effect on the repo |
 |---|---|
 | `add -g` (git source) | Adds a manifest entry. |
-| `add -g` (local folder) | Copies the folder into `skills/`. The skill then lives in the repo under its repo id. |
+| `add -g` (local folder) | Only when shared: copies the folder into `skills/`, and the skill then lives in the repo under its repo id. Otherwise nothing (machine-only). |
+| `sync share <name>` | Copies a machine-only skill into `skills/`. |
 | `remove -g` | Deletes the entry, or the `skills/` folder for an own skill. |
 | `update -g` | Writes the new pins. |
 
@@ -131,8 +172,8 @@ While sync is disabled:
 
 `enable` turns sync back on and runs one sync right away. Skills you added
 while sync was disabled stay local: they aren't pushed and they aren't removed,
-because sync only drops skills that came from the repo. To share one, run
-`add -g` again after enabling.
+because sync only drops skills that came from the repo. To share a folder
+skill, run `sync share <name>`; for a git skill, run `add -g` again.
 
 ## Automatic
 

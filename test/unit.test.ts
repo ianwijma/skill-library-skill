@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { agentsMatch, mergeAgents, subtractAgents, type ScopedSkill } from "../src/core/context.ts";
+import { agentsMatch, globalKindOf, mergeAgents, subtractAgents, type ScopedSkill } from "../src/core/context.ts";
 import { selectCandidates } from "../src/core/query.ts";
 import { resolveScopes } from "../src/core/update.ts";
 import { hashFiles, hashSkillDir } from "../src/lib/hash.ts";
@@ -134,6 +134,20 @@ describe("query candidate order (§5.1)", () => {
     const g2 = sk({ id: "g2", name: "bar" });
     const r = selectCandidates([ref, local, g1, g2, sk({ id: "g3", name: "foo" })], undefined);
     expect(r.candidates.map((c) => c.id).sort()).toEqual(["g1", "g2", "l"]);
+  });
+});
+
+describe("global name clashes", () => {
+  const syncUrl = "https://github.com/me/my-skills.git";
+  test("remote beats own beats machine-only", () => {
+    const remote = sk({ id: "repo://github.com/typesafe-ai/skills/typesafe-ai", name: "typesafe-ai" });
+    const own = sk({ id: "repo://github.com/me/my-skills/typesafe-ai", name: "typesafe-ai" });
+    const machine = sk({ id: "home://skills/typesafe-ai", name: "typesafe-ai", sourceType: "local" });
+    expect(selectCandidates([own, machine, remote], undefined, syncUrl).candidates.map((c) => c.id)).toEqual([remote.id]);
+    expect(selectCandidates([own, machine], undefined, syncUrl).candidates.map((c) => c.id)).toEqual([own.id]);
+    expect(globalKindOf(own, syncUrl)).toBe("own");
+    expect(globalKindOf(own, null)).toBe("remote");
+    expect(globalKindOf(machine, syncUrl)).toBe("machine-only");
   });
 });
 

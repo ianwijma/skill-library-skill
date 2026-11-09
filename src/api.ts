@@ -15,7 +15,7 @@ import { querySkills, type QueryOptions, type QueryResult } from "./core/query.t
 import { removeSkills, type RemoveOptions, type RemoveResult } from "./core/remove.ts";
 import { checkSkills, updateSkills, type UpdateOptions, type UpdateResult } from "./core/update.ts";
 
-export type { AddOptions, AddResult, AddedSkill } from "./core/add.ts";
+export type { AddOptions, AddResult, AddedSkill, NameClash } from "./core/add.ts";
 export type { InstallOptions, InstallResult, InstallRow, InstallStatus } from "./core/install.ts";
 export type { ListOptions, ListResult } from "./core/list.ts";
 export type { QueryOptions, QueryResult, QueryMatch } from "./core/query.ts";

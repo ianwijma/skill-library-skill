@@ -15,7 +15,7 @@ are marked **(differs)**. Global options anywhere on the line: `--store <dir>`
 
 | Command | Aliases | Flags | Behaviour |
 |---|---|---|---|
-| `add <source>` | `a`, `install <source>`, `i <source>` | `-g/--global`, `-a/--agent <agents…>`, `-s/--skill <skills…>`, `-l/--list`, `-y/--yes`, `--all`, `--full-depth`, `--json`, `--copy` | Fetch, discover skills, write them to the library and (project scope) to `skill-library.json`; then place the gateway. `--all` = `-s '*' -a '*' -y`. `--copy` has no effect. **(differs)** no agent prompt: only `-a` records agents (default: all). |
+| `add <source>` | `a`, `install <source>`, `i <source>` | `-g/--global`, `-a/--agent <agents…>`, `-s/--skill <skills…>`, `-l/--list`, `-y/--yes`, `--all`, `--full-depth`, `--json`, `--copy`, `--share`, `--no-share` | Fetch, discover skills, write them to the library and (project scope) to `skill-library.json`; then place the gateway. `--all` = `-s '*' -a '*' -y`. `--copy` has no effect. **(differs)** no agent prompt: only `-a` records agents (default: all). Global: a skill whose name another global skill already uses offers to replace it (`-y` replaces; the old one is kept, not global). `--share`/`--no-share`: see [09](09-global-sync-options.md). |
 | `install` | `i`, `experimental_install` | `--dry-run`, `--force`, `--frozen-lockfile`, `--no-frozen-lockfile`, `-a` | Restore the project's skills at their pinned versions, verifying content hashes. `--force` repairs versions whose content no longer matches. `-a` is accepted and ignored. |
 | `list` | `ls` | `-g`, `-a <agents…>`, `--json` | Project: its skills (`installed` / `missing`). `-g`: the whole library; skills only a project used are tagged `(not global)`. |
 | `remove [skills…]` | `rm`, `r` | `-g`, `-a <agents…>`, `-s <skills…>`, `-y`, `--all` | Project: drop the reference (the skill stays in the library, unusable). `-g`: delete from the library. `-a` removes agents from the skill's list. No match exits 0. |
@@ -25,7 +25,7 @@ are marked **(differs)**. Global options anywhere on the line: `--store <dir>`
 | `init [name]` | | | Create `<name>/SKILL.md` or `./SKILL.md`. |
 | `use <source>[@skill]` | | `-s <skill>`, `-a <claude-code\|codex\|sarvam-code>`, `--full-depth` | Print a prompt for one skill (pipe it into an agent), or start the agent with `-a`. Writes nothing to the library. Unknown options are errors. |
 | `query "<task>" \| -` | | `-a <agent>`, `--threshold <0..1>`, `--top <n>`, `--json` | Add-on. See [04](04-typesafe-query.md). |
-| `sync [init <git-url> \| update <git-url> \| enable \| disable \| status]` | | `--json` | Add-on. Keep global skills in a git repository. See [09](09-global-sync-options.md). |
+| `sync [init <git-url> \| update <git-url> \| share <skill...> \| enable \| disable \| status]` | | `--json`, `--share <skills>` (init) | Add-on. Keep global skills in a git repository. See [09](09-global-sync-options.md). |
 
 Scope rules for `update`/`check`: `-g -p` = both; no flag → project if
 `skill-library.json` has entries, else global; named skills → both **(differs**:

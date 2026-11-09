@@ -113,8 +113,11 @@ ${BOLD}Project:${RESET}
 
 ${BOLD}Sync:${RESET}
   sync init <git-url>     Keep global skills in a git repository (any host, HTTPS or SSH)
+                          --share <skills>: folder skills to sync when seeding an empty repo ('*' = all;
+                          default: asks, none without a terminal)
   sync                    Pull, install, update and push now (also runs on its own from query)
   sync update <git-url>   Move sync to another repository (pushes everything there)
+  sync share <skill...>   Sync a machine-only skill (one added from a local folder) to your other devices
   sync disable            Stop syncing (add/remove/update -g stay local)
   sync enable             Start syncing again
   sync status             Show the repository, last sync and last error
@@ -135,6 +138,9 @@ ${BOLD}Add Options:${RESET}
   --full-depth           Search all subdirectories even when a root SKILL.md exists
   --json                 Output results as JSON (machine-readable, no ANSI codes)
   --copy                 Accepted for compatibility (skills are always copied into the library)
+  --share                With sync on: sync a skill from a local folder to your other devices
+  --no-share             With sync on: keep a skill from a local folder on this machine only
+                         (default: asks; machine-only with -y or inside an agent)
 
 ${BOLD}Use Options:${RESET}
   -s, --skill <skill>    Specify the skill to use

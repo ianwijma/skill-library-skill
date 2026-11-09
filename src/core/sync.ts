@@ -5,6 +5,9 @@
 // `runSync` pulls, makes the repo's skills global in the store, updates the git skills to their
 // newest version, writes the new pins back and pushes. `recordGlobalChange` is the hook the CLI
 // calls after `add -g` / `remove -g` / `update -g` while sync is enabled.
+//
+// Global skills from a local folder are machine-only: they reach the repo only when the user
+// shares them (`add -g --share`, `sync share`, or the pick at `sync init`).
 import { spawn } from "node:child_process";
 import { promises as fsp, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -47,6 +50,8 @@ export interface SyncChanges {
   added: string[];
   removed: string[];
   updated: string[];
+  /** Names the repo now provides while another global skill with the same name exists. */
+  shadowed?: string[];
 }
 
 export interface SyncStatusFile {
@@ -65,6 +70,8 @@ export interface SyncResult {
   removed: string[];
   /** Names moved to a newer version. */
   updated: string[];
+  /** Names the repo made global while another global skill has the same name (query prefers the repo's). */
+  shadowed: string[];
   pushed: boolean;
   /** Non-fatal problems (a skill that failed to install or update, a failed push). */
   errors: string[];
@@ -332,7 +339,7 @@ function nameOf(index: StoreIndex, id: string): string {
 }
 
 /** Make the store's global scope match the repo. Returns what changed; writes `cfg.managed`. */
-async function applyRepo(store: string, cfg: SyncConfig): Promise<{ added: string[]; removed: string[]; errors: string[] }> {
+async function applyRepo(store: string, cfg: SyncConfig): Promise<{ added: string[]; removed: string[]; shadowed: string[]; errors: string[] }> {
   const { clone } = syncPaths(store);
   const file = path.join(clone, MANIFEST);
   const errors: string[] = [];
@@ -368,13 +375,15 @@ async function applyRepo(store: string, cfg: SyncConfig): Promise<{ added: strin
 
     const added: string[] = [];
     const removed: string[] = [];
+    const shadowed: string[] = [];
     const desired = new Set<string>();
+    const fresh = new Set<string>();
     await mutateIndex(store, async (index) => {
       for (const [id, e] of entries) {
         const record = findRecord(index, id);
         const key = record ? findVersion(record, { ...(e.commit ? { commit: e.commit } : {}), ...(e.hash ? { hash: e.hash } : {}) }) : undefined;
         if (!record || !key) continue; // install failed; already reported
-        if (!record.global) added.push(nameOf(index, id));
+        if (!record.global) (added.push(nameOf(index, id)), fresh.add(id));
         record.global = true;
         record.current = key;
         record.agents = e.agents;
@@ -415,7 +424,7 @@ async function applyRepo(store: string, cfg: SyncConfig): Promise<{ added: strin
           record.updatedAt = at;
         }
         record.source = { type: "git", url: cfg.url, ref: null, path: s.own.rel };
-        if (!record.global) added.push(s.name);
+        if (!record.global) (added.push(s.name), fresh.add(s.own.id));
         record.global = true;
         desired.add(s.own.id);
       }
@@ -427,9 +436,15 @@ async function applyRepo(store: string, cfg: SyncConfig): Promise<{ added: strin
           removed.push(nameOf(index, id));
         }
       }
+      // A skill the repo just brought in may clash by name with one this machine already has
+      // (e.g. a machine-only copy). Background syncs can't ask, so it is reported instead.
+      for (const id of fresh) {
+        const name = nameOf(index, id);
+        if (index.skills.some((r) => r.global && r.id !== id && nameOf(index, r.id) === name)) shadowed.push(name);
+      }
     });
     cfg.managed = [...desired];
-    return { added, removed, errors };
+    return { added, removed, shadowed, errors };
   } finally {
     for (const s of staged) await fsp.rm(s.dir, { recursive: true, force: true }).catch(() => {});
   }
@@ -485,15 +500,15 @@ async function dropRecords(store: string, ids: string[]): Promise<void> {
   });
 }
 
-/** Copy a stored folder skill into the repo's skills/ folder. */
-async function moveIntoRepo(store: string, clone: string, index: StoreIndex, id: string): Promise<boolean> {
+/** Copy a stored folder skill into the repo's skills/ folder. Returns the folder, or null. */
+async function moveIntoRepo(store: string, clone: string, index: StoreIndex, id: string): Promise<string | null> {
   const record = findRecord(index, id);
-  if (!record || !record.versions[record.current]) return false;
+  if (!record || !record.versions[record.current]) return null;
   const name = record.versions[record.current]!.name;
   const dest = path.join(clone, "skills", await folderFor(clone, name));
   await fsp.rm(dest, { recursive: true, force: true });
   await copySkill(versionDir(store, record, record.current), dest, "folder");
-  return true;
+  return dest;
 }
 
 // ---------------------------------------------------------------------------
@@ -534,7 +549,7 @@ async function syncLocked(store: string, cfg: SyncConfig): Promise<SyncResult> {
   } catch (err) {
     errors.push(`push failed: ${msgOf(err)}`);
   }
-  return { url: cfg.url, added: applied.added, removed: applied.removed, updated, pushed, errors };
+  return { url: cfg.url, added: applied.added, removed: applied.removed, updated, shadowed: applied.shadowed, pushed, errors };
 }
 
 export interface RunSyncOptions extends BaseOptions {
@@ -576,13 +591,49 @@ export async function runSync(opts: RunSyncOptions = {}): Promise<SyncResult | n
   }
 }
 
-export type InitSyncOutcome = { alreadySetUp: false; result: SyncResult; seeded: string[] } | { alreadySetUp: true; url: string };
+export type InitSyncOutcome =
+  | {
+      alreadySetUp: false;
+      result: SyncResult;
+      /** Names written into the empty repo: git skills, plus the folder skills chosen to share. */
+      seeded: string[];
+      /** Folder skills left machine-only (not shared). */
+      machineOnly: string[];
+    }
+  | { alreadySetUp: true; url: string };
+
+/** A machine-only global skill that could be shared through the sync repo. */
+export interface ShareCandidate {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface InitSyncOptions extends BaseOptions {
+  /**
+   * Called only when the repo is empty and this machine has folder skills: return the ids to
+   * share (copy into the repo's `skills/`). Default: share none — they stay machine-only.
+   */
+  chooseShare?: (candidates: ShareCandidate[]) => Promise<string[]>;
+}
+
+/** Global skills from a local folder or file: they live only on this machine until shared. */
+function machineOnlySkills(index: StoreIndex): ShareCandidate[] {
+  const out: ShareCandidate[] = [];
+  for (const record of index.skills) {
+    const v = record.versions[record.current];
+    if (!record.global || !v || record.source.type === "git") continue; // own skills are git-sourced too
+    out.push({ id: record.id, name: v.name, description: v.description });
+  }
+  return out;
+}
 
 /**
- * `skill-library sync init <git-url>`: clone, seed an empty repo with the current global skills, then sync.
+ * `skill-library sync init <git-url>`: clone, seed an empty repo with the current global git
+ * skills (and the folder skills the user chooses to share), then sync.
  * Re-running it with the URL already set up is a no-op; a different URL is refused.
  */
-export async function initSync(url: string, opts: BaseOptions = {}): Promise<InitSyncOutcome> {
+export async function initSync(url: string, opts: InitSyncOptions = {}): Promise<InitSyncOutcome> {
   const { store } = ctxOf(opts);
   const trimmed = url.trim();
   if (trimmed === "") throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync init <git-url>");
@@ -602,14 +653,22 @@ export async function initSync(url: string, opts: BaseOptions = {}): Promise<Ini
 
   const cfg: SyncConfig = { url: trimmed, enabled: true, managed: [] };
   const seeded: string[] = [];
+  const machineOnly: string[] = [];
   if (!(await hasHead(paths.clone))) {
-    // Empty repo: start it with this machine's global skills.
+    // Empty repo: start it with this machine's global git skills. Folder skills are shared only
+    // when chosen: the CLI can't tell a skill you wrote from a copy of someone else's.
     const index = await openIndex(store);
+    const candidates = machineOnlySkills(index);
+    const share = new Set(candidates.length > 0 && opts.chooseShare ? await opts.chooseShare(candidates) : []);
     const manifest: Manifest = { version: 1, skills: {} };
     const moved: string[] = [];
     for (const record of index.skills) {
       const v = record.versions[record.current];
       if (!record.global || !v) continue;
+      if (record.source.type !== "git" && !share.has(record.id)) {
+        machineOnly.push(v.name);
+        continue;
+      }
       if (record.source.type === "git" && v.commit) {
         manifest.skills[record.id] = {
           name: v.name,
@@ -632,7 +691,7 @@ export async function initSync(url: string, opts: BaseOptions = {}): Promise<Ini
   }
   await writeSyncConfig(store, cfg);
   const result = await runSync({ store });
-  return { alreadySetUp: false, result: result!, seeded };
+  return { alreadySetUp: false, result: result!, seeded, machineOnly };
 }
 
 export type UpdateSyncUrlOutcome =
@@ -768,6 +827,11 @@ export interface GlobalChange {
   added?: string[];
   /** Ids just removed from the global scope. */
   removed?: string[];
+  /**
+   * Folder skills (among `added`) to share: copy into the repo's `skills/`, where they become own
+   * skills. Folder skills not listed here stay machine-only and never reach the repo.
+   */
+  share?: string[];
 }
 
 /**
@@ -778,7 +842,17 @@ export interface GlobalChange {
 export async function recordGlobalChange(
   change: GlobalChange,
   opts: BaseOptions = {},
-): Promise<{ url: string; pushed: boolean; errors: string[]; /** Skills the pull brought in or dropped, besides the change itself. */ pulled: { added: string[]; removed: string[] } } | null> {
+): Promise<{
+  url: string;
+  pushed: boolean;
+  errors: string[];
+  /** Skills the pull brought in or dropped, besides the change itself. */
+  pulled: { added: string[]; removed: string[] };
+  /** Skills copied into the repo (shared), with the folder to edit them in from now on. */
+  shared: Array<{ name: string; path: string }>;
+  /** Repo skills that now shadow another global skill with the same name. */
+  shadowed: string[];
+} | null> {
   const { store } = ctxOf(opts);
   const cfg0 = await readSyncConfig(store);
   if (!cfg0 || !cfg0.enabled) return null;
@@ -798,23 +872,35 @@ export async function recordGlobalChange(
     const ownById = new Map(own.map((o) => [o.id, o]));
     const moved: string[] = [];
     const names: string[] = [];
+    const shared: Array<{ name: string; path: string }> = [];
+    const share = new Set(change.share ?? []);
     for (const id of change.added ?? []) {
       const record = findRecord(index, id);
       const v = record?.versions[record.current];
       if (!record || !record.global || !v) continue;
-      names.push(v.name);
-      if (ownById.has(id)) continue;
+      if (ownById.has(id)) {
+        names.push(v.name);
+        continue;
+      }
       if (record.source.type === "git" && v.commit) {
+        names.push(v.name);
         manifest.skills[id] = { name: v.name, source: record.source.url, ref: record.source.ref, path: record.source.path, commit: v.commit, hash: v.hash, agents: record.agents };
         cfg.managed.push(id);
-      } else if (await moveIntoRepo(store, clone, index, id)) {
-        moved.push(id);
+      } else if (share.has(id)) {
+        const dest = await moveIntoRepo(store, clone, index, id);
+        if (dest) {
+          names.push(v.name);
+          shared.push({ name: v.name, path: dest });
+          moved.push(id);
+        }
       }
+      // Otherwise a folder skill that wasn't shared: machine-only, the repo doesn't change.
     }
     for (const id of change.removed ?? []) {
+      const o = ownById.get(id);
+      if (!manifest.skills[id] && !o && !cfg.managed.includes(id)) continue; // machine-only: not in the repo
       names.push(id.split("/").pop() ?? id);
       delete manifest.skills[id];
-      const o = ownById.get(id);
       if (o) await fsp.rm(o.dir, { recursive: true, force: true });
       cfg.managed = cfg.managed.filter((m) => m !== id);
     }
@@ -835,19 +921,25 @@ export async function recordGlobalChange(
     if (errors.length > 0) writeStatus(store, { lastError: errors.join("; ") });
     const mine = new Set(names);
     const pulled = { added: applied.added.filter((n) => !mine.has(n)), removed: applied.removed.filter((n) => !mine.has(n)) };
-    return { url: cfg.url, pushed, errors, pulled };
+    return { url: cfg.url, pushed, errors, pulled, shared, shadowed: applied.shadowed };
   });
+}
+
+function changeCount(c: SyncChanges): number {
+  return c.added.length + c.removed.length + c.updated.length + (c.shadowed?.length ?? 0);
 }
 
 function mergeChanges(prev: SyncChanges | undefined, next: SyncChanges): SyncChanges | undefined {
   const added = new Set(prev?.added ?? []);
   const removed = new Set(prev?.removed ?? []);
   const updated = new Set(prev?.updated ?? []);
+  const shadowed = new Set(prev?.shadowed ?? []);
   for (const n of next.added) (removed.delete(n), added.add(n));
-  for (const n of next.removed) (added.delete(n), updated.delete(n), removed.add(n));
+  for (const n of next.removed) (added.delete(n), updated.delete(n), shadowed.delete(n), removed.add(n));
   for (const n of next.updated) if (!added.has(n)) updated.add(n);
-  const out = { added: [...added], removed: [...removed], updated: [...updated] };
-  return out.added.length + out.removed.length + out.updated.length > 0 ? out : undefined;
+  for (const n of next.shadowed ?? []) shadowed.add(n);
+  const out: SyncChanges = { added: [...added], removed: [...removed], updated: [...updated], ...(shadowed.size > 0 ? { shadowed: [...shadowed] } : {}) };
+  return changeCount(out) > 0 ? out : undefined;
 }
 
 /** Return and clear the changes background syncs made since the last call (null when there are none). */
@@ -856,7 +948,7 @@ export function takeSyncChanges(store: string): SyncChanges | null {
     const changes = readStatusSync(store).unreported;
     if (!changes) return null;
     writeStatusSync(store, { unreported: undefined });
-    return changes.added.length + changes.removed.length + changes.updated.length > 0 ? changes : null;
+    return changeCount(changes) > 0 ? changes : null;
   } catch {
     return null;
   }
@@ -898,4 +990,42 @@ export function maybeStartBackgroundSync(store: string): string | null {
   } catch {
     return null;
   }
+}
+
+export interface ShareResult {
+  url: string;
+  /** Skills copied into the repo, with the folder to edit them in from now on. */
+  shared: Array<{ name: string; path: string }>;
+  pushed: boolean;
+  errors: string[];
+}
+
+/** Machine-only global skills (folder sources) that `sync share` can take. */
+export async function shareableSkills(opts: BaseOptions = {}): Promise<ShareCandidate[]> {
+  const { store } = ctxOf(opts);
+  return machineOnlySkills(await openIndex(store));
+}
+
+/**
+ * `skill-library sync share <skill...>`: copy machine-only global skills (by name or id) into the
+ * repo's `skills/`, so every machine gets them. From then on the repo is their source of truth.
+ */
+export async function shareSkills(selectors: string[], opts: BaseOptions = {}): Promise<ShareResult> {
+  const { store } = ctxOf(opts);
+  const cfg = await requireConfig(store);
+  if (!cfg.enabled) throw new CliError(1, "sync is disabled — run skill-library sync enable");
+  if (selectors.length === 0) throw new CliError(1, "Missing required argument: skill", "Usage: skill-library sync share <skill...>");
+  const candidates = machineOnlySkills(await openIndex(store));
+  const ids: string[] = [];
+  for (const sel of selectors) {
+    const hits = candidates.filter((c) => c.id === sel || c.name === sel);
+    if (hits.length === 0) {
+      throw new CliError(1, `No machine-only global skill named ${sel}`, "Only global skills added from a local folder can be shared; see skill-library list -g");
+    }
+    if (hits.length > 1) throw new CliError(1, `${sel} matches several skills: ${hits.map((h) => h.id).join(", ")}`, "Pass the id instead");
+    ids.push(hits[0]!.id);
+  }
+  const res = await recordGlobalChange({ added: ids, share: ids }, opts);
+  if (!res) throw new CliError(1, "sync is disabled — run skill-library sync enable");
+  return { url: res.url, shared: res.shared, pushed: res.pushed, errors: res.errors };
 }
