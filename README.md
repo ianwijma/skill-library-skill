@@ -141,19 +141,31 @@ npm run build       # dist/skill-library (CLI), dist/index.js + dist/api.d.ts (A
 
 ### Releasing
 
-Releases run from GitHub: **Actions → Release → Run workflow** on `develop`, then
-pick a bump (`patch`, `minor`, `major`, or a `pre*` bump with a prerelease id).
-The [Release workflow](.github/workflows/release.yml) tests and builds, commits the
-new version to `develop`, pushes a `vX.Y.Z` tag, publishes that tag to npm with
-provenance, and creates a GitHub Release with generated notes. Prereleases go to
-the `next` dist-tag. Tick **Dry run** to try it without pushing or publishing. If
-the publish step fails, **Re-run failed jobs** publishes the existing tag again
-without a second bump. Only the repository owner can release, unless the
-`RELEASE_ACTORS` repository variable lists other GitHub logins.
+First time only: follow [docs/10-releasing.md](docs/10-releasing.md) to set up npm
+and GitHub. Then, for each release:
 
-One-time setup: [docs/10-releasing.md](docs/10-releasing.md). npm publishing uses [trusted publishing](https://docs.npmjs.com/trusted-publishers)
-(no token): on npmjs.com, the package's trusted publisher is GitHub Actions,
-repository `ianwijma/skill-library-skill`, workflow `release.yml`, environment `npm`.
+1. Open **Actions → Release → Run workflow**.
+2. Leave the branch on `develop`.
+3. Pick a **Version bump**: `patch`, `minor` or `major`. For a prerelease, pick a
+   `pre*` bump and set the **Prerelease identifier** (default `rc`).
+4. Optional: tick **Dry run** to check everything without pushing or publishing.
+5. Click **Run workflow** and wait for both jobs to go green.
+6. Check the new version on [npm](https://www.npmjs.com/package/skill-library)
+   and the new GitHub Release.
+
+What the workflow does:
+
+- Tests, typechecks and builds.
+- Commits the new version to `develop` and pushes a `vX.Y.Z` tag.
+- Publishes that tag to npm with provenance. Prereleases go to the `next` dist-tag.
+- Creates a GitHub Release with generated notes.
+
+If it fails:
+
+- **Publish failed:** click **Re-run failed jobs**. It publishes the tag that was
+  already pushed, without bumping again.
+- **"may not run releases":** only the repository owner can release, unless the
+  `RELEASE_ACTORS` repository variable lists your GitHub login.
 
 ## License
 
