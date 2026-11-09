@@ -34,7 +34,30 @@ skill-library sync init ssh://git@git.example.com:2222/me/my-skills.git
 
 If `sync` is already set up with the same URL, `init` says so and exits
 successfully without changing anything. With a different URL it refuses and
-names the files to delete to start over.
+points to `sync set-url`.
+
+## Moving to another repository
+
+```sh
+skill-library sync set-url git@github.com:me/my-skills.git
+```
+
+`set-url` does the following:
+
+- Commits local edits and pulls from the old repository, so nothing is left
+  behind. If the old repository can't be reached (deleted, host gone), it says
+  so and moves this machine's clone as it is.
+- Points the clone at the new URL and pushes everything there: the full
+  history, `skill-library.json` and `skills/`.
+- Refuses a new repository that already holds unrelated history, and keeps the
+  old URL. An empty repository or a copy or mirror of the old one works.
+- Your own skills (`skills/` folders) get ids under the new repository. Their
+  old records are dropped, so `list` shows each skill once.
+- Writes the new URL to `sync.json` and runs a normal sync.
+
+With the URL already in use, it says so and changes nothing. Sync must be
+enabled. Run `set-url` with the same URL on each of your other machines. Until
+you do, they keep syncing with the old repository.
 
 ## The repo
 
