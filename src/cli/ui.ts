@@ -1,7 +1,14 @@
+import { readFileSync } from "node:fs";
 import { BOLD, DIM, RESET, TEXT } from "../lib/cli.ts";
 import { isRunningInAgent } from "../lib/detect-agent.ts";
 
-export const VERSION = "0.1.0";
+/** Replaced with package.json's version by scripts/build.mjs; unset when running from src. */
+declare const __SKILL_LIBRARY_VERSION__: string | undefined;
+
+export const VERSION: string =
+  typeof __SKILL_LIBRARY_VERSION__ === "string"
+    ? __SKILL_LIBRARY_VERSION__
+    : JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version;
 
 const LOGO_LINES = [
   "┌─┐┬┌─┬┬  ┬    ┬  ┬┌┐ ┬─┐┌─┐┬─┐┬ ┬",

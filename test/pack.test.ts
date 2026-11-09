@@ -5,12 +5,18 @@ import os from "node:os";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
+const { version } = JSON.parse(await fsp.readFile(path.join(root, "package.json"), "utf8"));
+
+// prepublishOnly runs this test inside `npm publish --dry-run`, which exports
+// npm_config_dry_run=true. Inherited, it makes `npm pack` skip writing the tarball
+// and `npm install` skip installing it, so the child npm commands run without it.
+const npmEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toLowerCase() !== "npm_config_dry_run"));
 
 /** The published tarball works on its own: bin, ESM import, types (bundler and node10), gateway. */
 describe("packed package", () => {
   test("npm pack → install elsewhere → bin, import and types work", async () => {
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "sl-pack-"));
-    const out = execFileSync("npm", ["pack", "--pack-destination", dir, "--json", "--ignore-scripts"], { cwd: root, encoding: "utf8" });
+    const out = execFileSync("npm", ["pack", "--pack-destination", dir, "--json", "--ignore-scripts"], { cwd: root, encoding: "utf8", env: npmEnv });
     const info = JSON.parse(out)[0];
     const files: string[] = info.files.map((f: any) => f.path).sort();
     expect(files).toContain("dist/skill-library");
@@ -23,9 +29,9 @@ describe("packed package", () => {
     const consumer = path.join(dir, "consumer");
     await fsp.mkdir(consumer);
     await fsp.writeFile(path.join(consumer, "package.json"), JSON.stringify({ name: "c", private: true, type: "module" }));
-    execFileSync("npm", ["install", "--no-audit", "--no-fund", "--offline", path.join(dir, info.filename)], { cwd: consumer, stdio: "ignore" });
+    execFileSync("npm", ["install", "--no-audit", "--no-fund", "--offline", path.join(dir, info.filename)], { cwd: consumer, stdio: "pipe", env: npmEnv });
     const bin = path.join(consumer, "node_modules", ".bin", "skill-library");
-    expect(execFileSync(bin, ["--version"], { encoding: "utf8" })).toBe("0.1.0\n");
+    expect(execFileSync(bin, ["--version"], { encoding: "utf8" })).toBe(`${version}\n`);
 
     await fsp.writeFile(
       path.join(consumer, "use.mjs"),
