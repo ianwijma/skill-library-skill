@@ -107,7 +107,7 @@ ${BOLD}Project:${RESET}
 ${BOLD}Sync:${RESET}
   sync init <git-url>     Keep global skills in a git repository (any host, HTTPS or SSH)
   sync                    Pull, install, update and push now (also runs on its own from query)
-  sync set-url <git-url>  Move sync to another repository (pushes everything there)
+  sync update <git-url>   Move sync to another repository (pushes everything there)
   sync disable            Stop syncing (add/remove/update -g stay local)
   sync enable             Start syncing again
   sync status             Show the repository, last sync and last error

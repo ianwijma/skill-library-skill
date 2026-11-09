@@ -590,7 +590,7 @@ export async function initSync(url: string, opts: BaseOptions = {}): Promise<Ini
   const paths = syncPaths(store);
   const existing = await readSyncConfig(store);
   if (existing?.url === trimmed) return { alreadySetUp: true, url: existing.url };
-  if (existing) throw new CliError(1, `Sync is already set up with ${existing.url}`, `To move to ${trimmed}, run skill-library sync set-url ${trimmed}`);
+  if (existing) throw new CliError(1, `Sync is already set up with ${existing.url}`, `To move to ${trimmed}, run skill-library sync update ${trimmed}`);
   await fsp.mkdir(store, { recursive: true });
   await fsp.rm(paths.clone, { recursive: true, force: true }); // leftover of a failed init
   try {
@@ -635,7 +635,7 @@ export async function initSync(url: string, opts: BaseOptions = {}): Promise<Ini
   return { alreadySetUp: false, result: result!, seeded };
 }
 
-export type SetSyncUrlOutcome =
+export type UpdateSyncUrlOutcome =
   | { unchanged: true; url: string }
   | {
       unchanged: false;
@@ -646,14 +646,14 @@ export type SetSyncUrlOutcome =
     };
 
 /**
- * `skill-library sync set-url <git-url>`: point the clone at a new repository, push everything
+ * `skill-library sync update <git-url>`: point the clone at a new repository, push everything
  * there and use it from now on. The new repository must be empty or share history with the old
  * one (a copy or a mirror). Own skills get ids under the new URL.
  */
-export async function setSyncUrl(url: string, opts: BaseOptions = {}): Promise<SetSyncUrlOutcome> {
+export async function updateSyncUrl(url: string, opts: BaseOptions = {}): Promise<UpdateSyncUrlOutcome> {
   const { store } = ctxOf(opts);
   const trimmed = url.trim();
-  if (trimmed === "") throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync set-url <git-url>");
+  if (trimmed === "") throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync update <git-url>");
   assertSafeGitArgs(trimmed);
   const paths = syncPaths(store);
   const cfg0 = await requireConfig(store);
@@ -662,7 +662,7 @@ export async function setSyncUrl(url: string, opts: BaseOptions = {}): Promise<S
   const { clone, lock } = paths;
   writeStatus(store, { lastAttempt: now() });
   try {
-    const outcome = await withFileLock(lock, async (): Promise<SetSyncUrlOutcome> => {
+    const outcome = await withFileLock(lock, async (): Promise<UpdateSyncUrlOutcome> => {
       const cfg = (await readSyncConfig(store)) ?? cfg0;
       if (cfg.url === trimmed) return { unchanged: true, url: trimmed };
       const previousUrl = cfg.url;

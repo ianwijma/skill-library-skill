@@ -53,7 +53,7 @@ remote sources).
 | `init [name]` | Create a new `SKILL.md`. |
 | `use <source>@<skill>` | Print a prompt for one skill without adding it (`| claude`), or start an agent with `-a`. |
 | `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. |
-| `sync init <git-url>` | Keep your global skills in a git repository (any host) and sync them across machines automatically. `sync set-url` / `sync disable` / `sync enable` / `sync status`. |
+| `sync init <git-url>` | Keep your global skills in a git repository (any host) and sync them across machines automatically. `sync update` / `sync disable` / `sync enable` / `sync status`. |
 
 `skill-library --help` lists every flag. Details: [CLI spec](docs/02-cli-spec.md).
 
@@ -82,7 +82,7 @@ new skills and newer versions show up everywhere on their own.
 
 `skill-library sync disable` stops all pulling and pushing while you test;
 `skill-library sync enable` turns it back on. To move to another repository,
-run `skill-library sync set-url <git-url>`. It pushes everything there and uses
+run `skill-library sync update <git-url>`. It pushes everything there and uses
 that repository from then on. Details: [09 — global sync](docs/09-global-sync-options.md).
 
 ## Agents

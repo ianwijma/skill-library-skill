@@ -1,11 +1,11 @@
 import pc from "picocolors";
-import { initSync, recordGlobalChange, runSync, setSyncEnabled, setSyncUrl, syncStatus, type GlobalChange, type SyncResult } from "../core/sync.ts";
+import { initSync, recordGlobalChange, runSync, setSyncEnabled, updateSyncUrl, syncStatus, type GlobalChange, type SyncResult } from "../core/sync.ts";
 import { CliError, DIM, RESET, formatError, msgOf, note, sanitizeMetadata } from "../lib/cli.ts";
 import { placeGateway } from "../lib/gateway.ts";
 import { parseFlags } from "./args.ts";
 import type { GlobalOpts } from "./index.ts";
 
-const USAGE = "Usage: skill-library sync [init <git-url> | set-url <git-url> | enable | disable | status]";
+const USAGE = "Usage: skill-library sync [init <git-url> | update <git-url> | enable | disable | status]";
 
 function printResult(r: SyncResult): void {
   for (const n of r.added) console.log(`  ${pc.green("+")} ${sanitizeMetadata(n)}`);
@@ -56,10 +56,10 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
         console.log(`${DIM}Sync runs on its own from now on. Turn it off with${RESET} skill-library sync disable`);
         return result.errors.length > 0 ? 1 : 0;
       }
-      case "set-url": {
+      case "update": {
         const url = rest[0];
-        if (!url) throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync set-url <git-url>");
-        const outcome = await setSyncUrl(url, base);
+        if (!url) throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync update <git-url>");
+        const outcome = await updateSyncUrl(url, base);
         if (outcome.unchanged) {
           if (json) console.log(JSON.stringify({ unchanged: true, url: outcome.url }));
           else console.log(`Sync already uses ${outcome.url}`);
@@ -73,7 +73,7 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
         if (oldPullError) note(`Could not pull from ${previousUrl} first: ${oldPullError} (this machine's skills were moved as they are)`);
         console.log(`Sync moved from ${previousUrl} to ${result.url}`);
         printResult(result);
-        console.log(`${DIM}On your other machines, run${RESET} skill-library sync set-url ${result.url}`);
+        console.log(`${DIM}On your other machines, run${RESET} skill-library sync update ${result.url}`);
         return result.errors.length > 0 ? 1 : 0;
       }
       case "enable": {

@@ -34,15 +34,15 @@ skill-library sync init ssh://git@git.example.com:2222/me/my-skills.git
 
 If `sync` is already set up with the same URL, `init` says so and exits
 successfully without changing anything. With a different URL it refuses and
-points to `sync set-url`.
+points to `sync update`.
 
 ## Moving to another repository
 
 ```sh
-skill-library sync set-url git@github.com:me/my-skills.git
+skill-library sync update git@github.com:me/my-skills.git
 ```
 
-`set-url` does the following:
+`sync update` does the following:
 
 - Commits local edits and pulls from the old repository, so nothing is left
   behind. If the old repository can't be reached (deleted, host gone), it says
@@ -56,8 +56,8 @@ skill-library sync set-url git@github.com:me/my-skills.git
 - Writes the new URL to `sync.json` and runs a normal sync.
 
 With the URL already in use, it says so and changes nothing. Sync must be
-enabled. Run `set-url` with the same URL on each of your other machines. Until
-you do, they keep syncing with the old repository.
+enabled. Run `sync update` with the same URL on each of your other machines.
+Until you do, they keep syncing with the old repository.
 
 ## The repo
 
