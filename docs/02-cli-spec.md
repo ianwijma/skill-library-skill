@@ -22,7 +22,7 @@ are marked **(differs)**. Global options anywhere on the line: `--store <dir>`
 | `update [skills…]` | `upgrade` | `-g`, `-p/--project`, `-y` | Pull the newest content from each skill's source. Project: moves this project's pin. `-g`: moves `current`. Local sources are skipped. |
 | `check [skills…]` | | `-g`, `-p`, `-y` | Report updates (compares the skill folder's git tree, so commits to other skills in a monorepo don't count). Writes nothing; exit 1 if any update or failure. |
 | `find [query]` | `search`, `f`, `s` | `--owner <name>` | Search skills.sh (`SKILLS_API_URL`). With a query: print results. Without: interactive picker on a TTY. |
-| `init [name]` | | | Create `<name>/SKILL.md` or `./SKILL.md`. |
+| `init [name]` | | `--always` | Create `<name>/SKILL.md` or `./SKILL.md`. `--always` adds `metadata.always: true`. |
 | `use <source>[@skill]` | | `-s <skill>`, `-a <claude-code\|codex\|sarvam-code>`, `--full-depth` | Print a prompt for one skill (pipe it into an agent), or start the agent with `-a`. Writes nothing to the library. Unknown options are errors. |
 | `query "<task>" \| -` | | `-a <agent>`, `--threshold <0..1>`, `--top <n>`, `--json` | Add-on. See [04](04-typesafe-query.md). |
 | `sync [init <git-url> \| update <git-url> \| share <skill...> \| enable \| disable \| status]` | | `--json`, `--share <skills>` (init) | Add-on. Keep global skills in a git repository. See [09](09-global-sync-options.md). |

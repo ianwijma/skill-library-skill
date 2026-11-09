@@ -109,7 +109,8 @@ ${BOLD}Update Options:${RESET}
 
 ${BOLD}Project:${RESET}
   install              Restore skills from skill-library.json (alias: i, experimental_install)
-  init [name]          Initialize a skill (creates <name>/SKILL.md or ./SKILL.md)
+  init [name]          Initialize a skill (creates <name>/SKILL.md or ./SKILL.md);
+                       --always: every query returns it, without scoring
 
 ${BOLD}Sync:${RESET}
   sync init <git-url>     Keep global skills in a git repository (any host, HTTPS or SSH)

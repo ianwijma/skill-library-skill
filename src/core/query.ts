@@ -6,6 +6,7 @@ import { loadProject } from "../lib/manifest.ts";
 import { buildRequest, callSystemOne } from "../lib/typesafe.ts";
 import { agentsArg, agentsMatch, ctxOf, globalKindOf, projectSkills, storeSkills, type BaseOptions, type GlobalKind, type ScopedSkill } from "./context.ts";
 import { readSyncConfig } from "./sync.ts";
+import { parseSkillFile } from "../lib/discover.ts";
 
 export interface QueryOptions extends BaseOptions {
   /** Calling agent id; filters out skills meant only for other agents. */
@@ -24,6 +25,8 @@ export interface QueryMatch {
   path: string;
   probability: number;
   scope: "project" | "global";
+  /** Marked `metadata.always` in its SKILL.md: returned without scoring (probability 1). */
+  always: boolean;
 }
 
 export interface QueryResult {
@@ -93,11 +96,31 @@ export async function querySkills(task: string, opts: QueryOptions = {}): Promis
   const { candidates, notInstalled } = await gatherCandidates(opts);
   if (candidates.length === 0) return { matches: [], notInstalled };
 
+  // Always-on skills skip scoring; read the flag from the SKILL.md that will be printed.
+  const always: ScopedSkill[] = [];
+  const scored: ScopedSkill[] = [];
+  for (const s of candidates) {
+    const parsed = await parseSkillFile(path.join(s.dir!, "SKILL.md"), "folder", true);
+    (parsed?.always ? always : scored).push(s);
+  }
+  const toMatch = (s: ScopedSkill, probability: number, isAlways: boolean): QueryMatch => ({
+    id: s.id,
+    name: s.name,
+    description: s.description,
+    path: path.join(s.dir!, "SKILL.md"),
+    probability,
+    scope: s.scope,
+    always: isAlways,
+  });
+  const byName = (a: QueryMatch, b: QueryMatch): number => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  const alwaysMatches = always.map((s) => toMatch(s, 1, true)).sort(byName);
+  if (scored.length === 0) return { matches: alwaysMatches, notInstalled };
+
   const apiKey = opts.apiKey ?? process.env.SKILL_LIBRARY_TYPESAFE_API_KEY;
   if (!apiKey) throw new CliError(2, "SKILL_LIBRARY_TYPESAFE_API_KEY is not set (required for query). Export it and retry.");
 
   // Opaque keys: ids (which may contain local paths) never leave the machine.
-  const keyed = candidates.map((s, i) => ({ key: `s${i}`, skill: s }));
+  const keyed = scored.map((s, i) => ({ key: `s${i}`, skill: s }));
   const request = buildRequest(
     trimmed,
     keyed.map(({ key, skill }) => ({ id: key, name: skill.name, description: skill.description })),
@@ -110,11 +133,12 @@ export async function querySkills(task: string, opts: QueryOptions = {}): Promis
     const s = byKey.get(key);
     const probability = answer && typeof answer.noul === "number" ? answer.noul : undefined;
     if (!s || probability === undefined || probability < threshold) continue;
-    matches.push({ id: s.id, name: s.name, description: s.description, path: path.join(s.dir!, "SKILL.md"), probability, scope: s.scope });
+    matches.push(toMatch(s, probability, false));
   }
-  matches.sort((a, b) => b.probability - a.probability || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  matches.sort((a, b) => b.probability - a.probability || byName(a, b));
+  // Always-on skills come first and don't count towards --top.
   return {
-    matches: opts.top !== undefined ? matches.slice(0, opts.top) : matches,
+    matches: [...alwaysMatches, ...(opts.top !== undefined ? matches.slice(0, opts.top) : matches)],
     notInstalled,
     usage: response.usage,
     model: response.model,

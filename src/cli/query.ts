@@ -79,8 +79,8 @@ export async function runQuery(args: string[], g: GlobalOpts): Promise<number> {
   }
   const lines = ["Read these skill files before continuing with the task:", ""];
   for (const m of res.matches) {
-    const pct = Math.round(m.probability * 100);
-    lines.push(`${sanitizeMetadata(m.name)} (${pct}%${m.scope === "project" ? ", project" : ""})`);
+    const label = m.always ? "always" : `${Math.round(m.probability * 100)}%`;
+    lines.push(`${sanitizeMetadata(m.name)} (${label}${m.scope === "project" ? ", project" : ""})`);
     lines.push(`└ ${m.path}`);
     lines.push("");
   }
