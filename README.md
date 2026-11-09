@@ -141,31 +141,29 @@ npm run build       # dist/skill-library (CLI), dist/index.js + dist/api.d.ts (A
 
 ### Releasing
 
-First time only: follow [docs/10-releasing.md](docs/10-releasing.md) to set up npm
-and GitHub. Then, for each release:
-
-1. Open **Actions → Release → Run workflow**.
-2. Leave the branch on `develop`.
-3. Pick a **Version bump**: `patch`, `minor` or `major`. For a prerelease, pick a
-   `pre*` bump and set the **Prerelease identifier** (default `rc`).
-4. Optional: tick **Dry run** to check everything without pushing or publishing.
-5. Click **Run workflow** and wait for both jobs to go green.
-6. Check the new version on [npm](https://www.npmjs.com/package/skill-library)
-   and the new GitHub Release.
-
-What the workflow does:
-
-- Tests, typechecks and builds.
-- Commits the new version to `develop` and pushes a `vX.Y.Z` tag.
-- Publishes that tag to npm with provenance. Prereleases go to the `next` dist-tag.
-- Creates a GitHub Release with generated notes.
-
-If it fails:
-
-- **Publish failed:** click **Re-run failed jobs**. It publishes the tag that was
-  already pushed, without bumping again.
-- **"may not run releases":** only the repository owner can release, unless the
-  `RELEASE_ACTORS` repository variable lists your GitHub login.
+- **First time only:** set up npm and GitHub with
+  [docs/10-releasing.md](docs/10-releasing.md).
+- **Run a release:**
+  - Open **Actions → Release → Run workflow**.
+  - Leave the branch on `develop`.
+  - Pick a **Version bump**: `patch`, `minor` or `major`.
+  - For a prerelease, pick a `pre*` bump and set the **Prerelease identifier**
+    (default `rc`).
+  - Optional: tick **Dry run** to check everything without pushing or publishing.
+  - Click **Run workflow** and wait for both jobs to go green.
+  - Check the new version on [npm](https://www.npmjs.com/package/skill-library)
+    and the new GitHub Release.
+- **What the workflow does:**
+  - Tests, typechecks and builds.
+  - Commits the new version to `develop` and pushes a `vX.Y.Z` tag.
+  - Publishes that tag to npm with provenance. Prereleases go to the `next`
+    dist-tag.
+  - Creates a GitHub Release with generated notes.
+- **If it fails:**
+  - **Publish failed:** click **Re-run failed jobs**. It publishes the tag that
+    was already pushed, without bumping again.
+  - **"may not run releases":** only the repository owner can release, unless
+    the `RELEASE_ACTORS` repository variable lists your GitHub login.
 
 ## License
 
