@@ -32,8 +32,9 @@ skill-library sync init ssh://git@git.example.com:2222/me/my-skills.git
   Git skills become manifest entries. Folder skills are copied into
   `skills/`.
 
-If `sync` is already set up, `init` refuses and names the files to delete to
-start over.
+If `sync` is already set up with the same URL, `init` says so and exits
+successfully without changing anything. With a different URL it refuses and
+names the files to delete to start over.
 
 ## The repo
 
@@ -81,7 +82,9 @@ While sync is enabled, the regular commands write to the repo:
 | `update -g` | Writes the new pins. |
 
 Each of these pulls first, then commits and pushes. A failed pull or push is
-reported in one line, and the local commit is pushed on the next sync.
+reported in one line, and the local commit is pushed on the next sync. Skills
+the pull adds or drops (changes from other machines) are listed on stderr as
+`+ name (from <url>)` and `- name (dropped by <url>)`.
 
 ## Disable and enable
 
@@ -120,6 +123,11 @@ never waits for the sync and never fails because of it.
 - Results and errors go to `<library>/sync-status.json`, and
   `skill-library sync status` shows them. When the previous background sync
   failed, the next `query` that starts one prints one line on stderr.
+- Nobody sees a background run's output, so its added, removed and updated
+  skills are kept in `sync-status.json` (`unreported`). The next successful
+  `query` prints them under `Sync changed your global skills — tell the user:`
+  (`syncChanges` with `--json`) and clears them. The gateway tells the agent to
+  pass this on to the user.
 
 ## Edge cases
 
