@@ -169,7 +169,8 @@ npm run build       # dist/skill-library (CLI), dist/index.js + dist/api.d.ts (A
     - Run `prerelease` for each next candidate: `1.3.0-rc.1`, `1.3.0-rc.2`, ...
     - Run `minor` to release it: `1.3.0-rc.2` → `1.3.0`.
     - Don't run `preminor` again on a candidate: that starts `1.4.0-rc.0`.
-  - Optional: tick **Dry run** to check everything without pushing or publishing.
+  - **Dry run** is ticked by default: it checks everything without pushing or
+    publishing. Untick it to release for real.
   - Click **Run workflow**.
   - Wait for **Plan release** to finish, then open the run's summary. It shows:
     - What is published now: npm `latest` and `next`, the latest GitHub Release
