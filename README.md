@@ -50,7 +50,7 @@ remote sources).
 | `update` / `check` | Pull newer versions from each skill's source / report them. |
 | `install` | Restore a project's skills from `skill-library.json`, at the pinned versions. |
 | `find [query]` | Search [skills.sh](https://skills.sh). |
-| `init [name]` | Create a new `SKILL.md`. |
+| `init [name]` | Create a new `SKILL.md`. `--always` makes every query return it (see below). |
 | `use <source>@<skill>` | Print a prompt for one skill without adding it (`| claude`), or start an agent with `-a`. |
 | `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. |
 | `sync init <git-url>` | Keep your global skills in a git repository (any host) and sync them across machines automatically. `sync update` / `sync disable` / `sync enable` / `sync status`. |
@@ -67,6 +67,26 @@ commit and a content hash, so a teammate (or your other machine) runs
 Folders inside the repository (`skill-library add ./skills/foo`) are read in
 place. Inside the project, `query` sees the project's skills plus your global
 library; when both have a skill with the same name, the project's wins.
+
+## Always-on skills
+
+A skill whose frontmatter sets `metadata.always: true` is returned by every
+`query`, without being scored. Use it for your own rules that apply to every
+task, such as team conventions. `skill-library init <name> --always` writes the
+flag for you:
+
+```yaml
+---
+name: house-rules
+description: Our team's conventions
+metadata:
+  always: true
+---
+```
+
+Always-on skills come first in the results, are shown as `(always)` (probability
+1 with `--json`) and don't count towards `--top`. Shadowing and `-a` still apply.
+If every candidate is always-on, `query` makes no API call and needs no key.
 
 ## Syncing global skills across machines
 

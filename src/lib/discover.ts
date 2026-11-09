@@ -15,6 +15,14 @@ export interface DiscoveredSkill {
   path: string;
   kind: "folder" | "file";
   rawContent: string;
+  /** `metadata.always: true` — returned by every query without scoring. */
+  always: boolean;
+}
+
+/** `metadata.always` is set (`true`, or the string `"true"` per the spec's string-valued metadata). */
+export function isAlwaysSkill(data: Record<string, unknown>): boolean {
+  const metadata = typeof data.metadata === "object" && data.metadata !== null ? (data.metadata as Record<string, unknown>) : undefined;
+  return metadata?.always === true || metadata?.always === "true";
 }
 
 const SKIP_DIRS = ["node_modules", ".git", "dist", "build", "__pycache__"];
@@ -68,7 +76,7 @@ export async function parseSkillFile(file: string, kind: "folder" | "file", quie
   if (metadata?.internal === true && process.env.INSTALL_INTERNAL_SKILLS !== "1" && process.env.INSTALL_INTERNAL_SKILLS !== "true") {
     return null;
   }
-  return { name, description, path: kind === "file" ? file : path.dirname(file), kind, rawContent: raw };
+  return { name, description, path: kind === "file" ? file : path.dirname(file), kind, rawContent: raw, always: isAlwaysSkill(data) };
 }
 
 /**

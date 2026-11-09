@@ -98,6 +98,12 @@ library (each skill's `current` version). Selection order:
 Each candidate is scored on the name and description of the version that will
 be printed.
 
+**Always-on skills.** A candidate whose `SKILL.md` sets `metadata.always: true`
+(or the string `"true"`) is not sent to Jev. It is returned with probability 1
+and `"always": true`, before the scored matches, regardless of `--threshold` and
+`--top`. When every candidate is always-on, no request is made and no API key is
+needed.
+
 ## Output
 
 ```
@@ -118,7 +124,7 @@ Sync changed your global skills — tell the user:
   updated: frontend-design
 ```
 
-`--json` prints `{"matches":[{id,name,description,path,probability,scope}]}`,
+`--json` prints `{"matches":[{id,name,description,path,probability,scope,always}]}`,
 plus `"syncChanges":{"added":[…],"removed":[…],"updated":[…]}` in the same case.
 Exit codes: 0 ok · 1 usage (incl. invalid agent) · 2 runtime (key, network, lock).
 

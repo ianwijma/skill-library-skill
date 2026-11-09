@@ -29,6 +29,8 @@ and must be loaded on demand, per task.
 
 2. The output lists matching skills, each followed by a `└ <path>` line. Read
    every listed `SKILL.md` path **before** working on the task and follow it.
+   Skills marked `(always)` are the user's always-on skills: they are returned
+   for every task, so read them too.
 3. `No matching skills. Continue without one.` → proceed on your own judgment.
 4. If the output ends with `Sync changed your global skills — tell the user:`
    (`syncChanges` with `--json`), tell the user which skills were added,
@@ -45,7 +47,7 @@ and must be loaded on demand, per task.
 - `--threshold <0..1>` — minimum probability (default 0.7). Use `0.8` to be
   stricter, `0.5` to recover misses.
 - `--top <n>` — cap the number of matches.
-- `--json` — `{"matches":[{id,name,description,path,probability,scope}]}`.
+- `--json` — `{"matches":[{id,name,description,path,probability,scope,always}]}`.
 - A stderr line `N project skills are not installed — run skill-library install`
   means the project's `skill-library.json` references skills this machine
   doesn't have yet; run that command when you are allowed to.

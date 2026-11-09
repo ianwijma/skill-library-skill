@@ -39,6 +39,17 @@ describe("root commands", () => {
     const md = await fsp.readFile(path.join(sb.root, "my-skill", "SKILL.md"), "utf8");
     expect(md).toContain("name: my-skill");
     expect((await run(sb, ["init", "my-skill"])).stdout).toContain("Skill already exists at");
+    expect(md).not.toContain("always");
+  });
+
+  test("init --always marks the skill always-on, in either argument order", async () => {
+    const sb = await sandbox();
+    expect((await run(sb, ["init", "--always", "rules"])).code).toBe(0);
+    expect((await run(sb, ["init", "other", "--always"])).code).toBe(0);
+    for (const name of ["rules", "other"]) {
+      const md = await fsp.readFile(path.join(sb.root, name, "SKILL.md"), "utf8");
+      expect(md).toContain("description: A brief description of what this skill does\nmetadata:\n  always: true\n---\n");
+    }
   });
 });
 

@@ -105,8 +105,42 @@ describe("query", () => {
     mock.stop();
     const json = JSON.parse(top.stdout);
     expect(json.matches.map((m: any) => m.name)).toEqual(["b-skill"]);
-    expect(Object.keys(json.matches[0]).sort()).toEqual(["description", "id", "name", "path", "probability", "scope"]);
+    expect(Object.keys(json.matches[0]).sort()).toEqual(["always", "description", "id", "name", "path", "probability", "scope"]);
     await fsp.access(json.matches[0].path);
+  });
+
+  test("always skills: never scored, listed first at probability 1, outside --top", async () => {
+    const sb = await sandbox();
+    await seed(sb);
+    const src = path.join(sb.root, "src");
+    await writeFiles(src, {
+      "house-rules/SKILL.md": "---\nname: house-rules\ndescription: Team conventions\nmetadata:\n  always: true\n---\n\n# House rules\n",
+    });
+    expect((await run(sb, ["add", path.join(src, "house-rules"), "-g", "-y"])).code).toBe(0);
+    const mock = await startMock(byName({ "a-skill": 0.78, "b-skill": 0.91 }));
+    const res = await q(sb, ["task", "--top", "1"], mock);
+    expect(res.code).toBe(0);
+    const names = Object.values(mock.bodies[0].questions).map((x: any) => x.instructions.skill.name);
+    expect(names).not.toContain("house-rules");
+    const lines = res.stdout.split("\n");
+    expect(lines[2]).toBe("house-rules (always)");
+    expect(lines[5]).toBe("b-skill (91%)");
+    expect(res.stdout).not.toContain("a-skill");
+    const json = JSON.parse((await q(sb, ["task", "--json"], mock)).stdout);
+    mock.stop();
+    expect(json.matches[0]).toMatchObject({ name: "house-rules", probability: 1, always: true });
+    expect(json.matches[1]).toMatchObject({ name: "b-skill", always: false });
+  });
+
+  test("only always skills: no API call and no key needed", async () => {
+    const sb = await sandbox();
+    await writeFiles(path.join(sb.root, "src"), {
+      "house-rules/SKILL.md": "---\nname: house-rules\ndescription: Team conventions\nmetadata:\n  always: \"true\"\n---\n",
+    });
+    expect((await run(sb, ["add", path.join(sb.root, "src", "house-rules"), "-g", "-y"])).code).toBe(0);
+    const res = await run(sb, ["query", "task"], { env: { SKILL_LIBRARY_TYPESAFE_API_KEY: "" } });
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain("house-rules (always)");
   });
 
   test("-a filters agent-specific skills; invalid agent lists valid ones (exit 1)", async () => {
