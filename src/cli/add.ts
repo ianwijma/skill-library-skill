@@ -1,12 +1,16 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { addSkills, type AddedSkill } from "../core/add.ts";
-import { agentsArg } from "../core/context.ts";
+import { addSkills, type AddedSkill, type NameClash } from "../core/add.ts";
+import { agentsArg, globalKindOf, type GlobalKind } from "../core/context.ts";
+import { readSyncConfig } from "../core/sync.ts";
 import { agentIds, displayName } from "../lib/agents.ts";
 import { CliError, DIM, RESET, TEXT, formatError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { isRunningInAgent } from "../lib/detect-agent.ts";
 import { placeGateway } from "../lib/gateway.ts";
+import { gitSkillId } from "../lib/ids.ts";
 import { loadProject } from "../lib/manifest.ts";
+import { resolveStore } from "../lib/paths.ts";
+import { parseSource } from "../lib/source.ts";
 import type { AgentsValue } from "../lib/store.ts";
 import { parseFlags } from "./args.ts";
 import { afterGlobalChange } from "./sync.ts";
@@ -38,6 +42,13 @@ function jsonRow(r: AddedSkill): Record<string, unknown> {
   };
 }
 
+const KIND_LABEL: Record<GlobalKind, string> = { remote: "from a git repo", own: "your own skill, synced", "machine-only": "machine-only" };
+
+function clashMessage(c: NameClash, e: NameClash["existing"][number], kind: GlobalKind): string {
+  const files = e.sameContent ? "same files" : "different files";
+  return `A global ${c.name} already exists (${KIND_LABEL[kind]}: ${e.source}; ${files}). Replace it with this one?`;
+}
+
 export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   const f = parseFlags(args, {
     booleans: {
@@ -48,6 +59,8 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
       fullDepth: ["--full-depth"],
       copy: ["--copy"],
       json: ["--json"],
+      share: ["--share"],
+      noShare: ["--no-share"],
     },
     lists: { agent: ["-a", "--agent"], skill: ["-s", "--skill"] },
   });
@@ -62,6 +75,7 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   if (f.missing.length > 0) return fail(new CliError(1, `${f.missing[0]} requires a value`));
   if (json && f.booleans.has("list")) return fail(new CliError(1, "--json cannot be combined with --list"));
   if (json && !yes) return fail(new CliError(1, "--json requires -y (or --all) so no prompt is needed"));
+  if (f.booleans.has("share") && f.booleans.has("noShare")) return fail(new CliError(1, "--share cannot be combined with --no-share"));
   const source = f.positionals[0];
   if (!source) return fail(new CliError(1, "Missing required argument: source", "Usage: skill-library add <package> [options]"));
   if (f.positionals.length > 1) note(`Only the first source is used: ${source}`);
@@ -95,6 +109,19 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
     }
   }
 
+  // With sync on, a global skill from a local folder is machine-only unless shared: the CLI can't
+  // tell a skill you wrote from a copy of someone else's, so sharing is the user's call.
+  const sync = await readSyncConfig(resolveStore(g.store)).catch(() => null);
+  const syncUrl = sync?.enabled ? sync.url : null;
+  let isLocal = false;
+  try {
+    isLocal = parseSource(source, g.cwd).type === "local";
+  } catch {
+    // addSkills reports a bad source.
+  }
+  let share: boolean | undefined = f.booleans.has("share") ? true : f.booleans.has("noShare") ? false : undefined;
+  if (share !== undefined && !(global && syncUrl)) note("--share/--no-share only apply to add -g while sync is enabled");
+
   const spinner = !json && process.stderr.isTTY ? p.spinner({ output: process.stderr }) : null;
   spinner?.start(`Fetching ${source}`);
   let result;
@@ -118,7 +145,30 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
             ? "This source only contains the skill-library gateway. Install it into your agents' skills folders?"
             : `Add ${picked.map((s) => s.name).join(", ")} to the ${scope === "project" ? "project" : "global library"}?`;
         const ok = await p.confirm({ message });
-        return !p.isCancel(ok) && ok === true;
+        if (p.isCancel(ok) || ok !== true) return false;
+        if (kind !== "gateway" && scope === "global" && syncUrl && isLocal && share === undefined) {
+          const s = await p.confirm({ message: `Share ${picked.length === 1 ? "it" : "them"} across your devices (through ${syncUrl})?`, initialValue: true });
+          if (p.isCancel(s)) return false;
+          share = s === true;
+        }
+        return true;
+      },
+      resolveClashes: async (clashes) => {
+        const replace: string[] = [];
+        for (const c of clashes) {
+          for (const e of c.existing) {
+            // Sharing a folder skill over your own skill of the same name updates that skill in the repo.
+            if (share && syncUrl && e.id === gitSkillId(syncUrl, c.name)) continue;
+            if (yes) {
+              replace.push(e.id); // safe: the old copy stays in the store, listed as not global
+              continue;
+            }
+            spinner?.stop("Found a skill with the same name");
+            const ok = await p.confirm({ message: clashMessage(c, e, globalKindOf(e, syncUrl)), initialValue: true });
+            if (!p.isCancel(ok) && ok === true) replace.push(e.id);
+          }
+        }
+        return replace;
       },
       selectSkills: async (found) => {
         if (yes) return found;
@@ -164,7 +214,15 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   }
 
   const addedGlobal = result.scope === "global" && !result.cancelled ? result.skills.filter((r) => r.status === "installed").map((r) => r.id) : [];
-  if (addedGlobal.length > 0) await afterGlobalChange({ added: addedGlobal }, g);
+  const shareIds = share && isLocal ? addedGlobal : [];
+  if (addedGlobal.length > 0) {
+    await afterGlobalChange({ added: addedGlobal, share: shareIds, removed: result.replaced.map((r) => r.id) }, g);
+  }
+  if (syncUrl && isLocal && shareIds.length === 0) {
+    for (const r of result.skills.filter((x) => x.status === "installed" && x.scope === "global")) {
+      note(`${sanitizeMetadata(r.name)} is machine-only (not synced). To share it: skill-library sync share ${sanitizeMetadata(r.name)}`);
+    }
+  }
 
   if (json) {
     console.log(JSON.stringify(result.skills.map(jsonRow), null, 2));
@@ -194,6 +252,9 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
     console.log(`  ${pc.green("✓")} ${verb} ${pc.cyan(sanitizeMetadata(r.name))} ${DIM}(${r.id})${RESET}`);
     console.log(`    ${DIM}path:${RESET} ${r.path}`);
     console.log(`    ${DIM}agents:${RESET} ${agentsLabel(r.agents)}`);
+  }
+  for (const r of result.replaced) {
+    console.log(`  ${pc.yellow("↺")} Replaced ${pc.cyan(sanitizeMetadata(r.name))} ${DIM}(${r.id}; kept in the store, not global)${RESET}`);
   }
   console.log();
   console.log(`${DIM}Agents find these skills with${RESET} skill-library query "<task>"`);

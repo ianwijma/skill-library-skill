@@ -80,6 +80,11 @@ on `add -g`, `remove -g` and `update -g` commit and push, and `query` starts a
 background sync at most once an hour (`SKILL_LIBRARY_SYNC_TTL`, in seconds), so
 new skills and newer versions show up everywhere on their own.
 
+A global skill added from a local folder stays on this machine unless you share
+it: `add -g` asks (or pass `--share`), and `skill-library sync share <name>`
+shares one later. Skills you copied from someone else's repo are better added
+from that repo, so they keep getting updates.
+
 `skill-library sync disable` stops all pulling and pushing while you test;
 `skill-library sync enable` turns it back on. To move to another repository,
 run `skill-library sync update <git-url>`. It pushes everything there and uses

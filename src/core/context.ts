@@ -3,6 +3,7 @@ import path from "node:path";
 import { agentIds } from "../lib/agents.ts";
 import { CliError } from "../lib/cli.ts";
 import { filterSkills, parseSkillFile } from "../lib/discover.ts";
+import { gitSkillId } from "../lib/ids.ts";
 import { loadProject, type ManifestEntry, type Project } from "../lib/manifest.ts";
 import { resolveStore } from "../lib/paths.ts";
 import {
@@ -90,6 +91,21 @@ export function agentsMatch(value: AgentsValue, agent: string | undefined): bool
 // ---------------------------------------------------------------------------
 
 export type Status = "installed" | "missing" | "untracked";
+
+/**
+ * Where a global skill's source of truth is (docs/09-global-sync-options.md):
+ * - remote: a git repository it is updated from
+ * - own: a `skills/` folder in the sync repository (synced to every machine)
+ * - machine-only: a folder on this machine (never synced)
+ */
+export type GlobalKind = "remote" | "own" | "machine-only";
+
+/** `syncUrl` is the sync repository's URL, or null when sync is not set up. */
+export function globalKindOf(skill: { id: string; sourceType: "git" | "local" | null }, syncUrl: string | null): GlobalKind {
+  if (skill.sourceType !== "git") return "machine-only";
+  if (syncUrl !== null && skill.id.startsWith(gitSkillId(syncUrl, ""))) return "own";
+  return "remote";
+}
 
 export interface ScopedSkill {
   id: string;

@@ -5,6 +5,9 @@ import { mergeManifests } from "../src/core/sync.ts";
 import type { Manifest } from "../src/lib/manifest.ts";
 import { git, gitRepo, readJson, run, sandbox, skillMd, writeFiles, type Sandbox } from "./helpers.ts";
 
+// eslint-disable-next-line no-control-regex
+const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, "");
+
 /** An empty bare repository to sync through (file:// URL, so it behaves like any remote host). */
 async function emptyRemote(sb: Sandbox, name = "my-skills"): Promise<string> {
   const bare = path.join(sb.root, "remotes", `${name}.git`);
@@ -36,7 +39,7 @@ describe("sync", () => {
     expect((await run(a, ["add", path.join(a.home, "mine"), "-g", "-y"])).code).toBe(0);
     const remote = await emptyRemote(a);
 
-    const init = await run(a, ["sync", "init", remote]);
+    const init = await run(a, ["sync", "init", remote, "--share", "mine"]);
     expect(init.code, init.stderr + init.stdout).toBe(0);
     expect(init.stdout).toContain("added this machine's 2 global skill(s)");
 
@@ -81,7 +84,7 @@ describe("sync", () => {
     expect(add.stderr).toContain(`Synced to ${remote}`);
 
     await writeFiles(path.join(a.home, "notes"), { "SKILL.md": skillMd("notes", "Notes skill") });
-    const addNotes = await run(a, ["add", path.join(a.home, "notes"), "-g", "-y"]);
+    const addNotes = await run(a, ["add", path.join(a.home, "notes"), "-g", "-y", "--share"]);
     expect(addNotes.code).toBe(0);
     expect(addNotes.stderr).not.toContain(`(from ${remote})`); // its own change isn't reported as pulled
     expect((await remoteFiles(a, remote)).skills).toEqual(["notes"]);
@@ -243,7 +246,7 @@ describe("sync", () => {
     expect((await run(a, ["add", up.url, "-g", "-y"])).code).toBe(0);
     expect((await run(a, ["add", path.join(a.home, "mine"), "-g", "-y"])).code).toBe(0);
     const oldRemote = await emptyRemote(a, "old-skills");
-    expect((await run(a, ["sync", "init", oldRemote])).code).toBe(0);
+    expect((await run(a, ["sync", "init", oldRemote, "--share", "mine"])).code).toBe(0);
     const b = await sandbox();
     expect((await run(b, ["sync", "init", oldRemote])).code).toBe(0);
 
@@ -274,7 +277,7 @@ describe("sync", () => {
 
     // Later changes go to the new repo.
     await writeFiles(path.join(a.home, "other"), { "SKILL.md": skillMd("other", "Another skill") });
-    expect((await run(a, ["add", path.join(a.home, "other"), "-g", "-y"])).code).toBe(0);
+    expect((await run(a, ["add", path.join(a.home, "other"), "-g", "-y", "--share"])).code).toBe(0);
     expect((await remoteFiles(a, newRemote)).skills).toEqual(["mine", "other"]);
     expect((await remoteFiles(a, oldRemote)).skills).toEqual(["mine"]);
 
@@ -302,7 +305,7 @@ describe("sync", () => {
     await writeFiles(path.join(a.home, "mine"), { "SKILL.md": skillMd("mine", "My own skill") });
     expect((await run(a, ["add", path.join(a.home, "mine"), "-g", "-y"])).code).toBe(0);
     const oldRemote = await emptyRemote(a, "old-skills");
-    expect((await run(a, ["sync", "init", oldRemote])).code).toBe(0);
+    expect((await run(a, ["sync", "init", oldRemote, "--share", "*"])).code).toBe(0);
     await fsp.rm(oldRemote.replace("file://", ""), { recursive: true, force: true });
 
     const newRemote = await emptyRemote(a, "new-skills");
@@ -310,6 +313,116 @@ describe("sync", () => {
     expect(move.code, move.stderr + move.stdout).toBe(0);
     expect(move.stderr).toContain(`Could not pull from ${oldRemote}`);
     expect((await remoteFiles(a, newRemote)).skills).toEqual(["mine"]);
+  });
+
+  test("init keeps folder skills machine-only unless chosen", async () => {
+    const a = await sandbox();
+    const up = await gitRepo(a, "upstream", { "skills/alpha/SKILL.md": skillMd("alpha", "Alpha skill") });
+    await writeFiles(path.join(a.home, "copy"), { "SKILL.md": skillMd("copy", "A copied skill") });
+    expect((await run(a, ["add", up.url, "-g", "-y"])).code).toBe(0);
+    expect((await run(a, ["add", path.join(a.home, "copy"), "-g", "-y"])).code).toBe(0);
+    const remote = await emptyRemote(a);
+
+    const init = await run(a, ["sync", "init", remote]);
+    expect(init.code, init.stderr + init.stdout).toBe(0);
+    expect(plain(init.stdout)).toContain("Kept machine-only (not synced): copy");
+    const files = await remoteFiles(a, remote);
+    expect(Object.keys(files.manifest.skills).map((id) => id.split("/").pop())).toEqual(["alpha"]);
+    expect(files.skills).toEqual([]);
+    // Still global here, under its folder id.
+    const ga = await globals(a);
+    expect(Object.keys(ga).sort()).toEqual(["alpha", "copy"]);
+    expect(ga.copy.id).not.toMatch(/^repo:/);
+
+    const b = await sandbox();
+    expect((await run(b, ["sync", "init", remote])).code).toBe(0);
+    expect(Object.keys(await globals(b))).toEqual(["alpha"]);
+  });
+
+  test("add -g of a folder stays machine-only until shared; sync share syncs it", async () => {
+    const a = await sandbox();
+    const remote = await emptyRemote(a);
+    expect((await run(a, ["sync", "init", remote])).code).toBe(0);
+    const b = await sandbox();
+    expect((await run(b, ["sync", "init", remote])).code).toBe(0);
+
+    await writeFiles(path.join(a.home, "mine"), { "SKILL.md": skillMd("mine", "My own skill") });
+    const add = await run(a, ["add", path.join(a.home, "mine"), "-g", "-y"]);
+    expect(add.code, add.stderr).toBe(0);
+    expect(add.stderr).toContain("mine is machine-only (not synced). To share it: skill-library sync share mine");
+    expect((await remoteFiles(a, remote)).skills).toEqual([]);
+
+    const share = await run(a, ["sync", "share", "mine"]);
+    expect(share.code, share.stderr + share.stdout).toBe(0);
+    expect(share.stdout).toContain("Shared mine");
+    expect(share.stdout).toContain(path.join(a.store, "sync", "skills", "mine"));
+    expect((await remoteFiles(a, remote)).skills).toEqual(["mine"]);
+    expect((await globals(a)).mine.id).toMatch(/my-skills\/mine$/);
+
+    expect((await run(b, ["sync"])).code).toBe(0);
+    expect(Object.keys(await globals(b))).toEqual(["mine"]);
+
+    // Nothing left to share; an unknown name says what can be shared.
+    const none = await run(a, ["sync", "share", "mine"]);
+    expect(none.code).toBe(1);
+    expect(none.stderr).toContain("No machine-only global skill named mine");
+  });
+
+  test("re-sharing a folder over your own skill of the same name updates it", async () => {
+    const a = await sandbox();
+    const remote = await emptyRemote(a);
+    expect((await run(a, ["sync", "init", remote])).code).toBe(0);
+    const dir = path.join(a.home, "notes");
+    await writeFiles(dir, { "SKILL.md": skillMd("notes", "Notes v1") });
+    expect((await run(a, ["add", dir, "-g", "-y", "--share"])).code).toBe(0);
+    await writeFiles(dir, { "SKILL.md": skillMd("notes", "Notes v2") });
+    const again = await run(a, ["add", dir, "-g", "-y", "--share"]);
+    expect(again.code, again.stderr + again.stdout).toBe(0);
+    expect(again.stdout).not.toContain("Replaced");
+    const g = await globals(a);
+    expect(Object.keys(g)).toEqual(["notes"]);
+    expect(await fsp.readFile(path.join(g.notes.path, "SKILL.md"), "utf8")).toContain("Notes v2");
+    expect((await remoteFiles(a, remote)).skills).toEqual(["notes"]);
+  });
+
+  test("adding a skill whose name is taken replaces the old one (kept, not global)", async () => {
+    const a = await sandbox();
+    const remote = await emptyRemote(a);
+    expect((await run(a, ["sync", "init", remote])).code).toBe(0);
+    // Your own copy of a skill, then its upstream.
+    await writeFiles(path.join(a.home, "dup"), { "SKILL.md": skillMd("dup", "Old copy") });
+    expect((await run(a, ["add", path.join(a.home, "dup"), "-g", "-y", "--share"])).code).toBe(0);
+    const ownId = (await globals(a)).dup.id;
+    const up = await gitRepo(a, "upstream", { "skills/dup/SKILL.md": skillMd("dup", "Upstream") });
+
+    const add = await run(a, ["add", up.url, "-g", "-y"]);
+    expect(add.code, add.stderr + add.stdout).toBe(0);
+    expect(plain(add.stdout)).toContain(`Replaced dup (${ownId}; kept in the store, not global)`);
+    const g = await globals(a);
+    expect(Object.keys(g)).toEqual(["dup"]);
+    expect(g.dup.id).toMatch(/upstream\/dup$/);
+    const files = await remoteFiles(a, remote);
+    expect(files.skills).toEqual([]);
+    expect(Object.keys(files.manifest.skills).map((id) => id.split("/").pop())).toEqual(["dup"]);
+    const index = await readJson(path.join(a.store, "index.json"));
+    expect(index.skills.find((r: any) => r.id === ownId)).toMatchObject({ global: false });
+  });
+
+  test("sync reports a repo skill that shadows a machine-only one", async () => {
+    const a = await sandbox();
+    const remote = await emptyRemote(a);
+    expect((await run(a, ["sync", "init", remote])).code).toBe(0);
+    const b = await sandbox();
+    expect((await run(b, ["sync", "init", remote])).code).toBe(0);
+    await writeFiles(path.join(b.home, "memo"), { "SKILL.md": skillMd("memo", "B's memo") });
+    expect((await run(b, ["add", path.join(b.home, "memo"), "-g", "-y"])).code).toBe(0);
+
+    await writeFiles(path.join(a.home, "memo"), { "SKILL.md": skillMd("memo", "A's memo") });
+    expect((await run(a, ["add", path.join(a.home, "memo"), "-g", "-y", "--share"])).code).toBe(0);
+
+    const s = await run(b, ["sync"]);
+    expect(s.code, s.stderr + s.stdout).toBe(0);
+    expect(s.stdout).toContain("memo from the sync repo now shadows another global memo");
   });
 
   test("update without sync set up says how to set it up", async () => {

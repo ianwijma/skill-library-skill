@@ -4,7 +4,8 @@ import type { NoulResponse } from "@typesafe-ai/sdk";
 import { CliError, warn } from "../lib/cli.ts";
 import { loadProject } from "../lib/manifest.ts";
 import { buildRequest, callSystemOne } from "../lib/typesafe.ts";
-import { agentsArg, agentsMatch, ctxOf, projectSkills, storeSkills, type BaseOptions, type ScopedSkill } from "./context.ts";
+import { agentsArg, agentsMatch, ctxOf, globalKindOf, projectSkills, storeSkills, type BaseOptions, type GlobalKind, type ScopedSkill } from "./context.ts";
+import { readSyncConfig } from "./sync.ts";
 
 export interface QueryOptions extends BaseOptions {
   /** Calling agent id; filters out skills meant only for other agents. */
@@ -34,25 +35,33 @@ export interface QueryResult {
 }
 
 const PRIORITY: Record<string, number> = { local: 0, referenced: 1, global: 2 };
+/** Within the global scope, a skill with an upstream beats your own copy, which beats a machine-only one. */
+const GLOBAL_RANK: Record<GlobalKind, number> = { remote: 0, own: 0.1, "machine-only": 0.2 };
 
-function priorityOf(s: ScopedSkill): number {
-  if (s.scope === "global") return PRIORITY.global!;
+function priorityOf(s: ScopedSkill, syncUrl: string | null): number {
+  if (s.scope === "global") return PRIORITY.global! + GLOBAL_RANK[globalKindOf(s, syncUrl)];
   return s.kind === "local" ? PRIORITY.local! : PRIORITY.referenced!;
 }
 
 /**
  * Candidate selection (plan §5.1): collect, shadow by name (the higher-priority skill wins even
  * when it is later unavailable or filtered out), drop unavailable, filter by agent, skip empty
- * descriptions.
+ * descriptions. Global skills sharing a name are ranked remote > own > machine-only, so a skill
+ * installed twice (e.g. a copy and its upstream) reaches the model once.
  */
-export function selectCandidates(all: ScopedSkill[], agent: string | undefined): { candidates: ScopedSkill[]; notInstalled: number } {
+export function selectCandidates(
+  all: ScopedSkill[],
+  agent: string | undefined,
+  syncUrl: string | null = null,
+): { candidates: ScopedSkill[]; notInstalled: number } {
+  const rank = (s: ScopedSkill): number => priorityOf(s, syncUrl);
   const best = new Map<string, number>();
   for (const s of all) {
-    const p = priorityOf(s);
+    const p = rank(s);
     const cur = best.get(s.name);
     if (cur === undefined || p < cur) best.set(s.name, p);
   }
-  const unshadowed = all.filter((s) => priorityOf(s) === best.get(s.name));
+  const unshadowed = all.filter((s) => rank(s) === best.get(s.name));
   const notInstalled = unshadowed.filter((s) => s.scope === "project" && s.status === "missing").length;
   const candidates: ScopedSkill[] = [];
   for (const s of unshadowed) {
@@ -73,7 +82,8 @@ export async function gatherCandidates(opts: QueryOptions = {}): Promise<{ candi
   const index = await openIndex(ctx.store);
   const project = await loadProject(ctx.cwd);
   const all = [...(project ? await projectSkills(ctx.store, index, project) : []), ...(await storeSkills(ctx.store, index, false))];
-  return selectCandidates(all, opts.agent);
+  const sync = await readSyncConfig(ctx.store).catch(() => null);
+  return selectCandidates(all, opts.agent, sync?.url ?? null);
 }
 
 export async function querySkills(task: string, opts: QueryOptions = {}): Promise<QueryResult> {

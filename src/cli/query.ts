@@ -30,6 +30,9 @@ function syncChangeLines(c: SyncChanges): string[] {
   if (c.added.length > 0) lines.push(`  added: ${list(c.added)}`);
   if (c.removed.length > 0) lines.push(`  removed: ${list(c.removed)}`);
   if (c.updated.length > 0) lines.push(`  updated: ${list(c.updated)}`);
+  if (c.shadowed && c.shadowed.length > 0) {
+    lines.push(`  now shadowing a skill with the same name: ${list(c.shadowed)} (the user can pick one; see skill-library list -g)`);
+  }
   return lines;
 }
 

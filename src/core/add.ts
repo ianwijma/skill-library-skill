@@ -11,6 +11,7 @@ import { parseSource, type ParsedSource } from "../lib/source.ts";
 import {
   placeVersion,
   copySkill,
+  openIndex,
   exists,
   findRecord,
   now,
@@ -37,6 +38,27 @@ export interface AddOptions extends BaseOptions {
   selectSkills?: (skills: DiscoveredSkill[]) => Promise<DiscoveredSkill[]>;
   /** CLI hook: confirm before anything is written. Return false to cancel. */
   confirm?: (skills: DiscoveredSkill[], scope: "project" | "global", kind?: "skills" | "gateway") => Promise<boolean>;
+  /**
+   * Global scope: called when a skill being added has the same name as other global skills.
+   * Return the ids to replace — they stop being global (their files stay in the store, listed as
+   * not global). Without this hook nothing is replaced.
+   */
+  resolveClashes?: (clashes: NameClash[]) => Promise<string[]>;
+}
+
+/** A skill being added globally whose name is already used by other global skills. */
+export interface NameClash {
+  name: string;
+  /** Id of the skill being added. */
+  id: string;
+  existing: Array<{
+    id: string;
+    /** Git URL or folder path it came from. */
+    source: string;
+    sourceType: "git" | "local";
+    /** Same files as the skill being added. */
+    sameContent: boolean;
+  }>;
 }
 
 export interface AddedSkill {
@@ -65,6 +87,8 @@ export interface AddResult {
   gatewayOnly: boolean;
   /** The confirm hook declined. */
   cancelled: boolean;
+  /** Global skills replaced by a skill of the same name (no longer global). */
+  replaced: Array<{ id: string; name: string }>;
 }
 
 interface Prepared {
@@ -129,7 +153,7 @@ export async function addSkills(source: string, opts: AddOptions = {}): Promise<
     }
     const idOf = (s: DiscoveredSkill): string => (parsed.type === "git" ? gitSkillId(parsed.url, s.name) : localSkillId(s.path, projectRoot));
     const discovered = found.map((s) => ({ id: idOf(s), name: s.name, description: s.description, path: s.path }));
-    const result: AddResult = { source: parsed, scope, projectRoot, discovered, skills: [], gatewayOnly: false, cancelled: false };
+    const result: AddResult = { source: parsed, scope, projectRoot, discovered, skills: [], gatewayOnly: false, cancelled: false, replaced: [] };
 
     if (found.length === 0) {
       if (reserved.length > 0) {
@@ -166,7 +190,18 @@ export async function addSkills(source: string, opts: AddOptions = {}): Promise<
     const prepared: Prepared[] = [];
     try {
       for (const skill of selected) prepared.push(await prepare(ctx.store, parsed, skill, base, commit, projectRoot));
-      result.skills = await commitAll(ctx.store, prepared, scope, project, requested);
+      const retire = new Map<string, string[]>();
+      if (scope === "global" && opts.resolveClashes) {
+        const clashes = nameClashes(await openIndex(ctx.store), prepared);
+        if (clashes.length > 0) {
+          const chosen = new Set(await opts.resolveClashes(clashes));
+          for (const c of clashes) {
+            const ids = c.existing.map((e) => e.id).filter((id) => chosen.has(id));
+            if (ids.length > 0) retire.set(c.id, ids);
+          }
+        }
+      }
+      result.skills = await commitAll(ctx.store, prepared, scope, project, requested, retire, result.replaced);
     } finally {
       for (const p of prepared) if (p.staged) await fsp.rm(p.staged, { recursive: true, force: true }).catch(() => {});
     }
@@ -234,16 +269,51 @@ async function assertStagedSkill(staged: string, skill: DiscoveredSkill): Promis
   }
 }
 
-async function commitAll(store: string, prepared: Prepared[], scope: "project" | "global", project: Project | null, requested: AgentsValue): Promise<AddedSkill[]> {
+/** Global skills that share a name with a skill about to be stored globally (other ids only). */
+function nameClashes(index: StoreIndex, prepared: Prepared[]): NameClash[] {
+  const out: NameClash[] = [];
+  for (const p of prepared) {
+    if (p.local) continue;
+    const existing: NameClash["existing"] = [];
+    for (const r of index.skills) {
+      const v = r.versions[r.current];
+      if (!r.global || r.id === p.id || v?.name !== p.skill.name) continue;
+      existing.push({ id: r.id, source: r.source.url, sourceType: r.source.type === "git" ? "git" : "local", sameContent: v.hash === p.hash });
+    }
+    if (existing.length > 0) out.push({ name: p.skill.name, id: p.id, existing });
+  }
+  return out;
+}
+
+async function commitAll(
+  store: string,
+  prepared: Prepared[],
+  scope: "project" | "global",
+  project: Project | null,
+  requested: AgentsValue,
+  retire: Map<string, string[]> = new Map(),
+  replaced: AddResult["replaced"] = [],
+): Promise<AddedSkill[]> {
   const rows: AddedSkill[] = [];
   const stored = prepared.filter((p) => !p.local);
   if (stored.length > 0) {
     await mutateIndex(store, async (index) => {
       for (const p of stored) {
+        let row: AddedSkill;
         try {
-          rows.push(await commitOne(store, index, p, scope, requested));
+          row = await commitOne(store, index, p, scope, requested);
         } catch (err) {
-          rows.push(failedRow(p, scope, requested, err));
+          row = failedRow(p, scope, requested, err);
+        }
+        rows.push(row);
+        if (row.status !== "installed") continue;
+        // Replace only once the new skill is in: the old one stays in the store, just not global.
+        for (const id of retire.get(p.id) ?? []) {
+          const old = findRecord(index, id);
+          if (!old?.global) continue;
+          old.global = false;
+          old.updatedAt = now();
+          replaced.push({ id, name: p.skill.name });
         }
       }
     });
