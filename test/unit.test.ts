@@ -12,6 +12,7 @@ import { parseSource } from "../src/lib/source.ts";
 import { versionKeyFor, type StoreRecord } from "../src/lib/store.ts";
 import { gatewaySkillMd } from "../src/lib/gateway.ts";
 import { parseFrontmatter } from "../src/lib/frontmatter.ts";
+import { formatTimestamp, relativeTime } from "../src/lib/time.ts";
 
 describe("ids", () => {
   test("GitHub over every transport gets the same id", () => {
@@ -169,5 +170,22 @@ describe("gateway", () => {
     expect(parseFrontmatter(md).data.name).toBe("skill-library");
     expect(md).toContain("skill-library query -a <your-agent-id>");
     expect(md).toBe(await fsp.readFile(path.join(import.meta.dirname, "..", "skills", "skill-library", "SKILL.md"), "utf8"));
+  });
+});
+
+describe("time formatting", () => {
+  const now = new Date("2026-11-10T12:00:00Z");
+  test("relative time", () => {
+    expect(relativeTime(new Date("2026-11-10T11:59:30Z"), now)).toBe("just now");
+    expect(relativeTime(new Date("2026-11-10T11:55:00Z"), now)).toBe("5 minutes ago");
+    expect(relativeTime(new Date("2026-11-10T09:00:00Z"), now)).toBe("3 hours ago");
+    expect(relativeTime(new Date("2026-11-09T12:00:00Z"), now)).toBe("1 day ago");
+    expect(relativeTime(new Date("2026-11-05T12:00:00Z"), now)).toBe("5 days ago");
+    expect(relativeTime(new Date("2026-10-20T12:00:00Z"), now)).toBe("3 weeks ago");
+    expect(relativeTime(new Date("2025-11-01T12:00:00Z"), now)).toBe("1 year ago");
+  });
+  test("formatTimestamp adds a local date and passes invalid input through", () => {
+    expect(formatTimestamp("2026-11-10T09:00:00Z", now)).toMatch(/^3 hours ago \(\d{4}-\d{2}-\d{2} \d{2}:\d{2}( \S+)?\)$/);
+    expect(formatTimestamp("garbage", now)).toBe("garbage");
   });
 });
