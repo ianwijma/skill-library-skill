@@ -107,7 +107,19 @@ frontend-design (91%)
 └ /home/ian/.local/share/skill-library/skills/frontend-design-3f9c1a2e/8e01b7a4c2f9/SKILL.md
 ```
 
-`--json` prints `{"matches":[{id,name,description,path,probability,scope}]}`.
+When a background sync (see [09](09-global-sync-options.md)) changed the global
+skills since the last successful query, the output ends with a block the agent
+relays to the user. It is shown once and then cleared:
+
+```
+Sync changed your global skills — tell the user:
+  added: zeta
+  removed: old-one
+  updated: frontend-design
+```
+
+`--json` prints `{"matches":[{id,name,description,path,probability,scope}]}`,
+plus `"syncChanges":{"added":[…],"removed":[…],"updated":[…]}` in the same case.
 Exit codes: 0 ok · 1 usage (incl. invalid agent) · 2 runtime (key, network, lock).
 
 ## Threshold policy

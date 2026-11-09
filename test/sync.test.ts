@@ -56,10 +56,16 @@ describe("sync", () => {
     expect(Object.keys(gb).sort()).toEqual(["alpha", "mine"]);
     expect(await fsp.readFile(path.join(gb.mine.path, "SKILL.md"), "utf8")).toContain("My own skill");
 
-    // Re-init is refused with the way out.
+    // Re-init with the same URL is a no-op, not an error.
     const again = await run(b, ["sync", "init", remote]);
-    expect(again.code).toBe(1);
-    expect(again.stderr).toContain("already set up");
+    expect(again.code, again.stderr).toBe(0);
+    expect(again.stdout).toContain(`already set up with ${remote}`);
+    expect(again.stderr).toBe("");
+
+    // A different URL is refused with the way out.
+    const other = await run(b, ["sync", "init", `${remote}-other`]);
+    expect(other.code).toBe(1);
+    expect(other.stderr).toContain("already set up");
   });
 
   test("add -g / remove -g push; the other machine follows on sync", async () => {
@@ -75,7 +81,9 @@ describe("sync", () => {
     expect(add.stderr).toContain(`Synced to ${remote}`);
 
     await writeFiles(path.join(a.home, "notes"), { "SKILL.md": skillMd("notes", "Notes skill") });
-    expect((await run(a, ["add", path.join(a.home, "notes"), "-g", "-y"])).code).toBe(0);
+    const addNotes = await run(a, ["add", path.join(a.home, "notes"), "-g", "-y"]);
+    expect(addNotes.code).toBe(0);
+    expect(addNotes.stderr).not.toContain(`(from ${remote})`); // its own change isn't reported as pulled
     expect((await remoteFiles(a, remote)).skills).toEqual(["notes"]);
     // The folder skill now comes from the repo (no duplicate home:// global).
     expect((await globals(a)).notes.id).toMatch(/my-skills\/notes$/);
@@ -91,9 +99,15 @@ describe("sync", () => {
     const files = await remoteFiles(a, remote);
     expect(files.manifest.skills).toEqual({});
     expect(files.skills).toEqual([]);
-    expect((await run(b, ["sync"])).code).toBe(0);
+    // A global add on B pulls first, and reports what the pull dropped.
+    await writeFiles(path.join(b.home, "memo"), { "SKILL.md": skillMd("memo", "Memo skill") });
+    const addMemo = await run(b, ["add", path.join(b.home, "memo"), "-g", "-y"]);
+    expect(addMemo.code, addMemo.stderr).toBe(0);
+    expect(addMemo.stderr).toContain(`beta (dropped by ${remote})`);
+    expect(addMemo.stderr).toContain(`notes (dropped by ${remote})`);
+    expect(addMemo.stderr).not.toContain("memo (");
     gb = await globals(b);
-    expect(Object.keys(gb)).toEqual([]);
+    expect(Object.keys(gb)).toEqual(["memo"]);
   });
 
   test("sync moves git skills to their newest version and pushes the new pin", async () => {
@@ -211,6 +225,10 @@ describe("sync", () => {
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline && !(await globals(a)).zeta) await new Promise((r) => setTimeout(r, 250));
     expect((await globals(a)).zeta).toBeDefined();
+    // The background run's changes wait for the next successful query to report them.
+    let status: any = {};
+    while (Date.now() < deadline && !(status = await readJson(path.join(a.store, "sync-status.json"))).unreported) await new Promise((r) => setTimeout(r, 250));
+    expect(status.unreported).toEqual({ added: ["zeta"], removed: [], updated: [] });
 
     // Within the TTL nothing is started.
     const before = (await readJson(path.join(a.store, "sync-status.json"))).lastAttempt;

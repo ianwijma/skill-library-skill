@@ -43,10 +43,18 @@ export interface SyncConfig {
   managed: string[];
 }
 
+export interface SyncChanges {
+  added: string[];
+  removed: string[];
+  updated: string[];
+}
+
 export interface SyncStatusFile {
   lastAttempt?: string;
   lastSync?: string;
   lastError?: string | null;
+  /** Changes made by background syncs that no `query` has shown yet. */
+  unreported?: SyncChanges;
 }
 
 export interface SyncResult {
@@ -554,7 +562,12 @@ export async function runSync(opts: RunSyncOptions = {}): Promise<SyncResult | n
       },
       ...(opts.background ? [1000] : []),
     );
-    writeStatus(store, { lastSync: now(), lastError: result.errors.length > 0 ? result.errors.join("; ") : null });
+    writeStatus(store, {
+      lastSync: now(),
+      lastError: result.errors.length > 0 ? result.errors.join("; ") : null,
+      // Nobody sees a background run's output: keep its changes for the next query to report.
+      ...(opts.background ? { unreported: mergeChanges(readStatusSync(store).unreported, result) } : {}),
+    });
     return result;
   } catch (err) {
     if (opts.background && !started) return null;
@@ -563,14 +576,20 @@ export async function runSync(opts: RunSyncOptions = {}): Promise<SyncResult | n
   }
 }
 
-/** `skill-library sync init <git-url>`: clone, seed an empty repo with the current global skills, then sync. */
-export async function initSync(url: string, opts: BaseOptions = {}): Promise<{ result: SyncResult; seeded: string[] }> {
+export type InitSyncOutcome = { alreadySetUp: false; result: SyncResult; seeded: string[] } | { alreadySetUp: true; url: string };
+
+/**
+ * `skill-library sync init <git-url>`: clone, seed an empty repo with the current global skills, then sync.
+ * Re-running it with the URL already set up is a no-op; a different URL is refused.
+ */
+export async function initSync(url: string, opts: BaseOptions = {}): Promise<InitSyncOutcome> {
   const { store } = ctxOf(opts);
   const trimmed = url.trim();
   if (trimmed === "") throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync init <git-url>");
   assertSafeGitArgs(trimmed);
   const paths = syncPaths(store);
   const existing = await readSyncConfig(store);
+  if (existing?.url === trimmed) return { alreadySetUp: true, url: existing.url };
   if (existing) throw new CliError(1, `Sync is already set up with ${existing.url}`, `To start over, delete ${paths.config} and ${paths.clone}`);
   await fsp.mkdir(store, { recursive: true });
   await fsp.rm(paths.clone, { recursive: true, force: true }); // leftover of a failed init
@@ -613,7 +632,7 @@ export async function initSync(url: string, opts: BaseOptions = {}): Promise<{ r
   }
   await writeSyncConfig(store, cfg);
   const result = await runSync({ store });
-  return { result: result!, seeded };
+  return { alreadySetUp: false, result: result!, seeded };
 }
 
 export async function setSyncEnabled(enabled: boolean, opts: BaseOptions = {}): Promise<SyncConfig> {
@@ -666,7 +685,10 @@ export interface GlobalChange {
  * Returns null when sync is not set up or disabled. Never throws for git problems; they come
  * back in `errors`.
  */
-export async function recordGlobalChange(change: GlobalChange, opts: BaseOptions = {}): Promise<{ url: string; pushed: boolean; errors: string[] } | null> {
+export async function recordGlobalChange(
+  change: GlobalChange,
+  opts: BaseOptions = {},
+): Promise<{ url: string; pushed: boolean; errors: string[]; /** Skills the pull brought in or dropped, besides the change itself. */ pulled: { added: string[]; removed: string[] } } | null> {
   const { store } = ctxOf(opts);
   const cfg0 = await readSyncConfig(store);
   if (!cfg0 || !cfg0.enabled) return null;
@@ -721,8 +743,33 @@ export async function recordGlobalChange(change: GlobalChange, opts: BaseOptions
     errors.push(...applied.errors);
     await writeSyncConfig(store, cfg);
     if (errors.length > 0) writeStatus(store, { lastError: errors.join("; ") });
-    return { url: cfg.url, pushed, errors };
+    const mine = new Set(names);
+    const pulled = { added: applied.added.filter((n) => !mine.has(n)), removed: applied.removed.filter((n) => !mine.has(n)) };
+    return { url: cfg.url, pushed, errors, pulled };
   });
+}
+
+function mergeChanges(prev: SyncChanges | undefined, next: SyncChanges): SyncChanges | undefined {
+  const added = new Set(prev?.added ?? []);
+  const removed = new Set(prev?.removed ?? []);
+  const updated = new Set(prev?.updated ?? []);
+  for (const n of next.added) (removed.delete(n), added.add(n));
+  for (const n of next.removed) (added.delete(n), updated.delete(n), removed.add(n));
+  for (const n of next.updated) if (!added.has(n)) updated.add(n);
+  const out = { added: [...added], removed: [...removed], updated: [...updated] };
+  return out.added.length + out.removed.length + out.updated.length > 0 ? out : undefined;
+}
+
+/** Return and clear the changes background syncs made since the last call (null when there are none). */
+export function takeSyncChanges(store: string): SyncChanges | null {
+  try {
+    const changes = readStatusSync(store).unreported;
+    if (!changes) return null;
+    writeStatusSync(store, { unreported: undefined });
+    return changes.added.length + changes.removed.length + changes.updated.length > 0 ? changes : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Default interval between background syncs (seconds); `SKILL_LIBRARY_SYNC_TTL` overrides it. */

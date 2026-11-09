@@ -30,7 +30,11 @@ and must be loaded on demand, per task.
 2. The output lists matching skills, each followed by a `└ <path>` line. Read
    every listed `SKILL.md` path **before** working on the task and follow it.
 3. `No matching skills. Continue without one.` → proceed on your own judgment.
-4. For a rapid follow-up that trivially continues the same task with the same
+4. If the output ends with `Sync changed your global skills — tell the user:`
+   (`syncChanges` with `--json`), tell the user which skills were added,
+   removed or updated, briefly, alongside your answer. These changes came
+   from their skills repo (see below) and are only shown once.
+5. For a rapid follow-up that trivially continues the same task with the same
    context, reusing the skills already read is acceptable; when in doubt,
    re-query.
 
@@ -52,6 +56,12 @@ and must be loaded on demand, per task.
 `remove`, `update`, `check`, `install`, `find`, `init`, `use`. Skills you add are
 stored in the library, never in agent skill folders. Run
 `skill-library --help` for the commands and flags.
+
+Global skills can be synced with a git repo (`skill-library sync`). When it is
+set up, `sync`, `sync init`, `sync enable` and the global `add -g`, `remove -g`
+and `update` commands can pull in skills from other machines. When their output
+lists skills as added (`+`), removed (`-`) or updated (`↑`), tell the user
+which ones changed.
 
 ## When the query fails
 

@@ -1,5 +1,5 @@
 import { querySkills } from "../core/query.ts";
-import { maybeStartBackgroundSync } from "../core/sync.ts";
+import { maybeStartBackgroundSync, takeSyncChanges, type SyncChanges } from "../core/sync.ts";
 import { resolveStore } from "../lib/paths.ts";
 import { CliError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { parseFlags } from "./args.ts";
@@ -23,6 +23,16 @@ function parseTop(raw: string): number {
   return n;
 }
 
+/** Lines telling the agent what a background sync changed, so it can pass it on to the user. */
+function syncChangeLines(c: SyncChanges): string[] {
+  const list = (names: string[]) => names.map(sanitizeMetadata).join(", ");
+  const lines = ["Sync changed your global skills — tell the user:"];
+  if (c.added.length > 0) lines.push(`  added: ${list(c.added)}`);
+  if (c.removed.length > 0) lines.push(`  removed: ${list(c.removed)}`);
+  if (c.updated.length > 0) lines.push(`  updated: ${list(c.updated)}`);
+  return lines;
+}
+
 /** `query` keeps its own exit codes: 0 ok, 1 usage (incl. invalid agent), 2 runtime. */
 export async function runQuery(args: string[], g: GlobalOpts): Promise<number> {
   const f = parseFlags(args, {
@@ -39,7 +49,8 @@ export async function runQuery(args: string[], g: GlobalOpts): Promise<number> {
     task = await readStdin();
   }
   if (task.trim() === "") throw new CliError(1, "task text is empty");
-  const syncNotice = maybeStartBackgroundSync(resolveStore(g.store));
+  const store = resolveStore(g.store);
+  const syncNotice = maybeStartBackgroundSync(store);
   if (syncNotice) note(syncNotice);
   const res = await querySkills(task, {
     cwd: g.cwd,
@@ -48,16 +59,19 @@ export async function runQuery(args: string[], g: GlobalOpts): Promise<number> {
     ...(f.values.has("threshold") ? { threshold: parseThreshold(f.values.get("threshold")!) } : {}),
     ...(f.values.has("top") ? { top: parseTop(f.values.get("top")!) } : {}),
   });
+  // Taken only once the query succeeded, so a failed query doesn't swallow them.
+  const syncChanges = takeSyncChanges(store);
   if (g.verbose && res.model) note(`verbose: ${JSON.stringify({ model: res.model, usage: res.usage })}`);
   if (res.notInstalled > 0) {
     note(`${res.notInstalled} project skill${res.notInstalled === 1 ? " is" : "s are"} not installed — run skill-library install`);
   }
   if (f.booleans.has("json")) {
-    console.log(JSON.stringify({ matches: res.matches }));
+    console.log(JSON.stringify({ matches: res.matches, ...(syncChanges ? { syncChanges } : {}) }));
     return 0;
   }
+  const tail = syncChanges ? ["", ...syncChangeLines(syncChanges), ""].join("\n") : "";
   if (res.matches.length === 0) {
-    console.log("No matching skills. Continue without one.");
+    process.stdout.write(`No matching skills. Continue without one.\n${tail}`);
     return 0;
   }
   const lines = ["Read these skill files before continuing with the task:", ""];
@@ -67,6 +81,6 @@ export async function runQuery(args: string[], g: GlobalOpts): Promise<number> {
     lines.push(`└ ${m.path}`);
     lines.push("");
   }
-  process.stdout.write(lines.join("\n"));
+  process.stdout.write(lines.join("\n") + tail);
   return 0;
 }

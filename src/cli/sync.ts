@@ -37,7 +37,13 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
       case "init": {
         const url = rest[0];
         if (!url) throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync init <git-url>");
-        const { result, seeded } = await initSync(url, base);
+        const outcome = await initSync(url, base);
+        if (outcome.alreadySetUp) {
+          if (json) console.log(JSON.stringify({ alreadySetUp: true, url: outcome.url }));
+          else console.log(`Sync is already set up with ${outcome.url}. ${DIM}Run${RESET} skill-library sync ${DIM}to sync now.${RESET}`);
+          return 0;
+        }
+        const { result, seeded } = outcome;
         const gw = await placeGateway();
         if (json) {
           console.log(JSON.stringify({ ...result, seeded }));
@@ -97,6 +103,8 @@ export async function afterGlobalChange(change: GlobalChange, g: GlobalOpts): Pr
   try {
     const res = await recordGlobalChange(change, { cwd: g.cwd, ...(g.store ? { store: g.store } : {}) });
     if (!res) return;
+    for (const n of res.pulled.added) note(`  ${pc.green("+")} ${sanitizeMetadata(n)} (from ${res.url})`);
+    for (const n of res.pulled.removed) note(`  ${pc.red("-")} ${sanitizeMetadata(n)} (dropped by ${res.url})`);
     if (res.errors.length > 0) note(`sync: ${res.errors.join("; ")} (the change is kept locally and pushed on the next sync)`);
     else if (res.pushed) note(`Synced to ${res.url}`);
   } catch (err) {

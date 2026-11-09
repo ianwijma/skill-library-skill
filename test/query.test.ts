@@ -176,4 +176,29 @@ describe("query", () => {
     expect(nokey.stderr).toContain("SKILL_LIBRARY_TYPESAFE_API_KEY is not set");
   });
 
+  test("reports skills a background sync changed once, then clears them", async () => {
+    const sb = await sandbox();
+    await seed(sb);
+    const unreported = { added: ["zeta"], removed: ["old-one"], updated: [] };
+    await fsp.writeFile(path.join(sb.store, "sync-status.json"), JSON.stringify({ unreported }));
+    const mock = await startMock(byName({ "b-skill": 0.9 }));
+
+    // A failed query keeps them for later.
+    const failed = await run(sb, ["query", "task"]);
+    expect(failed.code).toBe(2);
+
+    const first = await q(sb, ["task"], mock);
+    expect(first.code, first.stderr).toBe(0);
+    expect(first.stdout).toContain("b-skill (90%)");
+    expect(first.stdout).toContain("Sync changed your global skills — tell the user:\n  added: zeta\n  removed: old-one\n");
+    expect(first.stdout).not.toContain("updated:");
+
+    const second = await q(sb, ["task"], mock);
+    expect(second.stdout).not.toContain("Sync changed");
+
+    await fsp.writeFile(path.join(sb.store, "sync-status.json"), JSON.stringify({ unreported }));
+    const json = await q(sb, ["task", "--json"], mock);
+    mock.stop();
+    expect(JSON.parse(json.stdout).syncChanges).toEqual(unreported);
+  });
 });
