@@ -1,14 +1,15 @@
 import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
+import { VERSION } from "../src/cli/ui.ts";
 import { git, gitRepo, project, readJson, run, sandbox, skillMd, writeFiles } from "./helpers.ts";
 
 describe("root commands", () => {
   test("--version is bare; no args prints the banner and exits 0", async () => {
     const sb = await sandbox();
     const v = await run(sb, ["--version"]);
-    expect(v.stdout).toBe("0.1.0\n");
-    expect((await run(sb, ["-v"])).stdout).toBe("0.1.0\n");
+    expect(v.stdout).toBe(`${VERSION}\n`);
+    expect((await run(sb, ["-v"])).stdout).toBe(`${VERSION}\n`);
     const none = await run(sb, []);
     expect(none.code).toBe(0);
     expect(none.stdout).toContain("skill-library add");

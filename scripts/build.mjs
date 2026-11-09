@@ -7,6 +7,7 @@ import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dist = path.join(root, "dist");
+const { version } = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
 rmSync(dist, { recursive: true, force: true });
 
 const common = {
@@ -17,6 +18,8 @@ const common = {
   loader: { ".md": "text" },
   metafile: true,
   logLevel: "warning",
+  // The CLI's --version; package.json is the only place the version is kept.
+  define: { __SKILL_LIBRARY_VERSION__: JSON.stringify(version) },
   // Some bundled CJS deps call require(); give the ESM bundle one.
   banner: { js: "import { createRequire as __slCreateRequire } from 'node:module'; const require = __slCreateRequire(import.meta.url);" },
 };
