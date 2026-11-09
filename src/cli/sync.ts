@@ -2,6 +2,7 @@ import pc from "picocolors";
 import { initSync, recordGlobalChange, runSync, setSyncEnabled, updateSyncUrl, syncStatus, type GlobalChange, type SyncResult } from "../core/sync.ts";
 import { CliError, DIM, RESET, formatError, msgOf, note, sanitizeMetadata } from "../lib/cli.ts";
 import { placeGateway } from "../lib/gateway.ts";
+import { formatTimestamp } from "../lib/time.ts";
 import { parseFlags } from "./args.ts";
 import type { GlobalOpts } from "./index.ts";
 
@@ -101,7 +102,7 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
         console.log(`Repository: ${s.url}`);
         console.log(`Sync:       ${s.enabled ? pc.green("enabled") : pc.yellow("disabled")}`);
         console.log(`Clone:      ${s.clone}`);
-        console.log(`Last sync:  ${s.lastSync ?? "never"}`);
+        console.log(`Last sync:  ${s.lastSync ? formatTimestamp(s.lastSync) : "never"}`);
         if (s.pending !== undefined && s.pending > 0) console.log(`Unpushed:   ${s.pending} commit(s)`);
         if (s.lastError) console.log(`Last error: ${pc.red(s.lastError)}`);
         return 0;
