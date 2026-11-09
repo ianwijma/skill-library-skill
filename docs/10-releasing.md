@@ -61,12 +61,12 @@ git push origin v0.1.0
 
 ## 7. Try it
 
-1. **Actions → Release → Run workflow**, branch `develop`, bump `patch`, tick
-   **Dry run**.
+1. **Actions → Release → Run workflow**, branch `develop`, bump `patch`, leave
+   **Dry run** ticked (the default).
 2. When **Plan release** finishes, check the summary, then approve under
    **Review deployments**. It should go green without pushing or publishing
    anything.
-3. Run it again without **Dry run**, check the summary, approve, and check the
+3. Run it again with **Dry run** unticked, check the summary, approve, and check the
    new version on npm (with a provenance badge) and the new GitHub Release.
 
 ## 8. Lock down npm

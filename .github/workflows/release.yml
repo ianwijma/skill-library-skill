@@ -41,7 +41,7 @@ on:
         description: Dry run (no push, no publish, no GitHub Release)
         type: boolean
         required: false
-        default: false
+        default: true
 
 permissions:
   contents: read
