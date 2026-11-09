@@ -236,6 +236,89 @@ describe("sync", () => {
     expect((await readJson(path.join(a.store, "sync-status.json"))).lastAttempt).toBe(before);
   });
 
+  test("update pushes everything to the new repo and uses it from then on", async () => {
+    const a = await sandbox();
+    const up = await gitRepo(a, "upstream", { "skills/alpha/SKILL.md": skillMd("alpha", "Alpha skill") });
+    await writeFiles(path.join(a.home, "mine"), { "SKILL.md": skillMd("mine", "My own skill") });
+    expect((await run(a, ["add", up.url, "-g", "-y"])).code).toBe(0);
+    expect((await run(a, ["add", path.join(a.home, "mine"), "-g", "-y"])).code).toBe(0);
+    const oldRemote = await emptyRemote(a, "old-skills");
+    expect((await run(a, ["sync", "init", oldRemote])).code).toBe(0);
+    const b = await sandbox();
+    expect((await run(b, ["sync", "init", oldRemote])).code).toBe(0);
+
+    // Machine B pushes a skill to the old repo that A hasn't pulled yet: update brings it along.
+    const up2 = await gitRepo(b, "upstream2", { "skills/beta/SKILL.md": skillMd("beta", "Beta skill") });
+    expect((await run(b, ["add", up2.url, "-g", "-y"])).code).toBe(0);
+
+    const newRemote = await emptyRemote(a, "new-skills");
+    const move = await run(a, ["sync", "update", newRemote]);
+    expect(move.code, move.stderr + move.stdout).toBe(0);
+    expect(move.stdout).toContain(`Sync moved from ${oldRemote} to ${newRemote}`);
+    expect(move.stdout).toContain("+ beta");
+    expect(move.stdout).not.toContain("+ mine");
+    expect(move.stdout).not.toContain("- mine");
+
+    const files = await remoteFiles(a, newRemote);
+    expect(Object.keys(files.manifest.skills).map((id) => id.split("/").pop()).sort()).toEqual(["alpha", "beta"]);
+    expect(files.skills).toEqual(["mine"]);
+
+    const status = JSON.parse((await run(a, ["sync", "status", "--json"])).stdout);
+    expect(status.url).toBe(newRemote);
+    const ga = await globals(a);
+    expect(Object.keys(ga).sort()).toEqual(["alpha", "beta", "mine"]);
+    expect(ga.mine.id).toMatch(/new-skills\/mine$/);
+    // The record under the old repo's id is gone, not left behind as a non-global duplicate.
+    const index = await readJson(path.join(a.store, "index.json"));
+    expect(index.skills.filter((r: any) => r.id.endsWith("/mine")).map((r: any) => r.id)).toEqual([ga.mine.id]);
+
+    // Later changes go to the new repo.
+    await writeFiles(path.join(a.home, "other"), { "SKILL.md": skillMd("other", "Another skill") });
+    expect((await run(a, ["add", path.join(a.home, "other"), "-g", "-y"])).code).toBe(0);
+    expect((await remoteFiles(a, newRemote)).skills).toEqual(["mine", "other"]);
+    expect((await remoteFiles(a, oldRemote)).skills).toEqual(["mine"]);
+
+    // The same URL again is a no-op.
+    const again = await run(a, ["sync", "update", newRemote]);
+    expect(again.code, again.stderr).toBe(0);
+    expect(again.stdout).toContain(`already uses ${newRemote}`);
+  });
+
+  test("update refuses a repo with unrelated history and keeps the old URL", async () => {
+    const a = await sandbox();
+    const remote = await emptyRemote(a);
+    expect((await run(a, ["sync", "init", remote])).code).toBe(0);
+    const unrelated = await gitRepo(a, "unrelated", { "README.md": "hello\n" });
+    const res = await run(a, ["sync", "update", unrelated.url]);
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain("unrelated history");
+    const status = JSON.parse((await run(a, ["sync", "status", "--json"])).stdout);
+    expect(status.url).toBe(remote);
+    expect((await run(a, ["sync"])).code).toBe(0);
+  });
+
+  test("update works when the old repo is gone", async () => {
+    const a = await sandbox();
+    await writeFiles(path.join(a.home, "mine"), { "SKILL.md": skillMd("mine", "My own skill") });
+    expect((await run(a, ["add", path.join(a.home, "mine"), "-g", "-y"])).code).toBe(0);
+    const oldRemote = await emptyRemote(a, "old-skills");
+    expect((await run(a, ["sync", "init", oldRemote])).code).toBe(0);
+    await fsp.rm(oldRemote.replace("file://", ""), { recursive: true, force: true });
+
+    const newRemote = await emptyRemote(a, "new-skills");
+    const move = await run(a, ["sync", "update", newRemote]);
+    expect(move.code, move.stderr + move.stdout).toBe(0);
+    expect(move.stderr).toContain(`Could not pull from ${oldRemote}`);
+    expect((await remoteFiles(a, newRemote)).skills).toEqual(["mine"]);
+  });
+
+  test("update without sync set up says how to set it up", async () => {
+    const a = await sandbox();
+    const res = await run(a, ["sync", "update", "file:///nowhere.git"]);
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain("sync init");
+  });
+
   test("init takes any clone URL as-is and reports a failing one", async () => {
     const a = await sandbox();
     const r = await run(a, ["sync", "init", "file:///nonexistent/repo.git"]);

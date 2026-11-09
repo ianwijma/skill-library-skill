@@ -58,7 +58,7 @@ stored in the library, never in agent skill folders. Run
 `skill-library --help` for the commands and flags.
 
 Global skills can be synced with a git repo (`skill-library sync`). When it is
-set up, `sync`, `sync init`, `sync enable` and the global `add -g`, `remove -g`
+set up, `sync`, `sync init`, `sync update`, `sync enable` and the global `add -g`, `remove -g`
 and `update` commands can pull in skills from other machines. When their output
 lists skills as added (`+`), removed (`-`) or updated (`↑`), tell the user
 which ones changed.

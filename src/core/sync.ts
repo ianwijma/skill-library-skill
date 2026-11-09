@@ -590,7 +590,7 @@ export async function initSync(url: string, opts: BaseOptions = {}): Promise<Ini
   const paths = syncPaths(store);
   const existing = await readSyncConfig(store);
   if (existing?.url === trimmed) return { alreadySetUp: true, url: existing.url };
-  if (existing) throw new CliError(1, `Sync is already set up with ${existing.url}`, `To start over, delete ${paths.config} and ${paths.clone}`);
+  if (existing) throw new CliError(1, `Sync is already set up with ${existing.url}`, `To move to ${trimmed}, run skill-library sync update ${trimmed}`);
   await fsp.mkdir(store, { recursive: true });
   await fsp.rm(paths.clone, { recursive: true, force: true }); // leftover of a failed init
   try {
@@ -633,6 +633,96 @@ export async function initSync(url: string, opts: BaseOptions = {}): Promise<Ini
   await writeSyncConfig(store, cfg);
   const result = await runSync({ store });
   return { alreadySetUp: false, result: result!, seeded };
+}
+
+export type UpdateSyncUrlOutcome =
+  | { unchanged: true; url: string }
+  | {
+      unchanged: false;
+      previousUrl: string;
+      result: SyncResult;
+      /** Set when the old repository could not be pulled first (local commits were still carried over). */
+      oldPullError?: string;
+    };
+
+/**
+ * `skill-library sync update <git-url>`: point the clone at a new repository, push everything
+ * there and use it from now on. The new repository must be empty or share history with the old
+ * one (a copy or a mirror). Own skills get ids under the new URL.
+ */
+export async function updateSyncUrl(url: string, opts: BaseOptions = {}): Promise<UpdateSyncUrlOutcome> {
+  const { store } = ctxOf(opts);
+  const trimmed = url.trim();
+  if (trimmed === "") throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync update <git-url>");
+  assertSafeGitArgs(trimmed);
+  const paths = syncPaths(store);
+  const cfg0 = await requireConfig(store);
+  if (cfg0.url === trimmed) return { unchanged: true, url: trimmed };
+  if (!cfg0.enabled) throw new CliError(1, "sync is disabled — run skill-library sync enable first");
+  const { clone, lock } = paths;
+  writeStatus(store, { lastAttempt: now() });
+  try {
+    const outcome = await withFileLock(lock, async (): Promise<UpdateSyncUrlOutcome> => {
+      const cfg = (await readSyncConfig(store)) ?? cfg0;
+      if (cfg.url === trimmed) return { unchanged: true, url: trimmed };
+      const previousUrl = cfg.url;
+
+      // Bring in what the old repository has, so nothing is left behind. It may be gone already.
+      await commitAll(clone, "skill-library: local changes");
+      let oldPullError: string | undefined;
+      try {
+        await pull(clone, previousUrl);
+      } catch (err) {
+        oldPullError = msgOf(err);
+      }
+
+      await git(["remote", "set-url", "--", "origin", trimmed], { cwd: clone });
+      const restore = async (): Promise<void> => {
+        await git(["remote", "set-url", "--", "origin", previousUrl], { cwd: clone }).catch(() => {});
+        await git(["fetch", "-q", "--prune", "origin"], { cwd: clone, url: previousUrl }).catch(() => {});
+      };
+      try {
+        // --prune drops the old repository's branches, so an empty new one gets a full push.
+        await git(["fetch", "-q", "--prune", "origin"], { cwd: clone, url: trimmed });
+      } catch (err) {
+        await restore();
+        throw new CliError(2, `Failed to reach ${trimmed}: ${msgOf(err)}`, `Sync still uses ${previousUrl}`);
+      }
+      const remote = `refs/remotes/origin/${await branchOf(clone)}`;
+      if ((await hasHead(clone)) && (await ok(["rev-parse", "--verify", "-q", remote], clone)) && !(await ok(["merge-base", "HEAD", remote], clone))) {
+        await restore();
+        throw new CliError(
+          1,
+          `${trimmed} already holds unrelated history`,
+          `Use an empty repository or a copy of ${previousUrl}. Sync still uses ${previousUrl}`,
+        );
+      }
+
+      // Own skills are identified by the repo URL: drop the old records, applyRepo adds them back under the new ids.
+      const moved = new Set<string>();
+      const oldIds: string[] = [];
+      for (const o of await ownSkills(clone, previousUrl)) {
+        if (gitSkillId(trimmed, o.name) === o.id) continue;
+        oldIds.push(o.id);
+        moved.add(o.name);
+      }
+      await dropRecords(store, oldIds);
+      cfg.managed = cfg.managed.filter((id) => !oldIds.includes(id));
+      cfg.url = trimmed;
+      await writeSyncConfig(store, cfg);
+
+      const result = await syncLocked(store, cfg);
+      result.added = result.added.filter((n) => !moved.has(n));
+      return { unchanged: false, previousUrl, result, ...(oldPullError ? { oldPullError } : {}) };
+    });
+    if (!outcome.unchanged) {
+      writeStatus(store, { lastSync: now(), lastError: outcome.result.errors.length > 0 ? outcome.result.errors.join("; ") : null });
+    }
+    return outcome;
+  } catch (err) {
+    writeStatus(store, { lastError: msgOf(err) });
+    throw err;
+  }
 }
 
 export async function setSyncEnabled(enabled: boolean, opts: BaseOptions = {}): Promise<SyncConfig> {
