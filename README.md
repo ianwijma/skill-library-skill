@@ -16,34 +16,58 @@ into your agents' skills folders.
 
 ## Quick start
 
-Requires [Node.js](https://nodejs.org) >= 22 and `git` (for remote sources).
+Requires [Node.js](https://nodejs.org) >= 22 and `git`. Get a TypeSafe API key
+from [TypeSafe](https://docs.typesafe.ai), then:
 
 ```sh
-npm i -g skill-library            # or run it with npx skill-library …
-skill-library add vercel-labs/agent-skills -g
+npm i -g skill-library
+export SKILL_LIBRARY_TYPESAFE_API_KEY='<your TypeSafe API key>'   # also add it to your shell profile
+skill-library connect
 ```
 
-`add` stores the skills in the library (`~/.local/share/skill-library`) and
-places the gateway skill in every installed agent's global skills folder
-(Claude Code, Codex, OpenCode, Cursor, …). Restart your agent so it loads the
-gateway.
+`connect` installs the gateway skill into every agent on your machine (Claude
+Code, Codex, OpenCode, Cursor, …), so they know to query the library. Restart
+your agent so it loads it.
 
-Then set your TypeSafe key in the environment that launches your agent:
+## Try it
+
+Add two skills to your global library: Anthropic's `pdf` and `xlsx` skills.
 
 ```sh
-export SKILL_LIBRARY_TYPESAFE_API_KEY='<your TypeSafe API key>'
-skill-library query -a claude-code "fix a failing next.js build"
+skill-library add anthropics/skills -s pdf xlsx -g
 ```
+
+They go into the library (`~/.local/share/skill-library`), not into your
+agents' skills folders, so they cost no context until a task needs them. Now ask
+the library which skills a task needs, the same way your agent does:
+
+```sh
+skill-library query "pull the totals table out of invoice.pdf into a spreadsheet"
+```
+
+Both skills come back, each with the `SKILL.md` path the agent reads. A task
+that needs neither, such as `"rename a variable in utils.ts"`, gets
+`No matching skills`. In your agent you don't run `query` yourself: just ask for
+the task and the gateway skill runs it.
 
 `query` sends the task text and the candidate skills' names and descriptions to
 TypeSafe (`api.typesafe.ai`). Skill ids and paths never leave your machine. The
 other commands need neither an API key nor network access (except to fetch
 remote sources).
 
+## Remove the examples
+
+```sh
+skill-library remove pdf xlsx -g
+```
+
+`-g` deletes them from the library. Your agents keep the gateway skill.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
+| `connect` | Install the gateway skill into your agents, so they query the library. `-a <agents>` for only some agents. `add` also does this after adding skills. |
 | `add <source>` | Add skills from GitHub (`owner/repo`, `owner/repo@skill`), a git URL or a local folder. Project scope by default; `-g` for the whole library. `-a <agents>` records which agents a skill is for. |
 | `list` / `ls` | List the project's skills; `-g` for the whole library; `--json` for scripts. |
 | `remove [skills]` | In a project: drop the reference (the skill stays in the library). `-g`: delete it. |

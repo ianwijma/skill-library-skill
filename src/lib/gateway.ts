@@ -13,6 +13,8 @@ export function gatewaySkillMd(): string {
 export interface GatewayResult {
   /** Display names of agents whose gateway was written or refreshed. */
   updated: string[];
+  /** Display names of agents whose gateway was already up to date. */
+  current: string[];
   /** Non-fatal problems (e.g. read-only dirs). */
   errors: string[];
 }
@@ -39,10 +41,18 @@ async function frontmatterName(file: string): Promise<string | null> {
  * `extraAgents`, grouped by physical dir. Never throws; failures are reported in `errors`.
  */
 export async function placeGateway(extraAgents: string[] = []): Promise<GatewayResult> {
-  const result: GatewayResult = { updated: [], errors: [] };
-  if (process.env.SKILL_LIBRARY_NO_GATEWAY === "1") return result;
+  if (process.env.SKILL_LIBRARY_NO_GATEWAY === "1") return { updated: [], current: [], errors: [] };
+  return writeGateway([...(await detectInstalledAgents().catch(() => [] as string[])), ...extraAgents]);
+}
+
+/**
+ * Write (or refresh) the gateway in the global skills dir of exactly these agents, grouped by
+ * physical dir. Agents without a global skills dir are skipped. Never throws.
+ */
+export async function writeGateway(agentIds: string[]): Promise<GatewayResult> {
+  const result: GatewayResult = { updated: [], current: [], errors: [] };
   const content = gatewaySkillMd();
-  const agents = [...new Set([...(await detectInstalledAgents().catch(() => [] as string[])), ...extraAgents])];
+  const agents = [...new Set(agentIds)];
   const byDir = new Map<string, string[]>();
   for (const id of agents) {
     const dir = globalReadDir(id);
@@ -67,7 +77,7 @@ export async function placeGateway(extraAgents: string[] = []): Promise<GatewayR
         write = true;
       } else if (st.isDirectory()) {
         const existing = await fsp.readFile(file, "utf8").catch(() => null);
-        if (existing === content) write = false;
+        if (existing === content) result.current.push(...ids.map(displayName));
         else if (existing === null || (await frontmatterName(file)) === GATEWAY_NAME) write = true;
         else result.errors.push(`${file} belongs to another skill; not overwritten`);
       } else {
