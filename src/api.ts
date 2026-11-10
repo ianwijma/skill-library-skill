@@ -1,6 +1,6 @@
 /**
  * Programmatic API for skill-library. Side-effect free: nothing runs on import, nothing is
- * printed, nothing prompts, and the agent gateway is never placed (only the CLI's `add` does).
+ * printed, nothing prompts, and the agent gateway is never placed (only the CLI's `add` and `connect` do).
  *
  * @example
  *   import { add, query } from "skill-library";

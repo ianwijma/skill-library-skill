@@ -335,6 +335,33 @@ describe("gateway placement", () => {
     expect(again.stderr).not.toContain("Updated skill-library gateway");
   });
 
+  test("connect installs the gateway into detected agents, or only the -a agents", async () => {
+    const sb = await sandbox();
+    const none = await run(sb, ["connect"]);
+    expect(none.code).toBe(1);
+    expect(none.stderr).toContain("No agents found");
+
+    await fsp.mkdir(path.join(sb.home, ".claude"), { recursive: true });
+    const r = await run(sb, ["connect"]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("Installed the skill-library skill for Claude Code");
+    const placed = await fsp.readFile(path.join(sb.home, ".claude", "skills", "skill-library", "SKILL.md"), "utf8");
+    expect(placed).toContain("skill-library query -a <your-agent-id>");
+    await expect(fsp.access(path.join(sb.store, "index.json"))).rejects.toThrow();
+
+    const again = await run(sb, ["connect", "--json"]);
+    expect(again.code).toBe(0);
+    expect(JSON.parse(again.stdout)).toEqual({ updated: [], current: ["Claude Code"], errors: [] });
+
+    const only = await run(sb, ["connect", "-a", "codex", "--json"]);
+    expect(JSON.parse(only.stdout).updated).toEqual(["Codex"]);
+    await fsp.access(path.join(sb.home, ".agents", "skills", "skill-library", "SKILL.md"));
+
+    const bad = await run(sb, ["connect", "-a", "nope"]);
+    expect(bad.code).toBe(1);
+    expect(bad.stderr).toContain("Invalid agents: nope");
+  });
+
   test("a read-only agent dir never fails the add", async () => {
     const sb = await sandbox();
     await fsp.mkdir(path.join(sb.home, ".claude", "skills"), { recursive: true });

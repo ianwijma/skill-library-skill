@@ -37,6 +37,7 @@ export function showBanner(): void {
   }
   const row = (cmd: string, arg: string, desc: string) =>
     console.log(`  ${DIM}$${RESET} ${TEXT}skill-library ${cmd}${arg ? ` ${DIM}${arg}` : ""}${RESET}${" ".repeat(Math.max(1, 30 - cmd.length - (arg ? arg.length + 1 : 0)))}${DIM}${desc}${RESET}`);
+  row("connect", "", "Teach your agents to use the library");
   row("add", "<package>", "Add a skill to the library");
   row("query", '"<task>"', "Find the skills for a task");
   row("use", "<package>@<skill>", "Use a skill without adding it");
@@ -58,6 +59,8 @@ export function showBanner(): void {
 
 export function showHelp(): void {
   const examples: Array<[string, string?]> = [
+    ["skill-library connect", "install the gateway skill into your agents"],
+    ["skill-library connect -a claude-code codex", "only these agents"],
     ["skill-library add vercel-labs/agent-skills"],
     ["skill-library add vercel-labs/agent-skills -g", "add to the global library"],
     ["skill-library add vercel-labs/agent-skills --agent claude-code", "only for Claude Code"],
@@ -161,6 +164,9 @@ ${BOLD}List Options:${RESET}
   --json                 Output as JSON (machine-readable, no ANSI codes)
 
 ${BOLD}Add-ons:${RESET}
+  connect                Install the gateway skill into your agents, so they query the library
+    -a, --agent <agents> Only these agents (default: every agent found on this machine)
+    --json               Output as JSON
   query "<task>" | -     Find the skills for a task (TypeSafe Jev scoring)
     -a, --agent <agent>  Your agent id; skips skills meant only for other agents
     --threshold <0..1>   Minimum probability (default 0.7)
