@@ -8,7 +8,7 @@ import { BUMPS, nextVersion } from "../scripts/next-version.mjs";
 const root = path.resolve(import.meta.dirname, "..");
 
 describe("nextVersion", () => {
-  // The same examples as the bump options in .github/workflows/release.yml and the README.
+  // The same examples as the bump options in .github/workflows/release.yml and RELEASE_GUIDE.md.
   test.each([
     ["1.2.3", "patch", "1.2.4"],
     ["1.2.3", "minor", "1.3.0"],
