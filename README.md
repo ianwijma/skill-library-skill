@@ -31,10 +31,11 @@ your agent so it loads it.
 
 ## Try it
 
-Add two skills to your global library: Anthropic's `pdf` and `xlsx` skills.
+Add three of Anthropic's skills to your global library: `pdf`, `xlsx` and
+`frontend-design`.
 
 ```sh
-skill-library add anthropics/skills -s pdf xlsx -g
+skill-library add anthropics/skills -s pdf xlsx frontend-design -g
 ```
 
 They go into the library (`~/.local/share/skill-library`), not into your
@@ -45,10 +46,11 @@ the library which skills a task needs, the same way your agent does:
 skill-library query "pull the totals table out of invoice.pdf into a spreadsheet"
 ```
 
-Both skills come back, each with the `SKILL.md` path the agent reads. A task
-that needs neither, such as `"rename a variable in utils.ts"`, gets
-`No matching skills`. In your agent you don't run `query` yourself: just ask for
-the task and the gateway skill runs it.
+`pdf` and `xlsx` come back, each with the `SKILL.md` path the agent reads.
+`frontend-design` doesn't: it has nothing to do with this task, so it stays out
+of the agent's context. Ask for `"build a landing page for a coffee shop"` and
+only `frontend-design` comes back. In your agent you don't run `query`
+yourself: just ask for the task and the gateway skill runs it.
 
 `query` sends the task text and the candidate skills' names and descriptions to
 TypeSafe (`api.typesafe.ai`). Skill ids and paths never leave your machine. The
@@ -58,7 +60,7 @@ remote sources).
 ## Remove the examples
 
 ```sh
-skill-library remove pdf xlsx -g
+skill-library remove pdf xlsx frontend-design -g
 ```
 
 `-g` deletes them from the library. Your agents keep the gateway skill.
