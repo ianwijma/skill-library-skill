@@ -69,16 +69,16 @@ skill-library remove pdf xlsx frontend-design -g
 
 | Command | What it does |
 |---|---|
-| `connect` | Install the gateway skill into your agents, so they query the library. `-a <agents>` for only some agents. `add` also does this after adding skills. |
 | `add <source>` | Add skills from GitHub (`owner/repo`, `owner/repo@skill`), a git URL or a local folder. Project scope by default; `-g` for the whole library. `-a <agents>` records which agents a skill is for. |
 | `list` / `ls` | List the project's skills; `-g` for the whole library; `--json` for scripts. |
 | `remove [skills]` | In a project: drop the reference (the skill stays in the library). `-g`: delete it. |
-| `update` / `check` | Pull newer versions from each skill's source / report them. |
-| `install` | Restore a project's skills from `skill-library.json`, at the pinned versions. |
 | `find [query]` | Search [skills.sh](https://skills.sh). |
-| `init [name]` | Create a new `SKILL.md`. `--always` makes every query return it (see below). |
-| `use <source>@<skill>` | Print a prompt for one skill without adding it (`| claude`), or start an agent with `-a`. |
+| `update` / `check` | Pull newer versions from each skill's source / report them. |
 | `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. |
+| `install` | Restore a project's skills from `skill-library.json`, at the pinned versions. |
+| `connect` | Install the gateway skill into your agents, so they query the library. `-a <agents>` for only some agents. `add` also does this after adding skills. |
+| `use <source>@<skill>` | Print a prompt for one skill without adding it (`| claude`), or start an agent with `-a`. |
+| `init [name]` | Create a new `SKILL.md`. `--always` makes every query return it (see below). |
 | `sync init <git-url>` | Keep your global skills in a git repository (any host) and sync them across machines automatically. `sync update` / `sync disable` / `sync enable` / `sync status`. |
 
 `skill-library --help` lists every flag. Details: [CLI spec](docs/02-cli-spec.md).
