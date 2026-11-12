@@ -11,7 +11,7 @@ import { runList } from "./list.ts";
 import { runQuery } from "./query.ts";
 import { runRemove } from "./remove.ts";
 import { runSelfDoctor, runSelfSetup, runSelfUpdate } from "./self.ts";
-import { runSyncCommand, type SyncOptions } from "./sync.ts";
+import { SYNC_USAGE, runSyncDisable, runSyncEnable, runSyncInit, runSyncNow, runSyncShare, runSyncStatus, runSyncUpdate } from "./sync.ts";
 import { VERSION, showBanner, showLogo } from "./ui.ts";
 import { runUpdate } from "./update.ts";
 import { USE_AGENT_IDS, runUse } from "./use.ts";
@@ -154,6 +154,35 @@ export function buildProgram(argv: string[], done: (code: number) => void): Comm
   const g = (): GlobalOpts => {
     const o = program.opts();
     return { cwd: process.cwd(), ...(o.store !== undefined ? { store: o.store } : {}), verbose: !!o.verbose };
+  };
+  /** For a command with subcommands (sync, self): options it doesn't know are left for the
+   *  subcommand to parse, so each subcommand owns its options. Its own action only runs when no
+   *  subcommand was named; `run` then gets the leftover positionals, after a warning for each
+   *  unknown option. A subcommand named after an unknown option (`sync --bogus status`) still runs. */
+  const withSubcommands = (cmd: CommandUnknownOpts, run: (rest: string[]) => Promise<number> | number): void => {
+    cmd.allowUnknownOption();
+    cmd.action(async () => {
+      const args = cmd.args;
+      const rest: string[] = [];
+      for (let i = 0; i < args.length; i++) {
+        const arg = args[i]!;
+        if (arg === "--") {
+          rest.push(...args.slice(i + 1));
+          break;
+        }
+        if (isOptionLike(arg)) {
+          warn(`ignoring unknown option ${arg}`);
+          continue;
+        }
+        const sub = rest.length === 0 ? cmd.commands.find((c) => c.name() === arg || c.aliases().includes(arg)) : undefined;
+        if (sub) {
+          await sub.parseAsync(args.slice(i + 1), { from: "user" });
+          return;
+        }
+        rest.push(arg);
+      }
+      done(await run(rest));
+    });
   };
   /** With --json, stdout stays one JSON value even when the arguments are wrong. */
   const jsonOnError = <C extends CommandUnknownOpts>(cmd: C): C =>
@@ -315,56 +344,66 @@ export function buildProgram(argv: string[], done: (code: number) => void): Comm
     });
 
   // --- Sync ---------------------------------------------------------------------------------------
+  // Each subcommand has its own options and handler; plain `sync` (sync now) only has the internal
+  // --background, which query uses to start a quiet sync.
   program.commandsGroup("Sync:");
-  const sync = warnUnknownOptions(program.command("sync"))
+  const sync = program
+    .command("sync")
     .summary("Sync global skills through a git repository")
     .description("Keep your global skills in a git repository (any host, HTTPS or SSH). Without a command: pull, install, update and push now (this also runs on its own from query).")
-    .option("--share <skills...>", "With init: folder skills to sync when seeding an empty repository ('*' = all; default: asks, none without a terminal)", list)
-    .option("--no-readme", "With init or update: leave the repository's README alone (default: add one, or ask before replacing an existing one)")
-    // Internal: query starts `sync --background` to sync quietly.
     .addOption(new Option("--background").hideHelp())
-    .addHelpText("after", examples([["skill-library sync init git@bitbucket.org:me/my-skills.git", "start syncing"], ["skill-library sync", "sync now"], ["skill-library sync status"]]))
-    .action(async (opts, cmd) => {
-      done(await runSyncCommand(cmd.args[0], cmd.args.slice(1), opts, g()));
-    });
-  // sync reads --share / --no-readme wherever they appear, so a subcommand merges them with its own.
-  const syncOpts = (own: SyncOptions): SyncOptions => {
-    const parent = sync.opts();
-    const share = own.share ?? parent.share;
-    return { readme: parent.readme !== false && own.readme !== false, ...(share ? { share } : {}) };
-  };
+    .addHelpText(
+      "after",
+      `\n${pc.bold("Command options:")}\n` +
+        "  init    --share <skills...>  Folder skills to sync when seeding an empty repository ('*' = all)\n" +
+        "          --no-readme          Leave the repository's README alone\n" +
+        "  update  --no-readme          Leave the repository's README alone\n" +
+        examples([["skill-library sync init git@bitbucket.org:me/my-skills.git", "start syncing"], ["skill-library sync", "sync now"], ["skill-library sync status"]]),
+    );
+  withSubcommands(sync, (rest) => {
+    if (rest[0] === "help") {
+      sync.outputHelp();
+      return 0;
+    }
+    if (rest.length > 0) throw new CliError(1, `Unknown sync command: ${rest[0]}`, SYNC_USAGE);
+    return runSyncNow(sync.opts(), g());
+  });
   warnUnknownOptions(sync.command("init"))
     .description("Start syncing global skills with a git repository")
     .argument("<git-url>", "The repository (any host, HTTPS or SSH)")
     .option("--share <skills...>", "Folder skills to sync when seeding an empty repository ('*' = all; default: asks, none without a terminal)", list)
     .option("--no-readme", "Leave the repository's README alone (default: add one, or ask before replacing an existing one)")
     .action(async (url, opts) => {
-      done(await runSyncCommand("init", [url], syncOpts(opts), g()));
+      done(await runSyncInit(url, opts, g()));
     });
   warnUnknownOptions(sync.command("update"))
     .description("Move sync to another repository (pushes everything there)")
     .argument("<git-url>", "The new repository")
     .option("--no-readme", "Leave the repository's README alone (default: add one, or ask before replacing an existing one)")
     .action(async (url, opts) => {
-      done(await runSyncCommand("update", [url], syncOpts(opts), g()));
+      done(await runSyncUpdate(url, opts, g()));
     });
   warnUnknownOptions(sync.command("share"))
     .description("Sync machine-only skills (added from a local folder) to your other devices")
     .argument("[skills...]", "The skills to share (default: asks)")
     .action(async (skills) => {
-      done(await runSyncCommand("share", skills, syncOpts({}), g()));
+      done(await runSyncShare(skills, g()));
     });
-  for (const [sub, description] of [
-    ["enable", "Start syncing again"],
-    ["disable", "Stop syncing (add/remove/update -g stay local)"],
-    ["status", "Show the repository, last sync and last error"],
-  ] as const) {
-    warnUnknownOptions(sync.command(sub))
-      .description(description)
-      .action(async () => {
-        done(await runSyncCommand(sub, [], syncOpts({}), g()));
-      });
-  }
+  warnUnknownOptions(sync.command("enable"))
+    .description("Start syncing again")
+    .action(async () => {
+      done(await runSyncEnable(g()));
+    });
+  warnUnknownOptions(sync.command("disable"))
+    .description("Stop syncing (add/remove/update -g stay local)")
+    .action(async () => {
+      done(await runSyncDisable(g()));
+    });
+  warnUnknownOptions(sync.command("status"))
+    .description("Show the repository, last sync and last error")
+    .action(async () => {
+      done(await runSyncStatus(g()));
+    });
 
   // --- skill-library itself -----------------------------------------------------------------------
   program.commandsGroup("skill-library itself:");
@@ -380,15 +419,14 @@ export function buildProgram(argv: string[], done: (code: number) => void): Comm
         "  doctor  -a, --agent <agents...>  Check only these agents' gateway skill\n" +
         "          --json                   Output as JSON\n" +
         examples([["npx skill-library self setup", "start here"], ["skill-library self setup -a claude-code codex", "only these agents"], ["skill-library self doctor --json"]]),
-    )
-    .action((_opts, cmd) => {
-      const [sub] = cmd.args;
-      if (sub === undefined || sub === "help") {
-        cmd.outputHelp();
-        return done(0);
-      }
-      throw new CliError(1, `Unknown self command: ${sub}`, "Run skill-library self for the list.");
-    });
+    );
+  withSubcommands(self, (rest) => {
+    if (rest.length === 0 || rest[0] === "help") {
+      self.outputHelp();
+      return 0;
+    }
+    throw new CliError(1, `Unknown self command: ${rest[0]}`, "Run skill-library self for the list.");
+  });
   warnUnknownOptions(self.command("setup"))
     .description(
       "Check this machine, install or update skill-library (npm -g), install the gateway skill into your agents, then run the doctor. Run it again any time: it updates everything. Start here: npx skill-library self setup",
