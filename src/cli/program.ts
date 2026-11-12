@@ -29,6 +29,14 @@ function value(raw: string): string {
   return v;
 }
 
+/** A number option (query's --threshold / --top): only an empty value is a missing value; a
+ *  negative number such as `--threshold=-0.1` reaches the command's own range check. */
+function numberValue(raw: string): string {
+  const v = inline(raw);
+  if (v === "") throw new InvalidArgumentError("requires a value");
+  return v;
+}
+
 /** vercel's list flags (`-s pdf docx`): values up to the next option, repeatable, and
  *  `--agent=a,b` splits on commas. */
 function list(raw: string, previous: string[] | undefined): string[] {
@@ -409,8 +417,8 @@ export function buildProgram(argv: string[], done: (code: number) => void): Comm
     .description("Find the skills for a task (TypeSafe Jev scoring). Pass the task as one quoted argument, or '-' to read it from stdin.")
     .argument("[task]", 'The task, quoted ("-": read stdin)')
     .option("-a, --agent <agent>", "Your agent id; skips skills meant only for other agents", value)
-    .option("--threshold <0..1>", "Minimum probability (default 0.7)", value)
-    .option("--top <n>", "Cap the number of matches", value)
+    .option("--threshold <0..1>", "Minimum probability (default 0.7)", numberValue)
+    .option("--top <n>", "Cap the number of matches", numberValue)
     .option("--json", "Output as JSON")
     .addHelpText("after", examples([['skill-library query -a claude-code "fix a failing Next.js build"'], ['echo "dockerize the app" | skill-library query - --json']]))
     .action(async (_task, opts, cmd) => {
