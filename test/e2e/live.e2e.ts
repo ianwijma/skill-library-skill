@@ -16,12 +16,20 @@ const KEY = process.env.SKILL_LIBRARY_TYPESAFE_API_KEY;
 const SOURCE = process.env.E2E_LIVE_SOURCE ?? "anthropics/skills";
 const SKILL = process.env.E2E_LIVE_SKILL ?? "frontend-design";
 
-/** Tasks with one obviously right skill in anthropics/skills: the real model must rank it first. */
-const TASKS: [task: string, skill: string][] = [
-  ["build a polished landing page UI with distinctive styling", "frontend-design"],
-  ["extract the tables from this PDF invoice and merge two PDF files", "pdf"],
-  ["add a pivot table and formulas to this Excel spreadsheet", "xlsx"],
-  ["build an MCP server that exposes our REST API as tools", "mcp-builder"],
+/** The README's example library, and tasks whose answer is obvious: which skills must come back,
+ *  and which must never. Set-based, at the default threshold, as a user would run it. */
+const README_SKILLS = ["pdf", "xlsx", "frontend-design"];
+const TASKS: { task: string; want: string[]; never: string[] }[] = [
+  // The README's own examples.
+  { task: "pull the totals table out of invoice.pdf into a spreadsheet", want: ["pdf", "xlsx"], never: ["frontend-design"] },
+  { task: "build a landing page for a coffee shop", want: ["frontend-design"], never: ["pdf", "xlsx"] },
+  // Blunt ones.
+  { task: "convert this Excel sheet to a PDF", want: ["pdf", "xlsx"], never: ["frontend-design"] },
+  { task: "PDF Excel", want: ["pdf", "xlsx"], never: ["frontend-design"] },
+  { task: "merge two PDF files", want: ["pdf"], never: ["xlsx", "frontend-design"] },
+  { task: "add a pivot table to this Excel spreadsheet", want: ["xlsx"], never: ["pdf", "frontend-design"] },
+  // Nothing to do with any of them.
+  { task: "calculate my income tax for 2025", want: [], never: README_SKILLS },
 ];
 
 describe.skipIf(!LIVE)("live services", () => {
@@ -53,18 +61,23 @@ describe.skipIf(!LIVE)("live services", () => {
     for (const l of links) expect(l.toLowerCase().startsWith("anthropics/"), l).toBe(true);
   });
 
-  test.skipIf(!KEY)("query against the real TypeSafe API: each task's skill comes first; an unrelated task matches none", async () => {
+  // The real model decides, so CI runs this tier with continue-on-error: a miss is reported, not blocking.
+  test.skipIf(!KEY)("query against the real TypeSafe API: the README's library returns the right skills, never the unrelated one", async () => {
     const { w, env } = await liveWorld();
-    await w.ok(["add", SOURCE, "-g", "-y", "-s", ...new Set(TASKS.map(([, s]) => s))], { env });
+    await w.ok(["add", SOURCE, "-g", "-y", "-s", ...README_SKILLS], { env });
     const live = { ...env, SKILL_LIBRARY_TYPESAFE_API_KEY: KEY, SKILL_LIBRARY_TYPESAFE_API_BASE: undefined };
-    for (const [task, skill] of TASKS) {
-      const out = (await w.ok(["query", task, "--json", "--threshold", "0.3"], { env: live })).json();
+    const misses: string[] = [];
+    for (const { task, want, never } of TASKS) {
+      const out = (await w.ok(["query", task, "--json"], { env: live })).json();
       assertQueryJson(out);
-      const scored = out.matches.filter((m: any) => !m.always);
-      expect(scored[0]?.name, `${task}\n${JSON.stringify(out)}`).toBe(skill);
-      expect(await exists(scored[0].path)).toBe(true);
+      const got = out.matches.filter((m: any) => !m.always);
+      const names = got.map((m: any) => m.name);
+      for (const m of got) expect(await exists(m.path), m.path).toBe(true);
+      const missing = want.filter((n) => !names.includes(n));
+      const wrong = never.filter((n) => names.includes(n));
+      if (missing.length || wrong.length) misses.push(`"${task}": got [${names.join(", ")}]${missing.length ? `, missing ${missing.join(", ")}` : ""}${wrong.length ? `, unexpected ${wrong.join(", ")}` : ""}`);
     }
-    const none = (await w.ok(["query", "calculate my income tax for 2025", "--json"], { env: live })).json();
-    expect(none.matches.filter((m: any) => TASKS.some(([, s]) => s === m.name)), JSON.stringify(none)).toEqual([]);
+    // Every task runs before failing, so one report shows all the misses.
+    expect(misses).toEqual([]);
   });
 });

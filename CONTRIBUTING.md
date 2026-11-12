@@ -57,8 +57,9 @@ Arguments go to vitest (`npm run test:e2e -- sync` runs `sync.e2e.ts`).
 `E2E_NODE_VERSION=24` picks the container's Node line (default 22). `E2E_LIVE=1`
 gives the container a network for `test/e2e/live.e2e.ts`. It adds skills from
 real GitHub and searches the real skills.sh. When `SKILL_LIBRARY_TYPESAFE_API_KEY`
-is set, it also checks that the real TypeSafe API ranks the right skill first for a
-few tasks. It only reads. CI runs it in the `e2e-live` job with the repository
+is set, it also checks that the real TypeSafe API returns the right skills, and never the unrelated one, for a
+few tasks (the README's `pdf`, `xlsx` and `frontend-design` examples). It only reads.
+CI runs it in the `e2e-live` job (`continue-on-error`: it reports, never blocks) with the repository
 secret `SKILL_LIBRARY_TYPESAFE_API_KEY`.
 
 ## Pull requests

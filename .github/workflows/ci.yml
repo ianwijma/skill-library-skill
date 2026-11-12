@@ -93,6 +93,8 @@ jobs:
   e2e-live:
     name: End-to-end tests against the real services
     runs-on: ubuntu-latest
+    # Real services and a real model: a failure is reported on the run, but never blocks a merge.
+    continue-on-error: true
     timeout-minutes: 15
     steps:
       - name: Check out repository
