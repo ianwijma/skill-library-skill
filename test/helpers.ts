@@ -12,12 +12,12 @@ export interface RunResult {
 }
 
 /** Env vars that make the CLI think it runs inside an agent; cleared unless a test sets them. */
-const AGENT_ENV = [
+export const AGENT_ENV = [
   "AI_AGENT", "CURSOR_TRACE_ID", "CURSOR_AGENT", "CURSOR_EXTENSION_HOST_ROLE", "GEMINI_CLI", "CODEX_SANDBOX", "CODEX_CI",
   "CODEX_THREAD_ID", "ANTIGRAVITY_AGENT", "AUGMENT_AGENT", "OPENCODE_CLIENT", "CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_IS_COWORK",
   "REPL_ID", "COPILOT_MODEL", "COPILOT_ALLOW_ALL", "COPILOT_GITHUB_TOKEN", "CLAUDE_CODE_ENTRYPOINT",
 ];
-const CI_ENV = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI", "TRAVIS", "BUILDKITE", "JENKINS_URL", "TEAMCITY_VERSION"];
+export const CI_ENV = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI", "TRAVIS", "BUILDKITE", "JENKINS_URL", "TEAMCITY_VERSION"];
 
 export interface Sandbox {
   root: string;

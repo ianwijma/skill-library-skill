@@ -47,6 +47,7 @@
     "build": "node scripts/build.mjs",
     "start": "node src/index.ts",
     "test": "vitest run",
+    "test:e2e": "node scripts/e2e.mjs",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run typecheck && npm test && npm run build && npm pack --dry-run"
   },

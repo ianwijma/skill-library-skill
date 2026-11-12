@@ -17,7 +17,7 @@ jobs:
   test:
     name: Tests, typecheck, and build (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -68,3 +68,9 @@ jobs:
 
       - name: Smoke-test built CLI
         run: ./dist/skill-library --version
+
+      # In a throwaway Docker container without network (scripts/e2e.mjs), on this job's Node line.
+      - name: Run end-to-end tests
+        run: npm run test:e2e
+        env:
+          E2E_NODE_VERSION: ${{ matrix.install-node }}
