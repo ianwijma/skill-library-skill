@@ -7,24 +7,26 @@ How to publish a new version of `skill-library` to npm.
 - **Run a release:**
   - Open **Actions → Release → Run workflow**.
   - Leave the branch on `develop`.
-  - Pick a **Version bump**. Each run bumps the current version in
-    `package.json`; examples from `1.2.3`:
+  - Pick a **Version bump** (default `patch`):
     - `patch`: `1.2.3` → `1.2.4`, for bug fixes.
     - `minor`: `1.2.3` → `1.3.0`, for new features that don't break anything.
     - `major`: `1.2.3` → `2.0.0`, for breaking changes.
-    - `prepatch`: `1.2.3` → `1.2.4-rc.0`, the first release candidate of a patch.
-    - `preminor`: `1.2.3` → `1.3.0-rc.0`, the first release candidate of a minor.
-    - `premajor`: `1.2.3` → `2.0.0-rc.0`, the first release candidate of a major.
-    - `prerelease`: `1.3.0-rc.0` → `1.3.0-rc.1`, the next release candidate.
-  - For a `pre*` bump, set the **Prerelease identifier** (default `rc`; `beta`
-    gives `1.3.0-beta.0`).
-  - Release candidates, step by step:
-    - Run `preminor` once to get `1.3.0-rc.0`.
-    - Run `prerelease` for each next candidate: `1.3.0-rc.1`, `1.3.0-rc.2`, ...
-    - Run `minor` to release it: `1.3.0-rc.2` → `1.3.0`.
-    - Don't run `preminor` again on a candidate: that starts `1.4.0-rc.0`.
+  - Pick a **Release type** (default `prerelease`, so you never release a stable
+    version by accident):
+    - `prerelease`: a release candidate, published to npm `next`.
+      `1.2.3` + `minor` → `1.3.0-rc.0`.
+    - `release`: a stable version, published to npm `latest`.
+      `1.2.3` + `minor` → `1.3.0`.
+  - Release candidates, step by step (keep the same **Version bump** each time):
+    - `minor` + `prerelease`: `1.2.3` → `1.3.0-rc.0`.
+    - `minor` + `prerelease` again: `1.3.0-rc.0` → `1.3.0-rc.1`, `1.3.0-rc.2`, ...
+    - `minor` + `release`: `1.3.0-rc.2` → `1.3.0`.
+    - A bigger bump on a candidate starts a new one: `major` + `prerelease` on
+      `1.3.0-rc.2` → `2.0.0-rc.0`.
   - **Dry run** is ticked by default: it checks everything without pushing or
     publishing. Untick it to release for real.
+  - **Prerelease identifier** (default `rc`) is only used for prereleases; `beta`
+    gives `1.3.0-beta.0`.
   - Click **Run workflow**.
   - Wait for **Plan release** to finish, then open the run's summary. It shows:
     - What is published now: npm `latest` and `next`, the latest GitHub Release
