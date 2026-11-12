@@ -16,11 +16,17 @@ import { CliError, msgOf } from "./cli.ts";
 export const DEFAULT_BASE_URL = "https://api.typesafe.ai";
 export const MODEL = "jev-latest";
 export const QUESTION_TEMPLATE =
-  "Would reading the skill `skill.name`, described below, improve how the assistant handles `state.task`?";
+  "Should the assistant read the skill `skill.name`, described below, before working on `state.task`?";
+/**
+ * Many skills are invoked by name or by a trigger phrase ("Trigger this if the user says 'council'"),
+ * with a description that says nothing about what they do. Without the trigger clause such a skill
+ * scores ~0.5 even when the user names it, because the scorer can't see how it would help.
+ * The false criterion keeps a word that only appears in the subject matter ("city council") out.
+ */
 export const CRITERIA_TRUE =
-  "The skill is directly relevant to the task and would change or guide how it is done";
+  "The skill is directly relevant to the task and would change or guide how it is done, or the user asks for the skill by name or says the exact trigger word or phrase from its description";
 export const CRITERIA_FALSE =
-  "The skill is unrelated, redundant, or would not meaningfully help";
+  "The skill is unrelated, redundant, or would not meaningfully help; a similar-sounding word, or a word that only appears in what the task is about (its code, data or topic), does not invoke a skill";
 
 const MAX_RETRIES = 3;
 const ATTEMPT_TIMEOUT_MS = 30_000;

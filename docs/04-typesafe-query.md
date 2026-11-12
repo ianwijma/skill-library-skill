@@ -37,11 +37,11 @@ Content-Type: application/json
           "name": "frontend-design",
           "description": "Create distinctive, production-grade frontend interfaces. Use when building or styling web UI."
         },
-        "question": "Would reading the skill `skill.name`, described below, improve how the assistant handles `state.task`?"
+        "question": "Should the assistant read the skill `skill.name`, described below, before working on `state.task`?"
       },
       "criteria": {
-        "true": "The skill is directly relevant to the task and would change or guide how it is done",
-        "false": "The skill is unrelated, redundant, or would not meaningfully help"
+        "true": "The skill is directly relevant to the task and would change or guide how it is done, or the user asks for the skill by name or says the exact trigger word or phrase from its description",
+        "false": "The skill is unrelated, redundant, or would not meaningfully help; a similar-sounding word, or a word that only appears in what the task is about (its code, data or topic), does not invoke a skill"
       }
     },
     "s1": { "…same shape, next skill…" : null }
@@ -64,6 +64,20 @@ Design notes (grounded in TypeSafe's docs):
   duplicate-detection example).
 - `criteria` descriptions sharpen the yes/no boundary; keep them as drafted
   unless calibration shows otherwise.
+- **Named and trigger-phrase skills count as relevant.** Many skills say only
+  when to use them ("Trigger this if the user says 'council'"). With criteria
+  that ask only whether the skill would *guide* the task, such a skill scored
+  0.43–0.65 even when the task said "council" or "use the council skill",
+  because nothing in the description shows how it helps. The true criterion
+  therefore also accepts the user asking for the skill by name or saying its
+  exact trigger; the false criterion rules out similar-sounding words and words
+  that are only the task's subject matter ("a city council minutes app").
+  Calibrated on 17 tasks: named/trigger tasks went from 0.43–0.65 to 0.81–0.97,
+  and no negative task rose above the 0.7 threshold.
+- **The task text must carry the user's words.** The scorer sees only the task
+  the agent writes, so the gateway skill asks agents to quote any skill name or
+  trigger phrase the user used. A summary that drops "council" still misses
+  (0.06).
 
 ## Response shape
 

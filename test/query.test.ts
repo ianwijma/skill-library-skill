@@ -80,11 +80,11 @@ describe("query", () => {
       type: "noul",
       instructions: {
         skill: { name: "a-skill", description: "Skill A" },
-        question: "Would reading the skill `skill.name`, described below, improve how the assistant handles `state.task`?",
+        question: "Should the assistant read the skill `skill.name`, described below, before working on `state.task`?",
       },
       criteria: {
-        true: "The skill is directly relevant to the task and would change or guide how it is done",
-        false: "The skill is unrelated, redundant, or would not meaningfully help",
+        true: "The skill is directly relevant to the task and would change or guide how it is done, or the user asks for the skill by name or says the exact trigger word or phrase from its description",
+        false: "The skill is unrelated, redundant, or would not meaningfully help; a similar-sounding word, or a word that only appears in what the task is about (its code, data or topic), does not invoke a skill",
       },
     });
     // No ids or paths leave the machine.
