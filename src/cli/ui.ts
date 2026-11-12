@@ -20,7 +20,7 @@ const GRAYS = ["\x1b[38;5;250m", "\x1b[38;5;245m", "\x1b[38;5;240m"];
 const RESET = "\x1b[0m";
 
 /** Logo only on a TTY and never inside an agent (vercel hides it there too). */
-export function logoAllowed(): boolean {
+function logoAllowed(): boolean {
   return !!process.stdout.isTTY && !isRunningInAgent();
 }
 

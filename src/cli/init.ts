@@ -7,7 +7,7 @@ import { showLogo } from "./ui.ts";
 import { type Ctx, examples, newCommand, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
-export function runInit(name: string | undefined, opts: { always?: boolean }, g: GlobalOpts): number {
+function runInit(name: string | undefined, opts: { always?: boolean }, g: GlobalOpts): number {
   showLogo();
   console.log();
   const always = !!opts.always;

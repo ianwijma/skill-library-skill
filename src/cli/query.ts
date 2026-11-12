@@ -37,7 +37,7 @@ function syncChangeLines(c: SyncChanges): string[] {
 }
 
 /** `query` keeps its own exit codes: 0 ok, 1 usage (incl. invalid agent), 2 runtime. */
-export interface QueryOptions {
+interface QueryOptions {
   json?: boolean;
   agent?: string;
   threshold?: string;
@@ -45,7 +45,7 @@ export interface QueryOptions {
 }
 
 /** `query "<task>" | -`; `pos` are the positionals (one at most). */
-export async function runQuery(pos: string[], opts: QueryOptions, g: GlobalOpts): Promise<number> {
+async function runQuery(pos: string[], opts: QueryOptions, g: GlobalOpts): Promise<number> {
   if (pos.length > 1) throw new CliError(1, `unexpected argument '${pos[1]}' (quote the task text)`);
   let task: string;
   if (pos.length === 1 && pos[0] !== "-") task = pos[0]!;

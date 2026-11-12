@@ -13,7 +13,7 @@ function inCI(): boolean {
   });
 }
 
-export interface InstallOptions {
+interface InstallOptions {
   dryRun?: boolean;
   force?: boolean;
   /** --frozen-lockfile (true) or --no-frozen-lockfile (false); unset: frozen in CI. */
@@ -21,7 +21,7 @@ export interface InstallOptions {
 }
 
 /** Source-less `install`: restore skill-library.json into the library. */
-export async function runInstall(opts: InstallOptions, g: GlobalOpts): Promise<number> {
+async function runInstall(opts: InstallOptions, g: GlobalOpts): Promise<number> {
   showLogo();
   const frozen = opts.frozen ?? inCI();
   try {

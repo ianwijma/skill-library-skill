@@ -15,7 +15,7 @@ export function statusCommand(ctx: Ctx) {
 }
 
 /** `sync status`. */
-export async function runSyncStatus(g: GlobalOpts): Promise<number> {
+async function runSyncStatus(g: GlobalOpts): Promise<number> {
   const s = await syncStatus(baseOf(g));
   if (!s.configured) {
     console.log("Sync is not set up. Run skill-library sync init <git-url>");

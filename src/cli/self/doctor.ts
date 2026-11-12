@@ -15,7 +15,7 @@ export function doctorCommand(ctx: Ctx) {
 }
 
 /** `self doctor`; `extra` are positionals, which it doesn't take. */
-export async function runSelfDoctor(extra: string[], opts: { agent?: string[]; json?: boolean }, g: GlobalOpts): Promise<number> {
+async function runSelfDoctor(extra: string[], opts: { agent?: string[]; json?: boolean }, g: GlobalOpts): Promise<number> {
   if (extra.length > 0) throw new CliError(1, `Unexpected argument: ${extra[0]}`, "Usage: skill-library self doctor [-a <agents>] [--json]");
   const agents = requestedAgents(opts.agent);
   const checks = await doctorChecks(g.cwd, agents);

@@ -37,7 +37,7 @@ export function newCommand(name: string) {
     .showHelpAfterError(pc.gray("Run with --help for usage."));
 }
 
-export const isOptionLike = (v: string): boolean => v.length > 1 && v.startsWith("-");
+const isOptionLike = (v: string): boolean => v.length > 1 && v.startsWith("-");
 /** Commander reads `-a=codex` as -a with the value "=codex". */
 const inline = (v: string): string => (v.startsWith("=") ? v.slice(1) : v);
 

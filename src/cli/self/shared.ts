@@ -12,13 +12,13 @@ import { GATEWAY_NAME, gatewayState, writeGateway, type GatewayResult } from "..
 import { PACKAGE_NAME, checkRelease, fetchDistTags, globalInstall, globalRootWritable, newerRelease, npmGlobalRoot, npmInstallGlobal, run, type GlobalInstall } from "../../lib/release.ts";
 import { VERSION } from "../ui.ts";
 
-export const API_KEY_ENV = "SKILL_LIBRARY_TYPESAFE_API_KEY";
-export const API_KEY_URL = "https://console.typesafe.ai/keys";
+const API_KEY_ENV = "SKILL_LIBRARY_TYPESAFE_API_KEY";
+const API_KEY_URL = "https://console.typesafe.ai/keys";
 export const EACCES_URL = "https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally";
 /** Set on the newly installed copy we hand over to, so it never installs or hands over again. */
 export const HANDOFF_ENV = "SKILL_LIBRARY_SELF_HANDOFF";
 
-export type CheckStatus = "ok" | "warn" | "fail";
+type CheckStatus = "ok" | "warn" | "fail";
 
 export interface Check {
   id: "install" | "release" | "gateway" | "api-key" | "git" | "npm";

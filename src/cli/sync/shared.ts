@@ -8,7 +8,7 @@ import type { GlobalOpts } from "../index.ts";
 
 export const SYNC_USAGE = "Usage: skill-library sync [init <git-url> [--share <skill...>] [--no-readme] | update <git-url> [--no-readme] | share <skill...> | enable | disable | status]";
 
-export function shadowLine(name: string): string {
+function shadowLine(name: string): string {
   return `${sanitizeMetadata(name)} from the sync repo now shadows another global ${sanitizeMetadata(name)}; see skill-library list -g and remove the one you don't want`;
 }
 
@@ -26,7 +26,7 @@ export function printResult(r: SyncResult): void {
   console.log(`${changes === 0 ? "Global skills are in sync" : "Synced global skills"} with ${r.url}${r.pushed ? " (pushed)" : ""}`);
 }
 
-export type Base = { cwd: string; store?: string };
+type Base = { cwd: string; store?: string };
 
 export function baseOf(g: GlobalOpts): Base {
   return { cwd: g.cwd, ...(g.store ? { store: g.store } : {}) };

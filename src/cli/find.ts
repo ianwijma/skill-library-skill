@@ -29,7 +29,7 @@ function formatInstalls(count: number): string {
   return `${count} install${count === 1 ? "" : "s"}`;
 }
 
-export async function searchSkills(query: string, owner?: string): Promise<SearchSkill[]> {
+async function searchSkills(query: string, owner?: string): Promise<SearchSkill[]> {
   try {
     const url = new URL("/api/search", apiBase());
     url.searchParams.set("q", query);
@@ -44,7 +44,7 @@ export async function searchSkills(query: string, owner?: string): Promise<Searc
 }
 
 /** `find [query...]`; `ownerOpt` is --owner's value (true when it was given without one). */
-export async function runFind(parts: string[], ownerOpt: string | true | undefined, g: GlobalOpts): Promise<number> {
+async function runFind(parts: string[], ownerOpt: string | true | undefined, g: GlobalOpts): Promise<number> {
   let owner: string | undefined;
   if (ownerOpt === true) {
     console.error("--owner requires a GitHub owner");

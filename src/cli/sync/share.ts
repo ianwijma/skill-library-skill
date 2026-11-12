@@ -18,7 +18,7 @@ export function shareCommand(ctx: Ctx) {
 }
 
 /** `sync share [skills...]`: without names (on a terminal), asks which. */
-export async function runSyncShare(names: string[], g: GlobalOpts): Promise<number> {
+async function runSyncShare(names: string[], g: GlobalOpts): Promise<number> {
   const base = baseOf(g);
   let selectors = names;
   if (selectors.length === 0 && process.stdin.isTTY && !isRunningInAgent()) {

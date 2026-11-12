@@ -50,7 +50,7 @@ function clashMessage(c: NameClash, e: NameClash["existing"][number], kind: Glob
   return `A global ${c.name} already exists (${KIND_LABEL[kind]}: ${e.source}; ${files}). Replace it with this one?`;
 }
 
-export interface AddOptions {
+interface AddOptions {
   global?: boolean;
   project?: boolean;
   list?: boolean;

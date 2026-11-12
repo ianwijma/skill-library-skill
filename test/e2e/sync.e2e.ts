@@ -780,13 +780,16 @@ test("before setup on a fresh machine (no library folder), enable/disable say ho
     await settled(a);
   });
 
-  test("--share only applies to init: on other subcommands it changes nothing", async () => {
+  test("--share is only an option of init: anywhere else it is an unknown option and shares nothing", async () => {
     const a = await world();
     const remote = await a.emptyRemote("my-skills");
     await a.ok(["sync", "init", remote]);
     await a.ok(["add", await folderSkill(a, "mine"), "-g", "-y"]);
-    const r = await a.ok(["sync", "--share", "mine"]);
-    expect(r.stdout).toBe(`Global skills are in sync with ${remote}\n`);
+    // Plain sync (sync now) and the other subcommands don't take it: it is named, as an unknown
+    // option warned about or rejected.
+    for (const args of [["sync", "--share", "mine"], ["sync", "status", "--share", "mine"], ["sync", "update", remote, "--share", "mine"]]) {
+      expectUnknownOption(await a.run(args), "--share");
+    }
     expect((await remoteFiles(a, remote)).skills).toEqual([]);
     expect((await globals(a)).mine.id).toMatch(/^home:\/\//);
     await settled(a);

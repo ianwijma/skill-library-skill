@@ -15,7 +15,7 @@ export function updateCommand(ctx: Ctx) {
 }
 
 /** `self update`; `extra` are positionals, which it doesn't take. */
-export async function runSelfUpdate(extra: string[]): Promise<number> {
+async function runSelfUpdate(extra: string[]): Promise<number> {
   if (extra.length > 0) throw new CliError(1, `Unexpected argument: ${extra[0]}`, "Usage: skill-library self update");
 
   if (process.env[HANDOFF_ENV] !== "1") {

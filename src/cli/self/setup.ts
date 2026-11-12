@@ -37,7 +37,7 @@ export function setupCommand(ctx: Ctx) {
 }
 
 /** `self setup`; `extra` are positionals, which it doesn't take. */
-export async function runSelfSetup(extra: string[], opts: { agent?: string[] }, g: GlobalOpts): Promise<number> {
+async function runSelfSetup(extra: string[], opts: { agent?: string[] }, g: GlobalOpts): Promise<number> {
   if (extra.length > 0) throw new CliError(1, `Unexpected argument: ${extra[0]}`, "Usage: skill-library self setup [-a <agents>]");
   const agents = requestedAgents(opts.agent);
 

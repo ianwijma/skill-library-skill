@@ -17,7 +17,7 @@ export function updateCommand(ctx: Ctx) {
 }
 
 /** `sync update <git-url>`: move sync to another repository. */
-export async function runSyncUpdate(url: string, opts: { readme?: boolean }, g: GlobalOpts): Promise<number> {
+async function runSyncUpdate(url: string, opts: { readme?: boolean }, g: GlobalOpts): Promise<number> {
   const outcome = await updateSyncUrl(url, { ...baseOf(g), ...readmeOptions(opts.readme) });
   if (outcome.unchanged) {
     console.log(`Sync already uses ${outcome.url}`);

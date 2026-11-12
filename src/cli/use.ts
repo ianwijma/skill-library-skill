@@ -20,7 +20,7 @@ const USE_AGENTS: Record<string, { command: string; args: string[] }> = {
   "sarvam-code": { command: "sarvam-code", args: [] },
 };
 
-export function buildUsePrompt(input: { skillMd: string; supportDir?: string; hasSupportingFiles: boolean }): string {
+function buildUsePrompt(input: { skillMd: string; supportDir?: string; hasSupportingFiles: boolean }): string {
   const sections = [
     "You are being given a Skill to execute for the user's next request.",
     "Use the following SKILL.md as your instructions:",
@@ -33,14 +33,14 @@ export function buildUsePrompt(input: { skillMd: string; supportDir?: string; ha
 }
 
 /** The agents `use --agent` can start. */
-export const USE_AGENT_IDS = Object.keys(USE_AGENTS);
+const USE_AGENT_IDS = Object.keys(USE_AGENTS);
 
 async function hasSupportingFiles(dir: string): Promise<boolean> {
   const entries = await fsp.readdir(dir, { withFileTypes: true, recursive: true });
   return entries.some((e) => e.isFile() && !(e.name.toLowerCase() === "skill.md" && path.resolve(e.parentPath ?? dir) === path.resolve(dir)));
 }
 
-export interface UseOptions {
+interface UseOptions {
   fullDepth?: boolean;
   skill?: string;
   /** A list so that `-a one two` can be rejected with a clear message. */
@@ -48,7 +48,7 @@ export interface UseOptions {
 }
 
 /** `use <source>[@<skill>]`: `sources` are the positionals (exactly one is allowed). */
-export async function runUse(sources: string[], opts: UseOptions, g: GlobalOpts): Promise<number> {
+async function runUse(sources: string[], opts: UseOptions, g: GlobalOpts): Promise<number> {
   const errors: string[] = [];
   const agentVals = opts.agent;
   if (agentVals) {

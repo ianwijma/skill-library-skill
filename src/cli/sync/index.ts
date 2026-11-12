@@ -45,7 +45,7 @@ export function syncCommand(ctx: Ctx) {
 }
 
 /** `sync`: pull, install, update and push now. `background` (internal) is what `query` starts. */
-export async function runSyncNow(opts: { background?: boolean }, g: GlobalOpts): Promise<number> {
+async function runSyncNow(opts: { background?: boolean }, g: GlobalOpts): Promise<number> {
   if (opts.background) {
     // Started by `query`: no output, failures are kept in the status file.
     await runSync({ ...baseOf(g), background: true }).catch(() => null);

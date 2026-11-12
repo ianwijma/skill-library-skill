@@ -13,13 +13,13 @@ function shorten(p: string, cwd: string): string {
   return p;
 }
 
-export interface ListOptions {
+interface ListOptions {
   global?: boolean;
   json?: boolean;
   agent?: string[];
 }
 
-export async function runList(opts: ListOptions, g: GlobalOpts): Promise<number> {
+async function runList(opts: ListOptions, g: GlobalOpts): Promise<number> {
   const json = !!opts.json;
   let result;
   try {

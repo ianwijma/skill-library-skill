@@ -7,7 +7,7 @@ import { afterGlobalChange } from "./sync/shared.ts";
 import { type Ctx, examples, newCommand, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
-export interface UpdateOptions {
+interface UpdateOptions {
   global?: boolean;
   project?: boolean;
   /** Accepted; update never prompts for anything but an ambiguous name. */
@@ -15,7 +15,7 @@ export interface UpdateOptions {
 }
 
 /** `update` / `check [skills...]`: `names` are the positionals. */
-export async function runUpdate(names: string[], flags: UpdateOptions, g: GlobalOpts, mode: "update" | "check"): Promise<number> {
+async function runUpdate(names: string[], flags: UpdateOptions, g: GlobalOpts, mode: "update" | "check"): Promise<number> {
   const opts = {
     cwd: g.cwd,
     ...(g.store ? { store: g.store } : {}),

@@ -14,7 +14,7 @@ export async function pickAmbiguous(selector: string, ids: string[]): Promise<st
   return p.isCancel(picked) ? null : (picked as string);
 }
 
-export interface RemoveOptions {
+interface RemoveOptions {
   global?: boolean;
   project?: boolean;
   yes?: boolean;
@@ -24,7 +24,7 @@ export interface RemoveOptions {
 }
 
 /** `remove [skills...]`: `names` are the positionals. */
-export async function runRemove(names: string[], opts: RemoveOptions, g: GlobalOpts): Promise<number> {
+async function runRemove(names: string[], opts: RemoveOptions, g: GlobalOpts): Promise<number> {
   const all = !!opts.all;
   const yes = !!opts.yes || all || isRunningInAgent();
   let selectors = [...names, ...(opts.skill ?? [])];

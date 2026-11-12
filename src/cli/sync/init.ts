@@ -19,7 +19,7 @@ export function initCommand(ctx: Ctx) {
     });
 }
 
-export interface SyncInitOptions {
+interface SyncInitOptions {
   /** Folder skills to share when seeding an empty repository ('*' = all). */
   share?: string[];
   /** false for --no-readme. */
@@ -27,7 +27,7 @@ export interface SyncInitOptions {
 }
 
 /** `sync init <git-url>`. */
-export async function runSyncInit(url: string, opts: SyncInitOptions, g: GlobalOpts): Promise<number> {
+async function runSyncInit(url: string, opts: SyncInitOptions, g: GlobalOpts): Promise<number> {
   const shareFlag = opts.share;
   const interactive = !shareFlag && canPrompt();
   const outcome = await initSync(url, {
