@@ -33,6 +33,16 @@ skill-library sync init ssh://git@git.example.com:2222/me/my-skills.git
   pick the ones to share (they are copied into `skills/`). The rest stay
   machine-only. Without a terminal none are shared, unless you pass
   `--share <names>` (`--share '*'` = all).
+- Gives the repo a short `README.md` about Skill Library (template:
+  [`assets/sync-readme.md`](../assets/sync-readme.md)) when it has no README.
+  When it already has a Markdown README, `init` asks before adding the Skill
+  Library section to it, or before refreshing that section if it is out of date.
+  The section sits between `<!-- skill-library:start -->` and
+  `<!-- skill-library:end -->`; the rest of the README is never touched.
+  `--readme` says yes without asking, `--no-readme` says no. Without a terminal
+  the README is left as it is. A non-Markdown README (`README.rst`, …) is always
+  left alone. The README's link to Skill Library carries `utm_*` parameters
+  naming the sync repo (`owner/repo`; no credentials, nothing for a local path).
 
 If `sync` is already set up with the same URL, `init` says so and exits
 successfully without changing anything. With a different URL it refuses and
@@ -103,6 +113,7 @@ workflow (history, reviews per skill) better than editing in the sync repo.
 
 ```
 my-skills/
+  README.md                  # what this repo is (added by `sync init`, see above)
   skill-library.json         # skills from other repos: source + ref + path + pinned commit + hash + agents
   skills/
     my-checklist/SKILL.md    # your own skills, stored in the repo itself

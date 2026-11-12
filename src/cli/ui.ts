@@ -119,6 +119,8 @@ ${BOLD}Sync:${RESET}
   sync init <git-url>     Keep global skills in a git repository (any host, HTTPS or SSH)
                           --share <skills>: folder skills to sync when seeding an empty repo ('*' = all;
                           default: asks, none without a terminal)
+                          --readme / --no-readme: add or update the Skill Library section of an existing
+                          README without asking / leave it (a repo without a README always gets one)
   sync                    Pull, install, update and push now (also runs on its own from query)
   sync update <git-url>   Move sync to another repository (pushes everything there)
   sync share <skill...>   Sync a machine-only skill (one added from a local folder) to your other devices

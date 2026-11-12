@@ -19,7 +19,7 @@ import { formatTimestamp } from "../lib/time.ts";
 import { parseFlags } from "./args.ts";
 import type { GlobalOpts } from "./index.ts";
 
-const USAGE = "Usage: skill-library sync [init <git-url> | update <git-url> | share <skill...> | enable | disable | status]";
+const USAGE = "Usage: skill-library sync [init <git-url> [--share <skill...>] [--readme | --no-readme] | update <git-url> | share <skill...> | enable | disable | status]";
 
 function shadowLine(name: string): string {
   return `${sanitizeMetadata(name)} from the sync repo now shadows another global ${sanitizeMetadata(name)}; see skill-library list -g and remove the one you don't want`;
@@ -36,7 +36,7 @@ function printResult(r: SyncResult): void {
 }
 
 export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<number> {
-  const f = parseFlags(args, { booleans: { background: ["--background"], json: ["--json"] }, lists: { share: ["--share"] } });
+  const f = parseFlags(args, { booleans: { background: ["--background"], json: ["--json"], readme: ["--readme"], noReadme: ["--no-readme"] }, lists: { share: ["--share"] } });
   if (f.missing.length > 0) {
     console.error(`Error: ${f.missing[0]} requires a value`);
     return 1;
@@ -61,9 +61,23 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
         const url = rest[0];
         if (!url) throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync init <git-url>");
         const shareFlag = f.lists.get("share");
-        const interactive = !shareFlag && !json && !!process.stdin.isTTY && !isRunningInAgent();
+        const tty = !json && !!process.stdin.isTTY && !isRunningInAgent();
+        const interactive = !shareFlag && tty;
+        // A repo with a README of its own: --readme adds/updates our section, --no-readme (or no
+        // terminal to ask in) leaves it; otherwise ask. A repo without one always gets a README.
+        const readmeFlag = f.booleans.has("noReadme") ? false : f.booleans.has("readme") ? true : undefined;
+        const confirmReadme = async (action: "add" | "update", file: string): Promise<boolean> => {
+          if (readmeFlag !== undefined) return readmeFlag;
+          if (!tty) return false;
+          const ok = await p.confirm({
+            message: action === "add" ? `Add a short Skill Library section to the repository's ${file}?` : `Update the Skill Library section in the repository's ${file}?`,
+            initialValue: true,
+          });
+          return ok === true;
+        };
         const outcome = await initSync(url, {
           ...base,
+          confirmReadme,
           // Only you know which folder skills you wrote (share them) and which are copies (keep them local).
           ...(shareFlag
             ? { chooseShare: async (candidates) => candidates.filter((c) => shareFlag.includes("*") || shareFlag.includes(c.name) || shareFlag.includes(c.id)).map((c) => c.id) }
@@ -86,10 +100,10 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
           else console.log(`Sync is already set up with ${outcome.url}. ${DIM}Run${RESET} skill-library sync ${DIM}to sync now.${RESET}`);
           return 0;
         }
-        const { result, seeded, machineOnly } = outcome;
+        const { result, seeded, machineOnly, readme } = outcome;
         const gw = await placeGateway();
         if (json) {
-          console.log(JSON.stringify({ ...result, seeded, machineOnly }));
+          console.log(JSON.stringify({ ...result, seeded, machineOnly, readme }));
           return result.errors.length > 0 ? 1 : 0;
         }
         if (seeded.length > 0) console.log(`${DIM}The repository was empty; added this machine's ${seeded.length} global skill(s) to it.${RESET}`);
@@ -97,6 +111,7 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
           console.log(`${DIM}Kept machine-only (not synced):${RESET} ${machineOnly.map(sanitizeMetadata).join(", ")}`);
           console.log(`${DIM}Share one with${RESET} skill-library sync share <name>`);
         }
+        if (readme) console.log(`${DIM}${readme.action === "created" ? "Added" : readme.action === "added" ? "Added a Skill Library section to" : "Updated the Skill Library section in"} the repository's ${readme.file}.${RESET}`);
         printResult(result);
         if (gw.updated.length > 0) note(`Updated skill-library gateway for ${gw.updated.join(", ")}`);
         for (const e of gw.errors) note(`gateway: ${e}`);

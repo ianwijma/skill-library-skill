@@ -440,6 +440,38 @@ describe("sync", () => {
     expect((await run(a, ["sync", "status"])).stdout).toContain("not set up");
     expect((await run(a, ["sync"])).stderr).toContain("skill-library sync init <git-url>");
   });
+  test("init adds a README to a repo without one", async () => {
+    const a = await sandbox();
+    const remote = await emptyRemote(a);
+    expect((await run(a, ["sync", "init", remote])).code).toBe(0);
+    const dir = path.join(a.root, "peek-readme");
+    git(a, a.root, ["clone", "-q", remote, dir]);
+    const readme = await fsp.readFile(path.join(dir, "README.md"), "utf8");
+    expect(readme).toContain("<!-- skill-library:start -->");
+    expect(readme).toContain("https://github.com/ianwijma/skill-library-skill?utm_source=skill-library-sync");
+    expect(readme).toContain(`skill-library sync init ${remote}`);
+    expect(readme).not.toContain("{{");
+  });
+
+  test("init leaves an existing README alone unless --readme", async () => {
+    const a = await sandbox();
+    const up = await gitRepo(a, "has-readme", { "README.md": "# Mine\n" });
+    const left = await run(a, ["sync", "init", up.url]);
+    expect(left.code, left.stderr + left.stdout).toBe(0);
+    const peek = (name: string): Promise<string> => {
+      const dir = path.join(a.root, name);
+      git(a, a.root, ["clone", "-q", up.url, dir]);
+      return fsp.readFile(path.join(dir, "README.md"), "utf8");
+    };
+    expect(await peek("peek-1")).toBe("# Mine\n");
+
+    const b = await sandbox();
+    const added = await run(b, ["sync", "init", up.url, "--readme"]);
+    expect(added.code, added.stderr + added.stdout).toBe(0);
+    const readme = await peek("peek-2");
+    expect(readme.startsWith("# Mine\n\n<!-- skill-library:start -->")).toBe(true);
+    expect(readme.match(/skill-library:start/g)).toHaveLength(1);
+  });
 });
 
 describe("mergeManifests", () => {

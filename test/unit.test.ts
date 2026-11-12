@@ -13,6 +13,7 @@ import { versionKeyFor, type StoreRecord } from "../src/lib/store.ts";
 import { gatewaySkillMd } from "../src/lib/gateway.ts";
 import { parseFrontmatter } from "../src/lib/frontmatter.ts";
 import { formatTimestamp, relativeTime } from "../src/lib/time.ts";
+import { planReadme, readmeSection, repoSlug } from "../src/lib/sync-readme.ts";
 
 describe("ids", () => {
   test("GitHub over every transport gets the same id", () => {
@@ -201,5 +202,29 @@ describe("time formatting", () => {
   test("formatTimestamp adds a local date and passes invalid input through", () => {
     expect(formatTimestamp("2026-11-10T09:00:00Z", now)).toMatch(/^3 hours ago \(\d{4}-\d{2}-\d{2} \d{2}:\d{2}( \S+)?\)$/);
     expect(formatTimestamp("garbage", now)).toBe("garbage");
+  });
+});
+
+describe("sync README", () => {
+  test("repoSlug keeps owner/repo and drops credentials and local paths", () => {
+    expect(repoSlug("git@github.com:me/skills.git")).toBe("me/skills");
+    expect(repoSlug("https://token@github.com/me/skills")).toBe("me/skills");
+    expect(repoSlug("ssh://git@gitlab.example.com:2222/team/sub/skills.git")).toBe("gitlab.example.com/sub/skills");
+    expect(repoSlug("file:///home/me/skills.git")).toBeNull();
+  });
+
+  test("planReadme creates, adds, updates in place, or does nothing", () => {
+    const url = "git@github.com:me/skills.git";
+    const created = planReadme(null, url);
+    expect(created.action).toBe("create");
+    expect(created.action !== "none" && created.text).toContain("utm_campaign=me%2Fskills");
+    const added = planReadme("# Mine\n\nNotes.\n", url);
+    expect(added.action).toBe("add");
+    if (added.action === "none") throw new Error("unreachable");
+    expect(planReadme(added.text, url).action).toBe("none");
+    const stale = added.text.replace(readmeSection(url), "<!-- skill-library:start -->\nold\n<!-- skill-library:end -->") + "\nFooter\n";
+    const updated = planReadme(stale, url);
+    expect(updated.action).toBe("update");
+    expect(updated.action !== "none" && updated.text).toBe(added.text + "\nFooter\n");
   });
 });

@@ -16,6 +16,7 @@ import { parseSkillFile, requireStagedSkill } from "../lib/discover.ts";
 import { assertSafeGitArgs, git, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
 import { gitSkillId, isReservedSkillName, safeSlug, skillDirFor } from "../lib/ids.ts";
+import { planReadme } from "../lib/sync-readme.ts";
 import { MANIFEST, readManifest, serializeManifest, validateEntry, type Manifest, type ManifestEntry } from "../lib/manifest.ts";
 import {
   copySkill,
@@ -599,6 +600,8 @@ export type InitSyncOutcome =
       seeded: string[];
       /** Folder skills left machine-only (not shared). */
       machineOnly: string[];
+      /** What happened to the repo's README (null: left as it was). */
+      readme: { action: "created" | "added" | "updated"; file: string } | null;
     }
   | { alreadySetUp: true; url: string };
 
@@ -615,6 +618,35 @@ export interface InitSyncOptions extends BaseOptions {
    * share (copy into the repo's `skills/`). Default: share none — they stay machine-only.
    */
   chooseShare?: (candidates: ShareCandidate[]) => Promise<string[]>;
+  /**
+   * Called only when the repo already has a README: return true to add the Skill Library section
+   * to it ("add") or refresh the section it has ("update"). Default: leave the README alone.
+   * A repo without a README always gets one.
+   */
+  confirmReadme?: (action: "add" | "update", file: string) => Promise<boolean>;
+}
+
+/**
+ * Give the repo a README about Skill Library: a new one when it has none; otherwise only when
+ * `confirm` says so, and only for a Markdown README (README.rst and the like are left alone).
+ */
+async function seedReadme(
+  clone: string,
+  url: string,
+  confirm: InitSyncOptions["confirmReadme"],
+): Promise<{ action: "created" | "added" | "updated"; file: string } | null> {
+  const names = (await fsp.readdir(clone)).filter((n) => /^readme(\.[^.]+)?$/i.test(n)).sort();
+  const file = names.find((n) => /\.(md|markdown)$/i.test(n)) ?? names[0];
+  if (file !== undefined && !/\.(md|markdown)$/i.test(file)) return null;
+  const current = file === undefined ? null : await fsp.readFile(path.join(clone, file), "utf8");
+  const plan = planReadme(current, url);
+  if (plan.action === "none") return null;
+  const target = file ?? "README.md";
+  if (plan.action !== "create" && !(confirm && (await confirm(plan.action, target)))) return null;
+  await writeFileAtomic(path.join(clone, target), plan.text);
+  const action = plan.action === "create" ? "created" : plan.action === "add" ? "added" : "updated";
+  await commitAll(clone, `skill-library: ${action === "updated" ? "update" : "add"} README`);
+  return { action, file: target };
 }
 
 /** Global skills from a local folder or file: they live only on this machine until shared. */
@@ -689,9 +721,10 @@ export async function initSync(url: string, opts: InitSyncOptions = {}): Promise
     await commitAll(paths.clone, "skill-library: initial skills");
     await dropRecords(store, moved);
   }
+  const readme = await seedReadme(paths.clone, trimmed, opts.confirmReadme);
   await writeSyncConfig(store, cfg);
   const result = await runSync({ store });
-  return { alreadySetUp: false, result: result!, seeded, machineOnly };
+  return { alreadySetUp: false, result: result!, seeded, machineOnly, readme };
 }
 
 export type UpdateSyncUrlOutcome =
