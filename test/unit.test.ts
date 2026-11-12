@@ -13,7 +13,7 @@ import { versionKeyFor, type StoreRecord } from "../src/lib/store.ts";
 import { gatewaySkillMd } from "../src/lib/gateway.ts";
 import { parseFrontmatter } from "../src/lib/frontmatter.ts";
 import { formatTimestamp, relativeTime } from "../src/lib/time.ts";
-import { planReadme, readmeSection, readmeTitle, repoOwner } from "../src/lib/sync-readme.ts";
+import { planReadme, readmeSection, readmeTitle, repoOwner, shareableUrl } from "../src/lib/sync-readme.ts";
 
 describe("ids", () => {
   test("GitHub over every transport gets the same id", () => {
@@ -212,6 +212,29 @@ describe("sync README", () => {
     expect(repoOwner("ssh://git@gitlab.example.com:2222/team/skills.git")).toBe("team");
     expect(repoOwner("https://git.example.com/skills.git")).toBeNull();
     expect(repoOwner("file:///home/me/skills.git")).toBeNull();
+  });
+
+  test("the README never carries credentials from the clone URL", () => {
+    expect(shareableUrl("https://user:TOKEN@github.com/me/skills.git")).toBe("https://github.com/me/skills.git");
+    expect(shareableUrl("https://TOKEN@github.com/me/skills.git?private_token=x")).toBe("https://github.com/me/skills.git");
+    expect(shareableUrl("ssh://git:pw@git.example.com:2222/me/skills.git")).toBe("ssh://git@git.example.com:2222/me/skills.git");
+    expect(shareableUrl("git@github.com:me/skills.git")).toBe("git@github.com:me/skills.git");
+    expect(shareableUrl("https://github.com/me/skills.git")).toBe("https://github.com/me/skills.git");
+    const created = planReadme(null, "https://user:TOKEN@github.com/me/skills.git");
+    expect(created.action !== "none" && created.text).not.toContain("TOKEN");
+    expect(created.action !== "none" && created.text).toContain("sync init https://github.com/me/skills.git");
+  });
+
+  test("adding the section keeps the existing README byte-for-byte, line endings included", () => {
+    const url = "git@github.com:me/skills.git";
+    const crlf = "# Mine\r\n\r\nNotes.  \r\n";
+    const added = planReadme(crlf, url);
+    if (added.action === "none") throw new Error("unreachable");
+    expect(added.text.startsWith(crlf)).toBe(true);
+    expect(added.text.slice(crlf.length).replace(/\r\n/g, "")).not.toContain("\n");
+    expect(planReadme(added.text, url).action).toBe("none");
+    const noEol = planReadme("# Mine", url);
+    expect(noEol.action !== "none" && noEol.text.startsWith("# Mine\n\n<!-- skill-library:start -->")).toBe(true);
   });
 
   test("readmeTitle names the repo owner, else the git user, else nobody", () => {
