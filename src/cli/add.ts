@@ -12,8 +12,10 @@ import { loadProject } from "../lib/manifest.ts";
 import { resolveStore } from "../lib/paths.ts";
 import { parseSource } from "../lib/source.ts";
 import type { AgentsValue } from "../lib/store.ts";
-import { afterGlobalChange } from "./sync.ts";
+import { afterGlobalChange } from "./sync/shared.ts";
 import { showLogo } from "./ui.ts";
+import { Option, type Command, type OptionValues } from "@commander-js/extra-typings";
+import { type Ctx, examples, given, jsonOnError, list, newCommand, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
 export function agentsDisplay(value: AgentsValue): string[] {
@@ -273,4 +275,46 @@ export async function runAdd(sources: string[], opts: AddOptions, g: GlobalOpts)
   console.log();
   console.log(`${pc.gray("Agents find these skills with")} skill-library query "<task>"`);
   return ok ? 0 : 1;
+}
+
+/** add's options; `install <package>` takes them too, without listing them in its help. */
+export function withAddOptions<A extends unknown[], O extends OptionValues, G extends OptionValues>(cmd: Command<A, O, G>, hidden = false) {
+  const opt = <F extends string>(flags: F, description: string) => new Option(flags, description).hideHelp(hidden);
+  return cmd
+    .addOption(opt("-p, --project", "Pin in this project's skill-library.json (created if missing)"))
+    .addOption(opt("-g, --global", "Add to the global library (the default; skips the scope prompt). With a skill-library.json and no prompt (-y, no TTY, agent): pass -p or -g"))
+    .addOption(opt("-a, --agent <agents...>", "Agents the skills are for ('*' for all agents; default: all)").argParser(list))
+    .addOption(opt("-s, --skill <skills...>", "Skill names to add ('*' for all skills)").argParser(list))
+    .addOption(opt("-l, --list", "List the skills in the source without adding them"))
+    .addOption(opt("-y, --yes", "Skip confirmation prompts"))
+    .addOption(opt("--all", "Shorthand for --skill '*' --agent '*' -y"))
+    .addOption(opt("--full-depth", "Search all subdirectories even when a root SKILL.md exists"))
+    .addOption(opt("--json", "Output results as JSON (machine-readable, no ANSI codes)"))
+    .addOption(opt("--copy", "Accepted for compatibility (skills are always copied into the library)"))
+    .addOption(opt("--share", "With sync on: sync a skill from a local folder to your other devices"))
+    .addOption(opt("--no-share", "With sync on: keep a skill from a local folder on this machine only (default: asks; machine-only with -y or inside an agent)"));
+}
+
+export function addCommand(ctx: Ctx) {
+  const add = withAddOptions(
+    newCommand("add")
+      .alias("a")
+      .summary("Add skills to the library")
+      .description("Add skills to the global library, or pin them in this project's skill-library.json with -p.")
+      .argument("<package>", "owner/repo, a git URL or a local path (e.g. anthropics/skills, https://github.com/anthropics/skills, ./path/to/skills)"),
+  ).addHelpText(
+    "after",
+    examples([
+      ["skill-library add anthropics/skills", "add to the global library"],
+      ["skill-library add anthropics/skills -p", "pin in this project's skill-library.json"],
+      ["skill-library add anthropics/skills --agent claude-code", "only for Claude Code"],
+      ["skill-library add anthropics/skills --skill pdf docx"],
+      ["skill-library add anthropics/skills --list", "see what is in it"],
+      ["skill-library add anthropics/skills --json -y", "JSON output"],
+    ]),
+  );
+  const share = given(add, "share", "no-share");
+  return warnUnknownOptions(jsonOnError(add, ctx)).action(async (_pkg, opts, cmd) => {
+    ctx.done(await runAdd(cmd.args, { ...opts, shareConflict: share.size === 2 }, ctx.globals()));
+  });
 }

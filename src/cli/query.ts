@@ -2,6 +2,7 @@ import { querySkills } from "../core/query.ts";
 import { maybeStartBackgroundSync, takeSyncChanges, type SyncChanges } from "../core/sync.ts";
 import { resolveStore } from "../lib/paths.ts";
 import { CliError, note, sanitizeMetadata } from "../lib/cli.ts";
+import { type Ctx, examples, newCommand, numberValue, value, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
 async function readStdin(): Promise<string> {
@@ -88,4 +89,19 @@ export async function runQuery(pos: string[], opts: QueryOptions, g: GlobalOpts)
   }
   process.stdout.write(lines.join("\n") + tail);
   return 0;
+}
+
+export function queryCommand(ctx: Ctx) {
+  return warnUnknownOptions(newCommand("query"))
+    .summary("Find the skills for a task")
+    .description("Find the skills for a task (TypeSafe Jev scoring). Pass the task as one quoted argument, or '-' to read it from stdin.")
+    .argument("[task]", 'The task, quoted ("-": read stdin)')
+    .option("-a, --agent <agent>", "Your agent id; skips skills meant only for other agents", value)
+    .option("--threshold <0..1>", "Minimum probability (default 0.7)", numberValue)
+    .option("--top <n>", "Cap the number of matches", numberValue)
+    .option("--json", "Output as JSON")
+    .addHelpText("after", examples([['skill-library query -a claude-code "fix a failing Next.js build"'], ['echo "dockerize the app" | skill-library query - --json']]))
+    .action(async (_task, opts, cmd) => {
+      ctx.done(await runQuery(cmd.args, opts, ctx.globals()));
+    });
 }

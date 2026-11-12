@@ -11,6 +11,7 @@ import { cleanup, cloneRepo } from "../lib/git.ts";
 import { parseSource } from "../lib/source.ts";
 import { copySkill } from "../lib/store.ts";
 import { safeSlug } from "../lib/ids.ts";
+import { type Ctx, examples, list, newCommand, value } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
 const USE_AGENTS: Record<string, { command: string; args: string[] }> = {
@@ -154,4 +155,26 @@ function launch(agent: string, prompt: string): Promise<number> {
       resolve(code ?? 1);
     });
   });
+}
+
+export function useCommand(ctx: Ctx) {
+  // use never warns-and-continues on an unknown option: it might start an agent with options it didn't understand.
+  const use = newCommand("use");
+  // Keep use's own wording (commander's unknownOption() isn't in its typings).
+  (use as unknown as { unknownOption(flag: string): never }).unknownOption = (flag) => use.error(`Unknown option: ${flag}`, { code: "commander.unknownOption" });
+  return use
+    .summary("Generate a prompt for using one skill without adding it")
+    .description("Generate a prompt for using one skill without adding it: print it, or start an agent with it.")
+    .usage("<source>[@<skill>] [options]")
+    .argument("[source]", "owner/repo, a git URL or a local path, optionally with @<skill>")
+    .option("-s, --skill <skill>", "The skill to use", value)
+    .option("-a, --agent <agent...>", `Start one supported agent interactively (${USE_AGENT_IDS.join(", ")})`, list)
+    .option("--full-depth", "Search nested directories, like skill-library add --full-depth")
+    .addHelpText(
+      "after",
+      examples([["skill-library use anthropics/skills@frontend-design | claude"], ["skill-library use anthropics/skills --skill frontend-design --agent claude-code"]]),
+    )
+    .action(async (_source, opts, cmd) => {
+      ctx.done(await runUse(cmd.args, opts, ctx.globals()));
+    });
 }

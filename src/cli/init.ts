@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import pc from "picocolors";
 import { showLogo } from "./ui.ts";
+import { type Ctx, examples, newCommand, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
 export function runInit(name: string | undefined, opts: { always?: boolean }, g: GlobalOpts): number {
@@ -60,4 +61,16 @@ Describe when this skill should be used.
   console.log("Browse existing skills for inspiration at https://skills.sh/");
   console.log();
   return 0;
+}
+
+export function initCommand(ctx: Ctx) {
+  return warnUnknownOptions(newCommand("init"))
+    .summary("Create a new skill")
+    .description("Create a skill: <name>/SKILL.md, or ./SKILL.md without a name.")
+    .argument("[name]", "The skill's name (default: this folder's name)")
+    .option("--always", "Every query returns this skill, without scoring")
+    .addHelpText("after", examples([["skill-library init my-skill"], ["skill-library init house-rules --always", "always returned by query"]]))
+    .action((name, opts) => {
+      ctx.done(runInit(name, opts, ctx.globals()));
+    });
 }

@@ -2,6 +2,8 @@ import pc from "picocolors";
 import { installProject } from "../core/install.ts";
 import { CliError, formatError } from "../lib/cli.ts";
 import { showLogo } from "./ui.ts";
+import { runAdd, withAddOptions } from "./add.ts";
+import { type Ctx, examples, given, jsonOnError, newCommand, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
 function inCI(): boolean {
@@ -56,4 +58,27 @@ export async function runInstall(opts: InstallOptions, g: GlobalOpts): Promise<n
     }
     throw err;
   }
+}
+
+export function installCommand(ctx: Ctx) {
+  const install = withAddOptions(
+    newCommand("install")
+      .aliases(["i", "experimental_install"])
+      .summary("Restore skills from skill-library.json")
+      .description("Restore the skills in this project's skill-library.json into the library. With a <package>, install is add: see skill-library add --help.")
+      .argument("[package]", "Add this package instead (same as skill-library add)")
+      .option("--dry-run", "Show what would be restored without installing anything")
+      .option("--force", "Re-check installed skills and repair any that changed")
+      .option("--frozen-lockfile", "Fail when skill-library.json is missing or empty (default in CI)")
+      .option("--no-frozen-lockfile", "Allow an empty skill-library.json in CI"),
+    true,
+  ).addHelpText("after", examples([["skill-library install", "restore from skill-library.json"], ["skill-library install --dry-run"], ["skill-library install anthropics/skills", "same as add"]]));
+  const share = given(install, "share", "no-share");
+  const frozen = given(install, "frozen-lockfile", "no-frozen-lockfile");
+  return warnUnknownOptions(jsonOnError(install, ctx)).action(async (_pkg, opts, cmd) => {
+    if (cmd.args.length > 0) return ctx.done(await runAdd(cmd.args, { ...opts, shareConflict: share.size === 2 }, ctx.globals()));
+    // --no-frozen-lockfile wins over --frozen-lockfile, whatever the order.
+    const frozenOpt = frozen.has("no-frozen-lockfile") ? false : frozen.has("frozen-lockfile") ? true : undefined;
+    ctx.done(await runInstall({ ...(opts.dryRun ? { dryRun: true } : {}), ...(opts.force ? { force: true } : {}), ...(frozenOpt !== undefined ? { frozen: frozenOpt } : {}) }, ctx.globals()));
+  });
 }

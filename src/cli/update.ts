@@ -3,7 +3,8 @@ import { checkSkills, updateSkills, type UpdateRow } from "../core/update.ts";
 import { builtinNote, isBuiltinName } from "../lib/builtin.ts";
 import { CliError, formatError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { pickAmbiguous } from "./remove.ts";
-import { afterGlobalChange } from "./sync.ts";
+import { afterGlobalChange } from "./sync/shared.ts";
+import { type Ctx, examples, newCommand, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
 export interface UpdateOptions {
@@ -66,4 +67,22 @@ export async function runUpdate(names: string[], flags: UpdateOptions, g: Global
     }
     throw err;
   }
+}
+
+/** `update` and `check` take the same arguments and options. */
+export function updateLikeCommand(ctx: Ctx, mode: "update" | "check") {
+  const verb = mode === "update" ? "Update" : "Check";
+  return warnUnknownOptions(newCommand(mode))
+    .argument("[skills...]", `Skills to ${mode} (default: all in scope)`)
+    .option("-g, --global", `${verb} global skills only`)
+    .option("-p, --project", `${verb} project skills only`)
+    .option("-y, --yes", "Skip prompts (scope: project if it has skills, else global)")
+    .addHelpText("after", examples([[`skill-library ${mode}`], [`skill-library ${mode} -g`, "global skills only"], [`skill-library ${mode} my-skill`]]))
+    .action(async (names, opts) => {
+      ctx.done(await runUpdate(names, opts, ctx.globals(), mode));
+    });
+}
+
+export function updateCommand(ctx: Ctx) {
+  return updateLikeCommand(ctx, "update").alias("upgrade").description("Update skills from their source");
 }

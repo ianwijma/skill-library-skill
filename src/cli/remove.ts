@@ -4,7 +4,8 @@ import { removableSkills, removeSkills } from "../core/remove.ts";
 import { CliError, formatError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { isRunningInAgent } from "../lib/detect-agent.ts";
 import { loadProject } from "../lib/manifest.ts";
-import { afterGlobalChange } from "./sync.ts";
+import { afterGlobalChange } from "./sync/shared.ts";
+import { type Ctx, examples, list, newCommand, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
 /** TTY picker for a name that matches several skills. */
@@ -124,4 +125,36 @@ export async function runRemove(names: string[], opts: RemoveOptions, g: GlobalO
     }
     throw err;
   }
+}
+
+export function removeCommand(ctx: Ctx) {
+  return warnUnknownOptions(newCommand("remove"))
+    .aliases(["rm", "r"])
+    .summary("Remove skills")
+    .description(
+      "Remove skills from the global library. With -p it only drops this project's reference (the skill stays in the library). " +
+        "In a folder with a skill-library.json you are asked which one you mean; without a prompt (-y, no TTY, inside an agent) pass -p or -g. " +
+        "Without skill names, an interactive selection menu is shown.",
+    )
+    .argument("[skills...]", "Skill names or ids to remove")
+    .option("-p, --project", "Only drop this project's reference (the skill stays in the library)")
+    .option("-g, --global", "Delete from the library itself (the default; skips the scope prompt)")
+    .option("-a, --agent <agents...>", "Remove only these agents from the skill's agent list", list)
+    .option("-s, --skill <skills...>", "Skills to remove ('*' for all skills)", list)
+    .option("-y, --yes", "Skip confirmation prompts")
+    .option("--all", "Remove every skill in scope (-y implied). Do not combine with named skills")
+    .addHelpText(
+      "after",
+      examples([
+        ["skill-library remove", "interactive selection"],
+        ["skill-library remove my-skill", "remove one skill"],
+        ["skill-library remove skill1 skill2 -y", "remove several skills"],
+        ["skill-library remove -p my-skill", "drop it from this project only"],
+        ["skill-library rm --agent claude-code my-skill", "stop offering it to Claude Code"],
+        ["skill-library remove --all", "remove every skill"],
+      ]),
+    )
+    .action(async (names, opts) => {
+      ctx.done(await runRemove(names, opts, ctx.globals()));
+    });
 }

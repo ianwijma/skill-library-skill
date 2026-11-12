@@ -5,6 +5,8 @@ import pc from "picocolors";
 import { sanitizeMetadata } from "../lib/cli.ts";
 import { isRunningInAgent } from "../lib/detect-agent.ts";
 import { runAdd } from "./add.ts";
+import { type Ctx, examples, newCommand, warnUnknownOptions } from "./command.ts";
+import { showLogo } from "./ui.ts";
 import type { GlobalOpts } from "./index.ts";
 
 interface SearchSkill {
@@ -110,4 +112,19 @@ export async function runFind(parts: string[], ownerOpt: string | true | undefin
   console.log(`Installing ${pc.bold(s.name)} from ${pc.gray(pkg)}…`);
   console.log();
   return runAdd([pkg], { skill: [s.name] }, g);
+}
+
+export function findCommand(ctx: Ctx) {
+  return warnUnknownOptions(newCommand("find"))
+    .aliases(["search", "f", "s"])
+    .summary("Search for skills")
+    .description("Search skills.sh for skills; without a query (on a terminal), search interactively and add one.")
+    .argument("[query...]", "What to search for")
+    .option("--owner [owner]", "Only repositories from this GitHub owner")
+    .addHelpText("after", examples([["skill-library find typescript", "search by keyword"], ["skill-library find react --owner vercel-labs", "only vercel-labs' skills"]]))
+    .action(async (query, opts) => {
+      showLogo();
+      console.log();
+      ctx.done(await runFind(query, opts.owner, ctx.globals()));
+    });
 }
