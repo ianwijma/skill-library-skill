@@ -8,11 +8,8 @@ import template from "../../assets/sync-readme.md";
 export const README_START = "<!-- skill-library:start -->";
 export const README_END = "<!-- skill-library:end -->";
 
-/**
- * `owner/repo` (or `host/owner/repo` off GitHub) of a clone URL; the README's title is its last
- * part. Credentials, ports and local paths are never included; null when there is no host.
- */
-export function repoSlug(url: string): string | null {
+/** Host and path segments (without `.git`) of a clone URL; null for local paths and junk. */
+function parseRemote(url: string): { host: string; parts: string[] } | null {
   let host: string;
   let pathname: string;
   const scp = /^[^/@\s]+@([^:/\s]+):(.+)$/.exec(url); // git@github.com:me/skills.git
@@ -31,17 +28,23 @@ export function repoSlug(url: string): string | null {
     pathname = u.pathname;
   }
   const parts = pathname.replace(/\.git\/?$/, "").split("/").filter(Boolean);
-  if (parts.length === 0) return null;
-  const tail = parts.slice(-2).join("/");
-  return host.toLowerCase() === "github.com" ? tail : `${host.toLowerCase()}/${tail}`;
+  return parts.length === 0 ? null : { host: host.toLowerCase(), parts };
 }
 
-function fill(url: string): string {
-  const slug = repoSlug(url);
-  const values: Record<string, string> = {
-    title: slug ? slug.split("/").pop()! : "Agent skills",
-    url,
-  };
+/** The user or organization a clone URL belongs to (`me` of `git@github.com:me/skills.git`), or null. */
+export function repoOwner(url: string): string | null {
+  const parts = parseRemote(url)?.parts ?? [];
+  return parts.length >= 2 ? parts[parts.length - 2]! : null;
+}
+
+/** "<owner>'s Skills", from the repo URL's owner, else `fallbackName` (git user.name), else "My Skills". */
+export function readmeTitle(url: string, fallbackName?: string | null): string {
+  const owner = repoOwner(url) ?? fallbackName?.trim();
+  return owner ? `${owner}'s Skills` : "My Skills";
+}
+
+function fill(url: string, fallbackName?: string | null): string {
+  const values: Record<string, string> = { title: readmeTitle(url, fallbackName), url };
   return template.replace(/\r\n/g, "\n").replace(/\{\{(\w+)\}\}/g, (m, key: string) => values[key] ?? m);
 }
 
@@ -54,16 +57,16 @@ export function readmeSection(url: string): string {
   return text.slice(start, end + README_END.length);
 }
 
-/** A whole README for a repo that has none. */
-export function newReadme(url: string): string {
-  return `${fill(url).replace(/\s*$/, "")}\n`;
+/** A whole README for a repo that has none (`fallbackName`: see readmeTitle). */
+export function newReadme(url: string, fallbackName?: string | null): string {
+  return `${fill(url, fallbackName).replace(/\s*$/, "")}\n`;
 }
 
 export type ReadmePlan = { action: "create" | "add" | "update"; text: string } | { action: "none" };
 
 /** What to do with the README `current` (null: no README) so it carries the current section. */
-export function planReadme(current: string | null, url: string): ReadmePlan {
-  if (current === null) return { action: "create", text: newReadme(url) };
+export function planReadme(current: string | null, url: string, fallbackName?: string | null): ReadmePlan {
+  if (current === null) return { action: "create", text: newReadme(url, fallbackName) };
   const section = readmeSection(url);
   const start = current.indexOf(README_START);
   const end = start === -1 ? -1 : current.indexOf(README_END, start);

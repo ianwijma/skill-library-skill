@@ -13,7 +13,7 @@ import { versionKeyFor, type StoreRecord } from "../src/lib/store.ts";
 import { gatewaySkillMd } from "../src/lib/gateway.ts";
 import { parseFrontmatter } from "../src/lib/frontmatter.ts";
 import { formatTimestamp, relativeTime } from "../src/lib/time.ts";
-import { planReadme, readmeSection, repoSlug } from "../src/lib/sync-readme.ts";
+import { planReadme, readmeSection, readmeTitle, repoOwner } from "../src/lib/sync-readme.ts";
 
 describe("ids", () => {
   test("GitHub over every transport gets the same id", () => {
@@ -206,18 +206,27 @@ describe("time formatting", () => {
 });
 
 describe("sync README", () => {
-  test("repoSlug keeps owner/repo and drops credentials and local paths", () => {
-    expect(repoSlug("git@github.com:me/skills.git")).toBe("me/skills");
-    expect(repoSlug("https://token@github.com/me/skills")).toBe("me/skills");
-    expect(repoSlug("ssh://git@gitlab.example.com:2222/team/sub/skills.git")).toBe("gitlab.example.com/sub/skills");
-    expect(repoSlug("file:///home/me/skills.git")).toBeNull();
+  test("repoOwner reads the owner and ignores credentials and local paths", () => {
+    expect(repoOwner("git@github.com:me/skills.git")).toBe("me");
+    expect(repoOwner("https://token@github.com/me/skills")).toBe("me");
+    expect(repoOwner("ssh://git@gitlab.example.com:2222/team/skills.git")).toBe("team");
+    expect(repoOwner("https://git.example.com/skills.git")).toBeNull();
+    expect(repoOwner("file:///home/me/skills.git")).toBeNull();
+  });
+
+  test("readmeTitle names the repo owner, else the git user, else nobody", () => {
+    expect(readmeTitle("https://github.com/ianwijma/skills.git")).toBe("ianwijma's Skills");
+    expect(readmeTitle("ssh://git@git.example.com:2222/team/skills.git")).toBe("team's Skills");
+    expect(readmeTitle("file:///home/me/skills.git", "Ian")).toBe("Ian's Skills");
+    expect(readmeTitle("file:///home/me/skills.git", "")).toBe("My Skills");
+    expect(readmeTitle("https://git.example.com/skills.git")).toBe("My Skills");
   });
 
   test("planReadme creates, adds, updates in place, or does nothing", () => {
     const url = "git@github.com:me/skills.git";
     const created = planReadme(null, url);
     expect(created.action).toBe("create");
-    expect(created.action !== "none" && created.text).toMatch(/^# skills\n/);
+    expect(created.action !== "none" && created.text).toMatch(/^# me's Skills\n/);
     const added = planReadme("# Mine\n\nNotes.\n", url);
     expect(added.action).toBe("add");
     if (added.action === "none") throw new Error("unreachable");

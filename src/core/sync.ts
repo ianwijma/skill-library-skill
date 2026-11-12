@@ -16,7 +16,7 @@ import { parseSkillFile, requireStagedSkill } from "../lib/discover.ts";
 import { assertSafeGitArgs, git, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
 import { gitSkillId, isReservedSkillName, safeSlug, skillDirFor } from "../lib/ids.ts";
-import { planReadme } from "../lib/sync-readme.ts";
+import { planReadme, repoOwner } from "../lib/sync-readme.ts";
 import { MANIFEST, readManifest, serializeManifest, validateEntry, type Manifest, type ManifestEntry } from "../lib/manifest.ts";
 import {
   copySkill,
@@ -639,7 +639,8 @@ async function seedReadme(
   const file = names.find((n) => /\.(md|markdown)$/i.test(n)) ?? names[0];
   if (file !== undefined && !/\.(md|markdown)$/i.test(file)) return null;
   const current = file === undefined ? null : await fsp.readFile(path.join(clone, file), "utf8");
-  const plan = planReadme(current, url);
+  const userName = current === null && !repoOwner(url) ? await git(["config", "user.name"], { cwd: clone }).catch(() => null) : null;
+  const plan = planReadme(current, url, userName);
   if (plan.action === "none") return null;
   const target = file ?? "README.md";
   if (plan.action !== "create" && !(confirm && (await confirm(plan.action, target)))) return null;
