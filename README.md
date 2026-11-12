@@ -1,6 +1,4 @@
-<p align="center"><img src="assets/icon.svg" alt="Skill Library icon" width="96" height="96"></p>
-
-# Skill Library (skill-library)
+# <img src="assets/icon.svg" alt="Skill Library icon" width="32" height="32" align="absmiddle"> Skill Library (skill-library)
 
 Skills on demand — not always loaded.
 
