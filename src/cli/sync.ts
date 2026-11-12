@@ -10,6 +10,8 @@ import {
   updateSyncUrl,
   syncStatus,
   type GlobalChange,
+  type ReadmeOptions,
+  type ReadmeOutcome,
   type SyncResult,
 } from "../core/sync.ts";
 import { isRunningInAgent } from "../lib/detect-agent.ts";
@@ -19,10 +21,14 @@ import { formatTimestamp } from "../lib/time.ts";
 import { parseFlags } from "./args.ts";
 import type { GlobalOpts } from "./index.ts";
 
-const USAGE = "Usage: skill-library sync [init <git-url> | update <git-url> | share <skill...> | enable | disable | status]";
+const USAGE = "Usage: skill-library sync [init <git-url> [--share <skill...>] [--no-readme] | update <git-url> [--no-readme] | share <skill...> | enable | disable | status]";
 
 function shadowLine(name: string): string {
   return `${sanitizeMetadata(name)} from the sync repo now shadows another global ${sanitizeMetadata(name)}; see skill-library list -g and remove the one you don't want`;
+}
+
+function readmeLine(r: NonNullable<ReadmeOutcome>): string {
+  return `${DIM}${r.action === "created" ? "Added" : "Replaced"} the repository's ${r.file}.${RESET}`;
 }
 
 function printResult(r: SyncResult): void {
@@ -36,7 +42,7 @@ function printResult(r: SyncResult): void {
 }
 
 export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<number> {
-  const f = parseFlags(args, { booleans: { background: ["--background"], json: ["--json"] }, lists: { share: ["--share"] } });
+  const f = parseFlags(args, { booleans: { background: ["--background"], json: ["--json"], noReadme: ["--no-readme"] }, lists: { share: ["--share"] } });
   if (f.missing.length > 0) {
     console.error(`Error: ${f.missing[0]} requires a value`);
     return 1;
@@ -44,6 +50,18 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
   const base = { cwd: g.cwd, ...(g.store ? { store: g.store } : {}) };
   const [sub, ...rest] = f.positionals;
   const json = f.booleans.has("json");
+  const tty = !json && !!process.stdin.isTTY && !isRunningInAgent();
+  // init / update: a repo without a README gets ours; one with a README is replaced only when you
+  // say so (no terminal to ask in: kept). --no-readme leaves the README alone either way.
+  const readmeOpts: ReadmeOptions = f.booleans.has("noReadme")
+    ? { readme: false }
+    : {
+        confirmReadme: async (files) => {
+          if (!tty) return false;
+          const ok = await p.confirm({ message: `The repository already has ${files.join(", ")}. Replace it with the Skill Library README?`, initialValue: false });
+          return ok === true;
+        },
+      };
   try {
     switch (sub) {
       case undefined: {
@@ -61,9 +79,10 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
         const url = rest[0];
         if (!url) throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync init <git-url>");
         const shareFlag = f.lists.get("share");
-        const interactive = !shareFlag && !json && !!process.stdin.isTTY && !isRunningInAgent();
+        const interactive = !shareFlag && tty;
         const outcome = await initSync(url, {
           ...base,
+          ...readmeOpts,
           // Only you know which folder skills you wrote (share them) and which are copies (keep them local).
           ...(shareFlag
             ? { chooseShare: async (candidates) => candidates.filter((c) => shareFlag.includes("*") || shareFlag.includes(c.name) || shareFlag.includes(c.id)).map((c) => c.id) }
@@ -86,10 +105,10 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
           else console.log(`Sync is already set up with ${outcome.url}. ${DIM}Run${RESET} skill-library sync ${DIM}to sync now.${RESET}`);
           return 0;
         }
-        const { result, seeded, machineOnly } = outcome;
+        const { result, seeded, machineOnly, readme } = outcome;
         const gw = await placeGateway();
         if (json) {
-          console.log(JSON.stringify({ ...result, seeded, machineOnly }));
+          console.log(JSON.stringify({ ...result, seeded, machineOnly, readme }));
           return result.errors.length > 0 ? 1 : 0;
         }
         if (seeded.length > 0) console.log(`${DIM}The repository was empty; added this machine's ${seeded.length} global skill(s) to it.${RESET}`);
@@ -97,6 +116,7 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
           console.log(`${DIM}Kept machine-only (not synced):${RESET} ${machineOnly.map(sanitizeMetadata).join(", ")}`);
           console.log(`${DIM}Share one with${RESET} skill-library sync share <name>`);
         }
+        if (readme) console.log(readmeLine(readme));
         printResult(result);
         if (gw.updated.length > 0) note(`Updated skill-library gateway for ${gw.updated.join(", ")}`);
         for (const e of gw.errors) note(`gateway: ${e}`);
@@ -106,19 +126,20 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
       case "update": {
         const url = rest[0];
         if (!url) throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync update <git-url>");
-        const outcome = await updateSyncUrl(url, base);
+        const outcome = await updateSyncUrl(url, { ...base, ...readmeOpts });
         if (outcome.unchanged) {
           if (json) console.log(JSON.stringify({ unchanged: true, url: outcome.url }));
           else console.log(`Sync already uses ${outcome.url}`);
           return 0;
         }
-        const { result, previousUrl, oldPullError } = outcome;
+        const { result, previousUrl, oldPullError, readme } = outcome;
         if (json) {
-          console.log(JSON.stringify({ ...result, previousUrl, ...(oldPullError ? { oldPullError } : {}) }));
+          console.log(JSON.stringify({ ...result, previousUrl, readme, ...(oldPullError ? { oldPullError } : {}) }));
           return result.errors.length > 0 ? 1 : 0;
         }
         if (oldPullError) note(`Could not pull from ${previousUrl} first: ${oldPullError} (this machine's skills were moved as they are)`);
         console.log(`Sync moved from ${previousUrl} to ${result.url}`);
+        if (readme) console.log(readmeLine(readme));
         printResult(result);
         console.log(`${DIM}On your other machines, run${RESET} skill-library sync update ${result.url}`);
         return result.errors.length > 0 ? 1 : 0;

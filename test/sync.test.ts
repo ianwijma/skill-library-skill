@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
-import { mergeManifests } from "../src/core/sync.ts";
+import { initSync, mergeManifests, updateSyncUrl } from "../src/core/sync.ts";
 import type { Manifest } from "../src/lib/manifest.ts";
 import { git, gitRepo, readJson, run, sandbox, skillMd, writeFiles, type Sandbox } from "./helpers.ts";
 
@@ -14,6 +14,13 @@ async function emptyRemote(sb: Sandbox, name = "my-skills"): Promise<string> {
   await fsp.mkdir(bare, { recursive: true });
   git(sb, bare, ["init", "-q", "--bare", "-b", "main"]);
   return `file://${bare}`;
+}
+
+/** A fresh clone of the remote's default branch, for looking at its files. */
+async function peekClone(sb: Sandbox, url: string): Promise<string> {
+  const dir = path.join(sb.root, `peek-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  git(sb, sb.root, ["clone", "-q", url, dir]);
+  return dir;
 }
 
 async function globals(sb: Sandbox): Promise<Record<string, any>> {
@@ -439,6 +446,61 @@ describe("sync", () => {
     expect(r.stderr).toContain("Failed to clone file:///nonexistent/repo.git");
     expect((await run(a, ["sync", "status"])).stdout).toContain("not set up");
     expect((await run(a, ["sync"])).stderr).toContain("skill-library sync init <git-url>");
+  });
+  test("init adds a README to a repo without one; --no-readme leaves it out", async () => {
+    const a = await sandbox();
+    const remote = await emptyRemote(a);
+    expect((await run(a, ["sync", "init", remote])).code).toBe(0);
+    const readme = await fsp.readFile(path.join(await peekClone(a, remote), "README.md"), "utf8");
+    expect(readme).toContain("](https://github.com/ianwijma/skill-library-skill)");
+    expect(readme).toContain(`skill-library sync init ${remote}`);
+    expect(readme).not.toContain("{{");
+
+    const b = await sandbox();
+    const bare = await emptyRemote(b);
+    expect((await run(b, ["sync", "init", bare, "--no-readme"])).code).toBe(0);
+    expect(await fsp.readdir(await peekClone(b, bare))).not.toContain("README.md");
+  });
+
+  test("an existing README is replaced only when confirmed", async () => {
+    const a = await sandbox();
+    const up = await gitRepo(a, "has-readme", { "README.rst": "Mine\n" });
+    const kept = await run(a, ["sync", "init", up.url]); // no terminal to ask in: kept
+    expect(kept.code, kept.stderr + kept.stdout).toBe(0);
+    expect(await fsp.readdir(await peekClone(a, up.url))).toEqual([".git", "README.rst"]);
+
+    const b = await sandbox();
+    let asked: string[] = [];
+    const outcome = await initSync(up.url, { store: b.store, confirmReadme: async (files) => ((asked = files), true) });
+    expect(asked).toEqual(["README.rst"]);
+    expect(!outcome.alreadySetUp && outcome.readme).toEqual({ action: "replaced", file: "README.md" });
+    const dir = await peekClone(b, up.url);
+    expect((await fsp.readdir(dir)).sort()).toEqual([".git", "README.md"]);
+    expect(await fsp.readFile(path.join(dir, "README.md"), "utf8")).toContain(`sync init ${up.url}`);
+  });
+
+  test("update gives the new repository its README", async () => {
+    const a = await sandbox();
+    const first = await emptyRemote(a, "first");
+    expect((await run(a, ["sync", "init", first])).code).toBe(0);
+    const second = await emptyRemote(a, "second");
+    const moved = await run(a, ["sync", "update", second]);
+    expect(moved.code, moved.stderr + moved.stdout).toBe(0);
+    // The README init wrote for the old URL is refreshed without asking.
+    expect(await fsp.readFile(path.join(await peekClone(a, second), "README.md"), "utf8")).toContain(`sync init ${second}`);
+
+    // One you edited is yours: replaced only when confirmed.
+    const work = await peekClone(a, second);
+    await fsp.writeFile(path.join(work, "README.md"), "# Edited\n");
+    git(a, work, ["commit", "-qam", "edit readme"]);
+    git(a, work, ["push", "-q", "origin", "HEAD:main"]);
+    expect((await run(a, ["sync"])).code).toBe(0);
+    const third = await emptyRemote(a, "third");
+    let asked: string[] = [];
+    const outcome = await updateSyncUrl(third, { store: a.store, confirmReadme: async (files) => ((asked = files), true) });
+    expect(asked).toEqual(["README.md"]);
+    expect(!outcome.unchanged && outcome.readme).toEqual({ action: "replaced", file: "README.md" });
+    expect(await fsp.readFile(path.join(await peekClone(a, third), "README.md"), "utf8")).toContain(`sync init ${third}`);
   });
 });
 

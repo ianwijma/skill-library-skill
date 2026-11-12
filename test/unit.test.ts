@@ -13,6 +13,7 @@ import { versionKeyFor, type StoreRecord } from "../src/lib/store.ts";
 import { gatewaySkillMd } from "../src/lib/gateway.ts";
 import { parseFrontmatter } from "../src/lib/frontmatter.ts";
 import { formatTimestamp, relativeTime } from "../src/lib/time.ts";
+import { newReadme, readmeTitle, repoOwner, shareableUrl } from "../src/lib/sync-readme.ts";
 
 describe("ids", () => {
   test("GitHub over every transport gets the same id", () => {
@@ -202,4 +203,39 @@ describe("time formatting", () => {
     expect(formatTimestamp("2026-11-10T09:00:00Z", now)).toMatch(/^3 hours ago \(\d{4}-\d{2}-\d{2} \d{2}:\d{2}( \S+)?\)$/);
     expect(formatTimestamp("garbage", now)).toBe("garbage");
   });
+});
+
+describe("sync README", () => {
+  test("repoOwner reads the owner and ignores credentials and local paths", () => {
+    expect(repoOwner("git@github.com:me/skills.git")).toBe("me");
+    expect(repoOwner("https://token@github.com/me/skills")).toBe("me");
+    expect(repoOwner("ssh://git@gitlab.example.com:2222/team/skills.git")).toBe("team");
+    expect(repoOwner("https://git.example.com/skills.git")).toBeNull();
+    expect(repoOwner("file:///home/me/skills.git")).toBeNull();
+    expect(repoOwner("/home/me/skills.git")).toBeNull();
+    expect(repoOwner("C:\\Users\\me\\skills.git")).toBeNull();
+    expect(repoOwner("git@github.com:IanWijma/skills.git")).toBe("IanWijma");
+  });
+
+  test("the README never carries credentials from the clone URL", () => {
+    expect(shareableUrl("https://user:TOKEN@github.com/me/skills.git")).toBe("https://github.com/me/skills.git");
+    expect(shareableUrl("https://TOKEN@github.com/me/skills.git?private_token=x")).toBe("https://github.com/me/skills.git");
+    expect(shareableUrl("ssh://git:pw@git.example.com:2222/me/skills.git")).toBe("ssh://git@git.example.com:2222/me/skills.git");
+    expect(shareableUrl("git@github.com:me/skills.git")).toBe("git@github.com:me/skills.git");
+    expect(shareableUrl("https://github.com/me/skills.git")).toBe("https://github.com/me/skills.git");
+    const readme = newReadme("https://user:TOKEN@github.com/me/skills.git");
+    expect(readme).not.toContain("TOKEN");
+    expect(readme).toContain("sync init https://github.com/me/skills.git");
+    expect(readme).toMatch(/^# <a .*<\/a> me's Skills\n/);
+    expect(readme).not.toContain("{{");
+  });
+
+  test("readmeTitle names the repo owner, else the git user, else nobody", () => {
+    expect(readmeTitle("https://github.com/ianwijma/skills.git")).toBe("ianwijma's Skills");
+    expect(readmeTitle("ssh://git@git.example.com:2222/team/skills.git")).toBe("team's Skills");
+    expect(readmeTitle("file:///home/me/skills.git", "Ian")).toBe("Ian's Skills");
+    expect(readmeTitle("file:///home/me/skills.git", "")).toBe("My Skills");
+    expect(readmeTitle("https://git.example.com/skills.git")).toBe("My Skills");
+  });
+
 });
