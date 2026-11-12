@@ -33,15 +33,8 @@ export SKILL_LIBRARY_TYPESAFE_API_KEY='<your TypeSafe API key>'   # also add it 
 npx skill-library self setup
 ```
 
-`self setup` first checks that everything is in place (npm can install
-globally, `git`, the API key) and stops before installing anything if not,
-saying what to fix. Then it installs skill-library with `npm i -g`, installs the
-gateway skill into every agent on your machine (Claude Code, Codex, OpenCode,
-Cursor, …) so they know to query the library, and finishes with a health check.
-Restart your agent so it loads the gateway skill.
-
-Run `skill-library self setup` again any time: it updates skill-library and the
-gateway skill, and picks up agents you installed since.
+Restart your agent afterwards. Run `skill-library self setup` again any time to
+update.
 
 ## Try it
 
