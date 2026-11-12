@@ -1,4 +1,5 @@
 import path from "node:path";
+import { builtinNote, isBuiltinName } from "../lib/builtin.ts";
 import { CliError } from "../lib/cli.ts";
 import { loadProject, mutateManifest, type Project } from "../lib/manifest.ts";
 import { removeDir, openIndex } from "../lib/store.ts";
@@ -91,6 +92,10 @@ export async function removeSkills(selectors: string[], opts: RemoveOptions = {}
       }
     }
   }
+
+  // Built-in skills ship with skill-library: say so instead of "no matching skills".
+  for (const sel of unmatched.filter(isBuiltinName)) notes.push(builtinNote(sel));
+  unmatched = unmatched.filter((sel) => !isBuiltinName(sel));
 
   const removed: RemovedRow[] = [];
   if (ids.length === 0) return { removed, unmatched, notes };

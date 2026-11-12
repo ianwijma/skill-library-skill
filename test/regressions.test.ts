@@ -196,7 +196,9 @@ describe("missing project skills keep their real name", () => {
     const r = await run(other, ["query", "task"], { cwd: dir, env: { SKILL_LIBRARY_TYPESAFE_API_KEY: "k", SKILL_LIBRARY_TYPESAFE_API_BASE: url } });
     server.close();
     expect(r.stderr).toContain("1 project skill is not installed");
-    expect(bodies).toHaveLength(0);
+    // Only the built-in find-skills is scored; the shadowed global react never is.
+    const names = bodies.flatMap((b) => Object.values(b.questions).map((x: any) => x.instructions.skill.name));
+    expect(names).toEqual(["find-skills"]);
   });
 });
 

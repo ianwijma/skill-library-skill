@@ -3,7 +3,7 @@ import { promises as fsp } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import { project, run, sandbox, skillMd, writeFiles, type Sandbox } from "./helpers.ts";
+import { BIN, project, run, sandbox, skillMd, writeFiles, type Sandbox } from "./helpers.ts";
 
 interface MockServer {
   url: string;
@@ -72,7 +72,9 @@ describe("query", () => {
     const body = mock.bodies[0];
     expect(body.model).toBe("jev-latest");
     expect(body.state).toEqual({ task: "fix the buttons" });
-    expect(Object.keys(body.questions).sort()).toEqual(["s0", "s1", "s2"]);
+    // Three library skills, then the built-in find-skills.
+    expect(Object.keys(body.questions).sort()).toEqual(["s0", "s1", "s2", "s3"]);
+    expect(body.questions.s3.instructions.skill.name).toBe("find-skills");
     const question = Object.values(body.questions as Record<string, any>).find((x) => x.instructions.skill.name === "a-skill");
     expect(question).toEqual({
       type: "noul",
@@ -143,12 +145,58 @@ describe("query", () => {
     expect(res.stdout).toContain("house-rules (always)");
   });
 
+  test("built-in find-skills: returned like any skill with its packaged path, can't be removed or updated, shadowed by a library skill", async () => {
+    const sb = await sandbox();
+    await seed(sb);
+    const mock = await startMock(byName({ "find-skills": 0.82, "a-skill": 0.9 }));
+    const res = await q(sb, ["is there a skill for changelogs?"], mock);
+    expect(res.code).toBe(0);
+    const lines = res.stdout.split("\n");
+    expect(lines[2]).toBe("a-skill (90%)");
+    expect(lines[5]).toBe("find-skills (82%, built-in)");
+    const builtinPath = path.join(path.dirname(BIN), "builtin", "find-skills", "SKILL.md");
+    expect(lines[6]).toBe(`└ ${builtinPath}`);
+    const md = await fsp.readFile(builtinPath, "utf8");
+    expect(md).toMatch(/^---\nname: find-skills\n/);
+    expect(md).toContain("skill-library find <query>");
+    const json = JSON.parse((await q(sb, ["task", "--json"], mock)).stdout);
+    expect(json.matches[1]).toEqual({
+      id: "builtin://find-skills",
+      name: "find-skills",
+      description: expect.stringContaining("skills.sh"),
+      path: builtinPath,
+      probability: 0.82,
+      scope: "builtin",
+      always: false,
+    });
+
+    // Part of skill-library itself: not in the library, not removable or updatable.
+    expect((await run(sb, ["list", "-g", "--json"])).stdout).not.toContain("find-skills");
+    for (const cmd of [["remove", "find-skills", "-g", "-y"], ["update", "find-skills", "-g"]]) {
+      const r = await run(sb, cmd);
+      expect(r.code).toBe(0);
+      expect(r.stderr).toContain("find-skills is built into skill-library");
+      expect(r.stdout).not.toContain("No matching skills");
+    }
+    await fsp.access(builtinPath);
+
+    // A library skill with the same name wins: the built-in is not sent.
+    await writeFiles(path.join(sb.root, "src"), { "find-skills/SKILL.md": skillMd("find-skills", "My own finder") });
+    expect((await run(sb, ["add", path.join(sb.root, "src", "find-skills"), "-g", "-y"])).code).toBe(0);
+    const own = await q(sb, ["task"], mock);
+    mock.stop();
+    const sent = Object.values(mock.bodies[2].questions).map((x: any) => x.instructions.skill);
+    expect(sent.filter((x: any) => x.name === "find-skills").map((x: any) => x.description)).toEqual(["My own finder"]);
+    expect(own.stdout).toContain("find-skills (82%)");
+    expect(own.stdout).not.toContain("built-in");
+  });
+
   test("-a filters agent-specific skills; invalid agent lists valid ones (exit 1)", async () => {
     const sb = await sandbox();
     await seed(sb);
     const mock = await startMock(byName({ "a-skill": 0.9, "b-skill": 0.9, "codex-only": 0.9 }));
     const claude = await q(sb, ["task", "-a", "claude-code"], mock);
-    expect(Object.keys(mock.bodies[0].questions)).toHaveLength(2);
+    expect(Object.values(mock.bodies[0].questions).map((x: any) => x.instructions.skill.name)).toEqual(["a-skill", "b-skill", "find-skills"]);
     expect(claude.stdout).not.toContain("codex-only");
     const codex = await q(sb, ["task", "-a", "codex"], mock);
     expect(codex.stdout).toContain("codex-only");
@@ -160,17 +208,17 @@ describe("query", () => {
     expect(bad.stderr).toContain("claude-code");
   });
 
-  test("no match message; stdin task; empty library makes no API call", async () => {
+  test("no match message; stdin task; empty library scores only the built-ins", async () => {
     const sb = await sandbox();
     const mock = await startMock(byName({}));
     const empty = await q(sb, ["task"], mock);
     expect(empty.stdout).toBe("No matching skills. Continue without one.\n");
-    expect(mock.bodies).toHaveLength(0);
+    expect(Object.values(mock.bodies[0].questions).map((x: any) => x.instructions.skill.name)).toEqual(["find-skills"]);
     await seed(sb);
     const res = await q(sb, ["-"], mock, { stdin: "task from stdin" });
     mock.stop();
     expect(res.stdout).toBe("No matching skills. Continue without one.\n");
-    expect(mock.bodies[0].state.task).toBe("task from stdin");
+    expect(mock.bodies[1].state.task).toBe("task from stdin");
   });
 
   test("project skill shadows a global skill with the same name; missing project skills noted", async () => {
@@ -186,7 +234,8 @@ describe("query", () => {
     const mock = await startMock(byName({ dup: 0.9 }));
     const res = await q(sb, ["task"], mock, { cwd: dir });
     mock.stop();
-    expect(Object.values(mock.bodies[0].questions).map((x: any) => x.instructions.skill.description)).toEqual(["project copy"]);
+    const sent = Object.values(mock.bodies[0].questions).map((x: any) => x.instructions.skill);
+    expect(sent.filter((x: any) => x.name === "dup").map((x: any) => x.description)).toEqual(["project copy"]);
     expect(res.stdout).toContain("dup (90%, project)");
     expect(res.stdout).toContain(path.join(dir, "skills", "dup", "SKILL.md"));
     expect(res.stderr).toContain("1 project skill is not installed — run skill-library install");

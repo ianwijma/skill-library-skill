@@ -104,6 +104,15 @@ and `"always": true`, before the scored matches, regardless of `--threshold` and
 `--top`. When every candidate is always-on, no request is made and no API key is
 needed.
 
+**Built-in skills.** A few skills ship inside the skill-library package
+(`assets/builtin`, installed as `dist/builtin`; today: `find-skills`, adapted
+from vercel-labs/skills). Each is scored like any other candidate and returned
+with the path of its `SKILL.md` in the installed package, unless a library skill
+with the same name is a candidate (the library's wins). Built-ins never make a
+key required: when nothing else needs scoring and no key is set, they are skipped
+silently. They can't be removed or updated on their own (`remove` and `update`
+say so); they change when skill-library is updated.
+
 ## Output
 
 ```
@@ -111,6 +120,9 @@ Read these skill files before continuing with the task:
 
 frontend-design (91%)
 └ /home/ian/.local/share/skill-library/skills/frontend-design-3f9c1a2e/8e01b7a4c2f9/SKILL.md
+
+find-skills (82%, built-in)
+└ /usr/lib/node_modules/skill-library/dist/builtin/find-skills/SKILL.md
 ```
 
 When a background sync (see [09](09-global-sync-options.md)) changed the global
@@ -124,7 +136,8 @@ Your skills changed — tell the user:
   updated: frontend-design
 ```
 
-`--json` prints `{"matches":[{id,name,description,path,probability,scope,always}]}`,
+`--json` prints `{"matches":[{id,name,description,path,probability,scope,always}]}`
+(built-ins: `scope: "builtin"`, `id: "builtin://<name>"`),
 plus `"syncChanges":{"added":[…],"removed":[…],"updated":[…]}` in the same case.
 Exit codes: 0 ok · 1 usage (incl. invalid agent) · 2 runtime (key, network, lock).
 
