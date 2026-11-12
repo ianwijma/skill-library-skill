@@ -15,13 +15,15 @@ describe("root commands", () => {
     expect(none.stdout).toContain("skill-library add");
   });
 
-  test("help short-circuits; remove has its own help", async () => {
+  test("help short-circuits; every command has its own help", async () => {
     const sb = await sandbox();
     const h = await run(sb, ["add", "--help"]);
     expect(h.code).toBe(0);
-    expect(h.stdout).toContain("Usage:");
-    expect(h.stdout).toContain("Add-ons:");
-    expect((await run(sb, ["rm", "-h"])).stdout).toContain("skill-library remove [skills...]");
+    expect(h.stdout).toContain("Usage: skill-library add|a [options] <package>");
+    expect(h.stdout).not.toContain("Add-ons:");
+    expect((await run(sb, ["--help"])).stdout).toContain("Add-ons:");
+    expect((await run(sb, ["rm", "-h"])).stdout).toContain("skill-library remove|rm [options] [skills...]");
+    expect((await run(sb, ["help", "remove"])).stdout).toContain("skill-library remove|rm [options] [skills...]");
   });
 
   test("unknown command on stdout, exit 1; sync needs init", async () => {

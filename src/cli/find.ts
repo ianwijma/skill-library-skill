@@ -1,9 +1,12 @@
 // `find`: skills.sh search, following vercel-labs/skills v1.7.6 src/find.ts (MIT).
 // The interactive picker is a simpler clack prompt instead of vercel's raw-mode search box.
 import * as p from "@clack/prompts";
-import { BOLD, CYAN, DIM, RESET, TEXT, sanitizeMetadata } from "../lib/cli.ts";
+import pc from "picocolors";
+import { sanitizeMetadata } from "../lib/cli.ts";
 import { isRunningInAgent } from "../lib/detect-agent.ts";
 import { runAdd } from "./add.ts";
+import { type Ctx, examples, newCommand, warnUnknownOptions } from "./command.ts";
+import { showLogo } from "./ui.ts";
 import type { GlobalOpts } from "./index.ts";
 
 interface SearchSkill {
@@ -26,7 +29,7 @@ function formatInstalls(count: number): string {
   return `${count} install${count === 1 ? "" : "s"}`;
 }
 
-export async function searchSkills(query: string, owner?: string): Promise<SearchSkill[]> {
+async function searchSkills(query: string, owner?: string): Promise<SearchSkill[]> {
   try {
     const url = new URL("/api/search", apiBase());
     url.searchParams.set("q", query);
@@ -40,69 +43,59 @@ export async function searchSkills(query: string, owner?: string): Promise<Searc
   }
 }
 
-export async function runFind(args: string[], g: GlobalOpts): Promise<number> {
-  const parts: string[] = [];
+/** `find [query...]`; `ownerOpt` is --owner's value (true when it was given without one). */
+async function runFind(parts: string[], ownerOpt: string | true | undefined, g: GlobalOpts): Promise<number> {
   let owner: string | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i]!;
-    let value: string | undefined;
-    if (a === "--owner") {
-      value = args[i + 1];
-      if (!value || value.startsWith("-")) {
-        console.error("--owner requires a GitHub owner");
-        console.error("Usage: skill-library find <query> [--owner <owner>]");
-        return 0;
-      }
-      i++;
-    } else if (a.startsWith("--owner=")) value = a.slice("--owner=".length);
-    else {
-      parts.push(a);
-      continue;
-    }
-    if (!value || !OWNER.test(value.trim())) {
+  if (ownerOpt === true) {
+    console.error("--owner requires a GitHub owner");
+    console.error("Usage: skill-library find <query> [--owner <owner>]");
+    return 0;
+  }
+  if (ownerOpt !== undefined) {
+    if (!ownerOpt || !OWNER.test(ownerOpt.trim())) {
       console.error("--owner must be a GitHub owner");
       console.error("Usage: skill-library find <query> [--owner <owner>]");
       return 0;
     }
-    owner = value.trim().toLowerCase();
+    owner = ownerOpt.trim().toLowerCase();
   }
   const query = parts.join(" ").trim();
 
   if (query) {
     const results = await searchSkills(query, owner);
     if (results.length === 0) {
-      console.log(`${DIM}No skills found for "${query}"${owner ? ` from owner "${owner}"` : ""}${RESET}`);
+      console.log(pc.gray(`No skills found for "${query}"${owner ? ` from owner "${owner}"` : ""}`));
       return 0;
     }
-    console.log(`${DIM}Install with${RESET} skill-library add <owner/repo@skill>`);
+    console.log(`${pc.gray("Install with")} skill-library add <owner/repo@skill>`);
     console.log();
     for (const s of results) {
       const pkg = s.source || s.slug;
       const installs = formatInstalls(s.installs);
-      console.log(`${TEXT}${sanitizeMetadata(pkg)}@${sanitizeMetadata(s.name)}${RESET}${installs ? ` ${CYAN}${installs}${RESET}` : ""}`);
-      console.log(`${DIM}└ https://skills.sh/${sanitizeMetadata(s.slug)}${RESET}`);
+      console.log(`${sanitizeMetadata(pkg)}@${sanitizeMetadata(s.name)}${installs ? ` ${pc.cyan(installs)}` : ""}`);
+      console.log(pc.gray(`└ https://skills.sh/${sanitizeMetadata(s.slug)}`));
       console.log();
     }
     return 0;
   }
 
   if (!process.stdin.isTTY || isRunningInAgent()) {
-    console.log(`${DIM}Tip: if running in a coding agent, follow these steps:${RESET}`);
-    console.log(`${DIM}  1) skill-library find [query] [--owner <owner>]${RESET}`);
-    console.log(`${DIM}  2) skill-library add <owner/repo@skill>${RESET}`);
+    console.log(pc.gray("Tip: if running in a coding agent, follow these steps:"));
+    console.log(pc.gray("  1) skill-library find [query] [--owner <owner>]"));
+    console.log(pc.gray("  2) skill-library add <owner/repo@skill>"));
     console.log();
-    console.log(`${DIM}Usage: skill-library find <query> [--owner <owner>]${RESET}`);
+    console.log(pc.gray("Usage: skill-library find <query> [--owner <owner>]"));
     return 0;
   }
 
   const text = await p.text({ message: "Search skills", placeholder: "e.g. typescript" });
   if (p.isCancel(text) || !text || String(text).trim().length < 2) {
-    console.log(`${DIM}Search cancelled${RESET}`);
+    console.log(pc.gray("Search cancelled"));
     return 0;
   }
   const results = await searchSkills(String(text).trim(), owner);
   if (results.length === 0) {
-    console.log(`${DIM}No skills found for "${text}"${RESET}`);
+    console.log(pc.gray(`No skills found for "${text}"`));
     return 0;
   }
   const picked = await p.select({
@@ -110,13 +103,28 @@ export async function runFind(args: string[], g: GlobalOpts): Promise<number> {
     options: results.slice(0, 20).map((s, i) => ({ value: i, label: `${s.source || s.slug}@${s.name}`, hint: formatInstalls(s.installs) })),
   });
   if (p.isCancel(picked)) {
-    console.log(`${DIM}Search cancelled${RESET}`);
+    console.log(pc.gray("Search cancelled"));
     return 0;
   }
   const s = results[picked as number]!;
   const pkg = s.source || s.slug;
   console.log();
-  console.log(`${TEXT}Installing ${BOLD}${s.name}${RESET} from ${DIM}${pkg}${RESET}…`);
+  console.log(`Installing ${pc.bold(s.name)} from ${pc.gray(pkg)}…`);
   console.log();
-  return runAdd([pkg, "--skill", s.name], g);
+  return runAdd([pkg], { skill: [s.name] }, g);
+}
+
+export function findCommand(ctx: Ctx) {
+  return warnUnknownOptions(newCommand("find"))
+    .aliases(["search", "f", "s"])
+    .summary("Search for skills")
+    .description("Search skills.sh for skills; without a query (on a terminal), search interactively and add one.")
+    .argument("[query...]", "What to search for")
+    .option("--owner [owner]", "Only repositories from this GitHub owner")
+    .addHelpText("after", examples([["skill-library find typescript", "search by keyword"], ["skill-library find react --owner vercel-labs", "only vercel-labs' skills"]]))
+    .action(async (query, opts) => {
+      showLogo();
+      console.log();
+      ctx.done(await runFind(query, opts.owner, ctx.globals()));
+    });
 }

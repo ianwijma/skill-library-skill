@@ -49,10 +49,7 @@ The suite tests behaviour, not a particular argument parser. Usage errors (a mis
 value, an unknown command or option, a stray argument) are checked through
 `test/e2e/contract.ts`: a non-zero exit and a message that names the option, never
 the exact wording or output stream. `test/e2e/help.e2e.ts` describes the help we
-want: `<command> --help` shows only that command's usage and options. Commands that
-don't have their own help yet are marked `test.fails` there (an expected failure).
-When one gets it, vitest reports the unexpected pass; move the command into
-`HAS_OWN_HELP` then.
+want: `<command> --help` shows only that command's usage and options.
 
 Arguments go to vitest (`npm run test:e2e -- sync` runs `sync.e2e.ts`).
 `E2E_NODE_VERSION=24` picks the container's Node line (default 22).

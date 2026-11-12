@@ -11,7 +11,7 @@ import { cleanup, cloneRepo } from "../lib/git.ts";
 import { parseSource } from "../lib/source.ts";
 import { copySkill } from "../lib/store.ts";
 import { safeSlug } from "../lib/ids.ts";
-import { parseFlags } from "./args.ts";
+import { type Ctx, examples, list, newCommand, rejectUnknownOptions, value } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
 const USE_AGENTS: Record<string, { command: string; args: string[] }> = {
@@ -20,7 +20,7 @@ const USE_AGENTS: Record<string, { command: string; args: string[] }> = {
   "sarvam-code": { command: "sarvam-code", args: [] },
 };
 
-export function buildUsePrompt(input: { skillMd: string; supportDir?: string; hasSupportingFiles: boolean }): string {
+function buildUsePrompt(input: { skillMd: string; supportDir?: string; hasSupportingFiles: boolean }): string {
   const sections = [
     "You are being given a Skill to execute for the user's next request.",
     "Use the following SKILL.md as your instructions:",
@@ -32,43 +32,25 @@ export function buildUsePrompt(input: { skillMd: string; supportDir?: string; ha
   return sections.join("\n\n") + "\n";
 }
 
-function useHelp(): string {
-  return `Usage: skill-library use <source>[@<skill>] [options]
-
-Generate a prompt for using one skill without adding it.
-
-Options:
-  -s, --skill <skill>   Select the skill to use
-  -a, --agent <agent>   Start one supported agent interactively (${Object.keys(USE_AGENTS).join(", ")})
-  --full-depth          Search nested directories like skill-library add --full-depth
-  -h, --help            Show this help message
-
-Examples:
-  skill-library use anthropics/skills@frontend-design | claude
-  skill-library use anthropics/skills --skill frontend-design --agent claude-code`;
-}
+/** The agents `use --agent` can start. */
+const USE_AGENT_IDS = Object.keys(USE_AGENTS);
 
 async function hasSupportingFiles(dir: string): Promise<boolean> {
   const entries = await fsp.readdir(dir, { withFileTypes: true, recursive: true });
   return entries.some((e) => e.isFile() && !(e.name.toLowerCase() === "skill.md" && path.resolve(e.parentPath ?? dir) === path.resolve(dir)));
 }
 
-export async function runUse(args: string[], g: GlobalOpts): Promise<number> {
-  const f = parseFlags(args, {
-    booleans: { fullDepth: ["--full-depth"], help: ["-h", "--help"] },
-    values: { skill: ["-s", "--skill"] },
-    lists: { agent: ["-a", "--agent"] },
-    strict: true,
-  });
+interface UseOptions {
+  fullDepth?: boolean;
+  skill?: string;
+  /** A list so that `-a one two` can be rejected with a clear message. */
+  agent?: string[];
+}
+
+/** `use <source>[@<skill>]`: `sources` are the positionals (exactly one is allowed). */
+async function runUse(sources: string[], opts: UseOptions, g: GlobalOpts): Promise<number> {
   const errors: string[] = [];
-  for (const u of f.unknown) errors.push(`Unknown option: ${u}`);
-  // -a and --agent are the same option, so they get the same message.
-  for (const m of f.missing) errors.push(`${m} requires ${m === "-a" || m === "--agent" ? "an agent name" : "a value"}`);
-  if (f.booleans.has("help")) {
-    console.log(useHelp());
-    return 0;
-  }
-  const agentVals = f.lists.get("agent");
+  const agentVals = opts.agent;
   if (agentVals) {
     if (agentVals.includes("*")) errors.push("skill-library use --agent does not support '*'; specify exactly one agent.");
     if (agentVals.length > 1) errors.push("skill-library use --agent accepts exactly one agent.");
@@ -79,12 +61,12 @@ export async function runUse(args: string[], g: GlobalOpts): Promise<number> {
     for (const e of errors) console.error(e);
     return 1;
   }
-  if (f.positionals.length === 0) {
-    console.error(`Missing required argument: source\n\n${useHelp()}`);
+  if (sources.length === 0) {
+    console.error("Missing required argument: source\nRun skill-library use --help for usage.");
     return 1;
   }
-  if (f.positionals.length > 1) {
-    console.error(`Expected one source, received ${f.positionals.length}: ${f.positionals.join(", ")}`);
+  if (sources.length > 1) {
+    console.error(`Expected one source, received ${sources.length}: ${sources.join(", ")}`);
     return 1;
   }
   const agent = agentVals?.[0];
@@ -93,11 +75,11 @@ export async function runUse(args: string[], g: GlobalOpts): Promise<number> {
     return 1;
   }
 
-  const source = f.positionals[0]!;
+  const source = sources[0]!;
   let clone: string | null = null;
   try {
     const parsed = parseSource(source, g.cwd);
-    const fromOption = f.values.get("skill");
+    const fromOption = opts.skill;
     if (parsed.skillFilter && fromOption && parsed.skillFilter.toLowerCase() !== fromOption.toLowerCase()) {
       throw new CliError(1, `Conflicting skill selectors: source selects "${parsed.skillFilter}" but --skill selects "${fromOption}". Provide one selector.`);
     }
@@ -115,7 +97,7 @@ export async function runUse(args: string[], g: GlobalOpts): Promise<number> {
       }
       base = parsed.url;
     }
-    const { skills } = await discoverSkills(base, parsed.subpath, { fullDepth: f.booleans.has("fullDepth"), includeReserved: true });
+    const { skills } = await discoverSkills(base, parsed.subpath, { fullDepth: !!opts.fullDepth, includeReserved: true });
     const chosen = select(skills, selector, source);
     const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "skill-library-use-"));
     const skillDir = path.join(tempRoot, safeSlug(chosen.name));
@@ -173,4 +155,22 @@ function launch(agent: string, prompt: string): Promise<number> {
       resolve(code ?? 1);
     });
   });
+}
+
+export function useCommand(ctx: Ctx) {
+  return rejectUnknownOptions(newCommand("use"))
+    .summary("Generate a prompt for using one skill without adding it")
+    .description("Generate a prompt for using one skill without adding it: print it, or start an agent with it.")
+    .usage("<source>[@<skill>] [options]")
+    .argument("[source]", "owner/repo, a git URL or a local path, optionally with @<skill>")
+    .option("-s, --skill <skill>", "The skill to use", value)
+    .option("-a, --agent <agent...>", `Start one supported agent interactively (${USE_AGENT_IDS.join(", ")})`, list)
+    .option("--full-depth", "Search nested directories, like skill-library add --full-depth")
+    .addHelpText(
+      "after",
+      examples([["skill-library use anthropics/skills@frontend-design | claude"], ["skill-library use anthropics/skills --skill frontend-design --agent claude-code"]]),
+    )
+    .action(async (_source, opts, cmd) => {
+      ctx.done(await runUse(cmd.args, opts, ctx.globals()));
+    });
 }

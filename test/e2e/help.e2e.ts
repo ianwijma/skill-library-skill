@@ -1,16 +1,8 @@
 // Help. The top-level page lists everything; `<command> --help` (and `-h`) is that command's own
 // page. Help never runs the command.
-//
-// Per-command help is being built (moving the CLI to a library). Commands that don't have it yet
-// are marked `test.fails`: their test is *expected* to fail for now. When a command gets its own
-// help, its test starts passing, vitest reports the unexpected pass, and the command moves into
-// HAS_OWN_HELP below.
 import { describe, expect, test } from "vitest";
 import { HELP_SPECS, expectCommandHelp } from "./contract.ts";
 import { exists, plain, world } from "./harness.ts";
-
-/** Commands whose `--help` is already their own page. */
-const HAS_OWN_HELP = new Set(["remove", "use", "self"]);
 
 describe("help", () => {
   test("--help and -h print the top-level page: every command and the global options; exit 0", async () => {
@@ -37,8 +29,7 @@ describe("help", () => {
   });
 
   for (const spec of HELP_SPECS) {
-    const t = HAS_OWN_HELP.has(spec.cmd) ? test : test.fails;
-    t(`${spec.cmd} --help is ${spec.cmd}'s own page${spec.aliases ? ` (also ${spec.aliases.join(", ")})` : ""}`, async () => {
+    test(`${spec.cmd} --help is ${spec.cmd}'s own page${spec.aliases ? ` (also ${spec.aliases.join(", ")})` : ""}`, async () => {
       const w = await world();
       const own = (await w.ok([...spec.cmd.split(" "), "--help"])).stdout;
       expectCommandHelp(own, spec);

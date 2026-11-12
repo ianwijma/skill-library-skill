@@ -2,25 +2,23 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
-import { DIM, RESET, TEXT } from "../lib/cli.ts";
-import { parseFlags } from "./args.ts";
+import pc from "picocolors";
 import { showLogo } from "./ui.ts";
+import { type Ctx, examples, newCommand, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
-export function runInit(args: string[], g: GlobalOpts): number {
+function runInit(name: string | undefined, opts: { always?: boolean }, g: GlobalOpts): number {
   showLogo();
   console.log();
-  const f = parseFlags(args, { booleans: { always: ["--always"] } });
-  const always = f.booleans.has("always");
+  const always = !!opts.always;
   const cwd = g.cwd;
-  const name = f.positionals[0];
   const hasName = name !== undefined;
   const skillName = name || basename(cwd);
   const skillDir = hasName ? join(cwd, skillName) : cwd;
   const skillFile = join(skillDir, "SKILL.md");
   const displayPath = hasName ? `${skillName}/SKILL.md` : "SKILL.md";
   if (existsSync(skillFile)) {
-    console.log(`${TEXT}Skill already exists at ${DIM}${displayPath}${RESET}`);
+    console.log(`Skill already exists at ${pc.gray(displayPath)}`);
     return 0;
   }
   if (hasName) mkdirSync(skillDir, { recursive: true });
@@ -46,21 +44,33 @@ Describe when this skill should be used.
 3. Additional steps as needed
 `,
   );
-  console.log(`${TEXT}Initialized skill: ${DIM}${skillName}${RESET}`);
+  console.log(`Initialized skill: ${pc.gray(skillName)}`);
   console.log();
-  console.log(`${DIM}Created:${RESET}`);
+  console.log(pc.gray("Created:"));
   console.log(`  ${displayPath}`);
   console.log();
-  console.log(`${DIM}Next steps:${RESET}`);
-  console.log(`  1. Edit ${TEXT}${displayPath}${RESET} to define your skill instructions`);
-  console.log(`  2. Update the ${TEXT}name${RESET} and ${TEXT}description${RESET} in the frontmatter`);
-  if (always) console.log(`  ${DIM}metadata.always: true — every query returns this skill, without scoring${RESET}`);
+  console.log(pc.gray("Next steps:"));
+  console.log(`  1. Edit ${displayPath} to define your skill instructions`);
+  console.log("  2. Update the name and description in the frontmatter");
+  if (always) console.log(`  ${pc.gray("metadata.always: true — every query returns this skill, without scoring")}`);
   console.log();
-  console.log(`${DIM}Publishing:${RESET}`);
-  console.log(`  ${DIM}GitHub:${RESET}  Push to a repo, then ${TEXT}skill-library add <owner>/<repo>${RESET}`);
-  console.log(`  ${DIM}Local:${RESET}   ${TEXT}skill-library add ./${hasName ? skillName : "."}${RESET}`);
+  console.log(pc.gray("Publishing:"));
+  console.log(`  ${pc.gray("GitHub:")}  Push to a repo, then skill-library add <owner>/<repo>`);
+  console.log(`  ${pc.gray("Local:")}   skill-library add ./${hasName ? skillName : "."}`);
   console.log();
-  console.log(`Browse existing skills for inspiration at ${TEXT}https://skills.sh/${RESET}`);
+  console.log("Browse existing skills for inspiration at https://skills.sh/");
   console.log();
   return 0;
+}
+
+export function initCommand(ctx: Ctx) {
+  return warnUnknownOptions(newCommand("init"))
+    .summary("Create a new skill")
+    .description("Create a skill: <name>/SKILL.md, or ./SKILL.md without a name.")
+    .argument("[name]", "The skill's name (default: this folder's name)")
+    .option("--always", "Every query returns this skill, without scoring")
+    .addHelpText("after", examples([["skill-library init my-skill"], ["skill-library init house-rules --always", "always returned by query"]]))
+    .action((name, opts) => {
+      ctx.done(runInit(name, opts, ctx.globals()));
+    });
 }

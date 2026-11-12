@@ -44,14 +44,6 @@ export function note(message: string): void {
   else console.error(message);
 }
 
-// 256-color grays used by vercel's CLI — visible on light and dark backgrounds.
-export const RESET = "\x1b[0m";
-export const BOLD = "\x1b[1m";
-export const DIM = "\x1b[38;5;102m";
-export const TEXT = "\x1b[38;5;145m";
-export const CYAN = "\x1b[36m";
-export const YELLOW = "\x1b[33m";
-
 /** Strip terminal escapes from untrusted strings (port of vercel's sanitize.ts, MIT). */
 export function stripTerminalEscapes(str: string): string {
   return str
