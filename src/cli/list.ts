@@ -19,6 +19,11 @@ export async function runList(args: string[], g: GlobalOpts): Promise<number> {
     lists: { agent: ["-a", "--agent"] },
   });
   const json = f.booleans.has("json");
+  if (f.missing.length > 0) {
+    console.error(`Error: ${f.missing[0]} requires a value`);
+    if (json) console.log("[]");
+    return 1;
+  }
   let result;
   try {
     result = await listSkills({ cwd: g.cwd, ...(g.store ? { store: g.store } : {}), global: f.booleans.has("global"), ...(f.lists.get("agent") ? { agents: f.lists.get("agent")! } : {}) });

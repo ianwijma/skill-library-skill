@@ -832,6 +832,8 @@ export async function updateSyncUrl(url: string, opts: BaseOptions & ReadmeOptio
 
 export async function setSyncEnabled(enabled: boolean, opts: BaseOptions = {}): Promise<SyncConfig> {
   const { store } = ctxOf(opts);
+  // Not set up (on a fresh machine the library folder doesn't even exist): say so before taking the lock.
+  await requireConfig(store);
   return withFileLock(syncPaths(store).lock, async () => {
     const cfg = await requireConfig(store);
     cfg.enabled = enabled;

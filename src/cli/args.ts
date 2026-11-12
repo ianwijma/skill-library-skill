@@ -46,7 +46,8 @@ export function parseFlags(argv: string[], spec: FlagSpec): Parsed {
       out.booleans.add(name);
     } else if ((name = find(spec.values, flag))) {
       const v = inline ?? argv[i + 1];
-      if (v === undefined || (inline === undefined && v.startsWith("-") && v !== "-")) out.missing.push(flag);
+      // `--flag=` (empty) is as good as no value: never read it as "" (Number("") is 0).
+      if (v === undefined || inline === "" || (inline === undefined && v.startsWith("-") && v !== "-")) out.missing.push(flag);
       else {
         out.values.set(name, v);
         if (inline === undefined) i++;

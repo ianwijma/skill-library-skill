@@ -12,13 +12,13 @@ async function readStdin(): Promise<string> {
 }
 
 function parseThreshold(raw: string): number {
-  const n = Number(raw);
+  const n = raw.trim() === "" ? NaN : Number(raw);
   if (!Number.isFinite(n) || n < 0 || n > 1) throw new CliError(1, "--threshold must be a number between 0 and 1");
   return n;
 }
 
 function parseTop(raw: string): number {
-  const n = Number(raw);
+  const n = raw.trim() === "" ? NaN : Number(raw);
   if (!Number.isInteger(n) || n < 1) throw new CliError(1, "--top must be a positive integer");
   return n;
 }

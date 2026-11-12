@@ -273,7 +273,7 @@ describe("sync", () => {
     expect(Object.keys(files.manifest.skills).map((id) => id.split("/").pop()).sort()).toEqual(["alpha", "beta"]);
     expect(files.skills).toEqual(["mine"]);
 
-    const status = JSON.parse((await run(a, ["sync", "status", "--json"])).stdout);
+    const status = await readJson(path.join(a.store, "sync.json"));
     expect(status.url).toBe(newRemote);
     const ga = await globals(a);
     expect(Object.keys(ga).sort()).toEqual(["alpha", "beta", "mine"]);
@@ -302,7 +302,7 @@ describe("sync", () => {
     const res = await run(a, ["sync", "update", unrelated.url]);
     expect(res.code).toBe(1);
     expect(res.stderr).toContain("unrelated history");
-    const status = JSON.parse((await run(a, ["sync", "status", "--json"])).stdout);
+    const status = await readJson(path.join(a.store, "sync.json"));
     expect(status.url).toBe(remote);
     expect((await run(a, ["sync"])).code).toBe(0);
   });

@@ -23,6 +23,7 @@ export async function runRemove(args: string[], g: GlobalOpts): Promise<number> 
   const yes = f.booleans.has("yes") || all || isRunningInAgent();
   let selectors = [...f.positionals, ...(f.lists.get("skill") ?? [])];
   try {
+    if (f.missing.length > 0) throw new CliError(1, `${f.missing[0]} requires a value`);
     if (f.booleans.has("global") && f.booleans.has("project")) throw new CliError(1, "--global cannot be combined with --project");
     // Global by default. With a skill-library.json here, ask (or take -p / -g). Without a prompt
     // the scope must be explicit: guessing wrong would delete a skill from the whole library.

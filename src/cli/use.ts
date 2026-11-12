@@ -62,7 +62,8 @@ export async function runUse(args: string[], g: GlobalOpts): Promise<number> {
   });
   const errors: string[] = [];
   for (const u of f.unknown) errors.push(`Unknown option: ${u}`);
-  for (const m of f.missing) errors.push(`${m} requires ${m.includes("a") && m.includes("agent") ? "an agent name" : "a value"}`);
+  // -a and --agent are the same option, so they get the same message.
+  for (const m of f.missing) errors.push(`${m} requires ${m === "-a" || m === "--agent" ? "an agent name" : "a value"}`);
   if (f.booleans.has("help")) {
     console.log(useHelp());
     return 0;
