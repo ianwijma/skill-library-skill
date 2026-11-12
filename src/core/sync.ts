@@ -16,7 +16,7 @@ import { parseSkillFile, requireStagedSkill } from "../lib/discover.ts";
 import { assertSafeGitArgs, git, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
 import { gitSkillId, isReservedSkillName, safeSlug, skillDirFor } from "../lib/ids.ts";
-import { planReadme, repoOwner } from "../lib/sync-readme.ts";
+import { newReadme, repoOwner } from "../lib/sync-readme.ts";
 import { MANIFEST, readManifest, serializeManifest, validateEntry, type Manifest, type ManifestEntry } from "../lib/manifest.ts";
 import {
   copySkill,
@@ -601,7 +601,7 @@ export type InitSyncOutcome =
       /** Folder skills left machine-only (not shared). */
       machineOnly: string[];
       /** What happened to the repo's README (null: left as it was). */
-      readme: { action: "created" | "added" | "updated"; file: string } | null;
+      readme: ReadmeOutcome;
     }
   | { alreadySetUp: true; url: string };
 
@@ -612,42 +612,49 @@ export interface ShareCandidate {
   description: string;
 }
 
-export interface InitSyncOptions extends BaseOptions {
+export interface InitSyncOptions extends BaseOptions, ReadmeOptions {
   /**
    * Called only when the repo is empty and this machine has folder skills: return the ids to
    * share (copy into the repo's `skills/`). Default: share none — they stay machine-only.
    */
   chooseShare?: (candidates: ShareCandidate[]) => Promise<string[]>;
-  /**
-   * Called only when the repo already has a README: return true to add the Skill Library section
-   * to it ("add") or refresh the section it has ("update"). Default: leave the README alone.
-   * A repo without a README always gets one.
-   */
-  confirmReadme?: (action: "add" | "update", file: string) => Promise<boolean>;
 }
 
+/** README handling shared by `sync init` and `sync update`. */
+export interface ReadmeOptions {
+  /** false: leave the repo's README alone (`--no-readme`). Default true. */
+  readme?: boolean;
+  /**
+   * Called only when the repo already has a README (other than ours, as is): return true to
+   * replace it. Default: keep it. A repo without a README always gets one.
+   */
+  confirmReadme?: (files: string[]) => Promise<boolean>;
+}
+
+export type ReadmeOutcome = { action: "created" | "replaced"; file: string } | null;
+
 /**
- * Give the repo a README about Skill Library: a new one when it has none; otherwise only when
- * `confirm` says so, and only for a Markdown README (README.rst and the like are left alone).
+ * Give the repo our README (assets/sync-readme.md): written when the repo has none; an existing
+ * README (any README, README.md, README.rst, …) is replaced only when `confirmReadme` says so.
+ * Commits; the caller pushes.
  */
-async function seedReadme(
-  clone: string,
-  url: string,
-  confirm: InitSyncOptions["confirmReadme"],
-): Promise<{ action: "created" | "added" | "updated"; file: string } | null> {
-  const names = (await fsp.readdir(clone)).filter((n) => /^readme(\.[^.]+)?$/i.test(n)).sort();
-  const file = names.find((n) => /\.(md|markdown)$/i.test(n)) ?? names[0];
-  if (file !== undefined && !/\.(md|markdown)$/i.test(file)) return null;
-  const current = file === undefined ? null : await fsp.readFile(path.join(clone, file), "utf8");
-  const userName = current === null && !repoOwner(url) ? await git(["config", "user.name"], { cwd: clone }).catch(() => null) : null;
-  const plan = planReadme(current, url, userName);
-  if (plan.action === "none") return null;
-  const target = file ?? "README.md";
-  if (plan.action !== "create" && !(confirm && (await confirm(plan.action, target)))) return null;
-  await writeFileAtomic(path.join(clone, target), plan.text);
-  const action = plan.action === "create" ? "created" : plan.action === "add" ? "added" : "updated";
-  await commitAll(clone, `skill-library: ${action === "updated" ? "update" : "add"} README`);
-  return { action, file: target };
+async function seedReadme(clone: string, url: string, opts: ReadmeOptions, previousUrl?: string): Promise<ReadmeOutcome> {
+  if (opts.readme === false) return null;
+  const existing = (await fsp.readdir(clone)).filter((n) => /^readme(\.[^./]+)?$/i.test(n)).sort();
+  const readmeFor = async (u: string): Promise<string> =>
+    newReadme(u, repoOwner(u) ? null : await git(["config", "user.name"], { cwd: clone }).catch(() => null));
+  const text = await readmeFor(url);
+  const file = "README.md";
+  const current = existing.length === 1 && existing[0] === file ? await fsp.readFile(path.join(clone, file), "utf8") : null;
+  if (current === text) return null;
+  // The README `sync init` wrote for the old URL, unchanged, is ours to refresh without asking.
+  const ours = current !== null && previousUrl !== undefined && current === (await readmeFor(previousUrl));
+  if (existing.length > 0 && !ours && !(opts.confirmReadme && (await opts.confirmReadme(existing)))) return null;
+  for (const n of existing) await fsp.rm(path.join(clone, n), { force: true });
+  await writeFileAtomic(path.join(clone, file), text);
+  const action = existing.length === 0 ? "created" : "replaced";
+  await commitAll(clone, `skill-library: ${action === "created" ? "add" : "replace"} README`);
+  return { action, file };
 }
 
 /** Global skills from a local folder or file: they live only on this machine until shared. */
@@ -722,7 +729,7 @@ export async function initSync(url: string, opts: InitSyncOptions = {}): Promise
     await commitAll(paths.clone, "skill-library: initial skills");
     await dropRecords(store, moved);
   }
-  const readme = await seedReadme(paths.clone, trimmed, opts.confirmReadme);
+  const readme = await seedReadme(paths.clone, trimmed, opts);
   await writeSyncConfig(store, cfg);
   const result = await runSync({ store });
   return { alreadySetUp: false, result: result!, seeded, machineOnly, readme };
@@ -736,6 +743,8 @@ export type UpdateSyncUrlOutcome =
       result: SyncResult;
       /** Set when the old repository could not be pulled first (local commits were still carried over). */
       oldPullError?: string;
+      /** What happened to the new repository's README (null: left as it was). */
+      readme: ReadmeOutcome;
     };
 
 /**
@@ -743,7 +752,7 @@ export type UpdateSyncUrlOutcome =
  * there and use it from now on. The new repository must be empty or share history with the old
  * one (a copy or a mirror). Own skills get ids under the new URL.
  */
-export async function updateSyncUrl(url: string, opts: BaseOptions = {}): Promise<UpdateSyncUrlOutcome> {
+export async function updateSyncUrl(url: string, opts: BaseOptions & ReadmeOptions = {}): Promise<UpdateSyncUrlOutcome> {
   const { store } = ctxOf(opts);
   const trimmed = url.trim();
   if (trimmed === "") throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync update <git-url>");
@@ -806,7 +815,10 @@ export async function updateSyncUrl(url: string, opts: BaseOptions = {}): Promis
 
       const result = await syncLocked(store, cfg);
       result.added = result.added.filter((n) => !moved.has(n));
-      return { unchanged: false, previousUrl, result, ...(oldPullError ? { oldPullError } : {}) };
+      // The clone now holds the new repository's files: give it the README for its URL.
+      const readme = await seedReadme(clone, trimmed, opts, previousUrl);
+      if (readme) result.pushed = (await push(clone, trimmed)) || result.pushed;
+      return { unchanged: false, previousUrl, result, readme, ...(oldPullError ? { oldPullError } : {}) };
     });
     if (!outcome.unchanged) {
       writeStatus(store, { lastSync: now(), lastError: outcome.result.errors.length > 0 ? outcome.result.errors.join("; ") : null });

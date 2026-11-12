@@ -26,7 +26,7 @@ are marked **(differs)**. Global options anywhere on the line: `--store <dir>`
 | `use <source>[@skill]` | | `-s <skill>`, `-a <claude-code\|codex\|sarvam-code>`, `--full-depth` | Print a prompt for one skill (pipe it into an agent), or start the agent with `-a`. Writes nothing to the library. Unknown options are errors. |
 | `connect` | | `-a <agents…>`, `--json` | Add-on. Install (or refresh) the `skill-library` gateway skill in the global skills folder of every agent found on this machine, or only the `-a` agents. Writes nothing to the library. `add` does the same after adding skills; `connect` is the explicit way. `--json`: `{updated, current, errors}` (display names). Exit 1 when no agent is found or a folder can't be written. |
 | `query "<task>" \| -` | | `-a <agent>`, `--threshold <0..1>`, `--top <n>`, `--json` | Add-on. See [04](04-typesafe-query.md). |
-| `sync [init <git-url> \| update <git-url> \| share <skill...> \| enable \| disable \| status]` | | `--json`, `--share <skills>` (init), `--readme`/`--no-readme` (init) | Add-on. Keep global skills in a git repository. See [09](09-global-sync-options.md). |
+| `sync [init <git-url> \| update <git-url> \| share <skill...> \| enable \| disable \| status]` | | `--json`, `--share <skills>` (init), `--no-readme` (init, update) | Add-on. Keep global skills in a git repository. See [09](09-global-sync-options.md). |
 
 Scope rules for `update`/`check`: `-g -p` = both; no flag → project if
 `skill-library.json` has entries, else global; named skills → both **(differs**:

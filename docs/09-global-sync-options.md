@@ -35,13 +35,9 @@ skill-library sync init ssh://git@git.example.com:2222/me/my-skills.git
   `--share <names>` (`--share '*'` = all).
 - Gives the repo a short `README.md` about Skill Library (template:
   [`assets/sync-readme.md`](../assets/sync-readme.md)) when it has no README.
-  When it already has a Markdown README, `init` asks before adding the Skill
-  Library section to it, or before refreshing that section if it is out of date.
-  The section sits between `<!-- skill-library:start -->` and
-  `<!-- skill-library:end -->`; the rest of the README is never touched.
-  `--readme` says yes without asking, `--no-readme` says no. Without a terminal
-  the README is left as it is. A non-Markdown README (`README.rst`, …) is always
-  left alone.
+  When it already has one (`README.md`, `README.rst`, …), `init` asks whether
+  to replace it; without a terminal it is kept. `--no-readme` leaves the README
+  alone either way. Credentials in the clone URL never reach the README.
 
 If `sync` is already set up with the same URL, `init` says so and exits
 successfully without changing anything. With a different URL it refuses and
@@ -65,6 +61,9 @@ skill-library sync update git@github.com:me/my-skills.git
 - Your own skills (`skills/` folders) get ids under the new repository. Their
   old records are dropped, so `list` shows each skill once.
 - Writes the new URL to `sync.json` and runs a normal sync.
+- Gives the new repository its README, as `init` does: added when there is
+  none, replaced only when you say yes, untouched with `--no-readme`. The README
+  `sync init` wrote for the old URL, unchanged, is replaced without asking.
 
 With the URL already in use, it says so and changes nothing. Sync must be
 enabled. Run `sync update` with the same URL on each of your other machines.

@@ -1,12 +1,7 @@
-// The README `sync init` puts in a sync repository: a short note on what the repo is and a link
-// back to Skill Library. The text lives in assets/sync-readme.md (edit it there); `{{title}}`
-// and `{{url}}` are filled in here. The part between the markers is "our section":
-// it is added to a README the user already has, and a later `sync init` updates it in place
-// without touching the rest of their README.
+// The README `sync init` / `sync update` put in a sync repository: what the repo is, how to set it
+// up, and a link back to Skill Library. The text lives in assets/sync-readme.md (edit it there);
+// `{{title}}` and `{{url}}` are filled in here.
 import template from "../../assets/sync-readme.md";
-
-export const README_START = "<!-- skill-library:start -->";
-export const README_END = "<!-- skill-library:end -->";
 
 /** Host and path segments (without `.git`) of a clone URL; null for local paths and junk. */
 function parseRemote(url: string): { host: string; parts: string[] } | null {
@@ -69,34 +64,7 @@ function fill(url: string, fallbackName?: string | null): string {
   return template.replace(/\r\n/g, "\n").replace(/\{\{(\w+)\}\}/g, (m, key: string) => values[key] ?? m);
 }
 
-/** The marker-delimited section (no trailing newline). */
-export function readmeSection(url: string): string {
-  const text = fill(url);
-  const start = text.indexOf(README_START);
-  const end = text.indexOf(README_END, start);
-  if (start === -1 || end === -1) throw new Error("assets/sync-readme.md is missing the skill-library markers");
-  return text.slice(start, end + README_END.length);
-}
-
-/** A whole README for a repo that has none (`fallbackName`: see readmeTitle). */
+/** The README for the sync repo at `url` (`fallbackName`: see readmeTitle). */
 export function newReadme(url: string, fallbackName?: string | null): string {
   return `${fill(url, fallbackName).replace(/\s*$/, "")}\n`;
-}
-
-export type ReadmePlan = { action: "create" | "add" | "update"; text: string } | { action: "none" };
-
-/** What to do with the README `current` (null: no README) so it carries the current section. */
-export function planReadme(current: string | null, url: string, fallbackName?: string | null): ReadmePlan {
-  if (current === null) return { action: "create", text: newReadme(url, fallbackName) };
-  // Everything outside the section stays byte-for-byte; the section follows the file's line endings.
-  const nl = current.includes("\r\n") ? "\r\n" : "\n";
-  const section = readmeSection(url).replace(/\n/g, nl);
-  const start = current.indexOf(README_START);
-  const end = start === -1 ? -1 : current.indexOf(README_END, start);
-  if (start === -1 || end === -1) {
-    const sep = current === "" ? "" : current.endsWith(`${nl}${nl}`) ? "" : current.endsWith(nl) ? nl : `${nl}${nl}`;
-    return { action: "add", text: `${current}${sep}${section}${nl}` };
-  }
-  const next = current.slice(0, start) + section + current.slice(end + README_END.length);
-  return next === current ? { action: "none" } : { action: "update", text: next };
 }

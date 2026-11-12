@@ -1,6 +1,5 @@
 # <a href="https://github.com/ianwijma/skill-library-skill"><img src="https://github.com/ianwijma/skill-library-skill/raw/develop/assets/icon.svg" alt="Skill Library" width="32" height="32" align="absmiddle"></a> {{title}}
 
-<!-- skill-library:start -->
 ### Setup
 
 Install Skill Library:
@@ -23,4 +22,3 @@ skill-library sync init {{url}}
 - **Synced:** every machine picks up new and updated skills from this repository.
 
 Learn more: [ianwijma/skill-library-skill](https://github.com/ianwijma/skill-library-skill)
-<!-- skill-library:end -->

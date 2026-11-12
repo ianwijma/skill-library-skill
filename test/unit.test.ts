@@ -13,7 +13,7 @@ import { versionKeyFor, type StoreRecord } from "../src/lib/store.ts";
 import { gatewaySkillMd } from "../src/lib/gateway.ts";
 import { parseFrontmatter } from "../src/lib/frontmatter.ts";
 import { formatTimestamp, relativeTime } from "../src/lib/time.ts";
-import { planReadme, readmeSection, readmeTitle, repoOwner, shareableUrl } from "../src/lib/sync-readme.ts";
+import { newReadme, readmeTitle, repoOwner, shareableUrl } from "../src/lib/sync-readme.ts";
 
 describe("ids", () => {
   test("GitHub over every transport gets the same id", () => {
@@ -220,21 +220,11 @@ describe("sync README", () => {
     expect(shareableUrl("ssh://git:pw@git.example.com:2222/me/skills.git")).toBe("ssh://git@git.example.com:2222/me/skills.git");
     expect(shareableUrl("git@github.com:me/skills.git")).toBe("git@github.com:me/skills.git");
     expect(shareableUrl("https://github.com/me/skills.git")).toBe("https://github.com/me/skills.git");
-    const created = planReadme(null, "https://user:TOKEN@github.com/me/skills.git");
-    expect(created.action !== "none" && created.text).not.toContain("TOKEN");
-    expect(created.action !== "none" && created.text).toContain("sync init https://github.com/me/skills.git");
-  });
-
-  test("adding the section keeps the existing README byte-for-byte, line endings included", () => {
-    const url = "git@github.com:me/skills.git";
-    const crlf = "# Mine\r\n\r\nNotes.  \r\n";
-    const added = planReadme(crlf, url);
-    if (added.action === "none") throw new Error("unreachable");
-    expect(added.text.startsWith(crlf)).toBe(true);
-    expect(added.text.slice(crlf.length).replace(/\r\n/g, "")).not.toContain("\n");
-    expect(planReadme(added.text, url).action).toBe("none");
-    const noEol = planReadme("# Mine", url);
-    expect(noEol.action !== "none" && noEol.text.startsWith("# Mine\n\n<!-- skill-library:start -->")).toBe(true);
+    const readme = newReadme("https://user:TOKEN@github.com/me/skills.git");
+    expect(readme).not.toContain("TOKEN");
+    expect(readme).toContain("sync init https://github.com/me/skills.git");
+    expect(readme).toMatch(/^# <a .*<\/a> me's Skills\n/);
+    expect(readme).not.toContain("{{");
   });
 
   test("readmeTitle names the repo owner, else the git user, else nobody", () => {
@@ -245,18 +235,4 @@ describe("sync README", () => {
     expect(readmeTitle("https://git.example.com/skills.git")).toBe("My Skills");
   });
 
-  test("planReadme creates, adds, updates in place, or does nothing", () => {
-    const url = "git@github.com:me/skills.git";
-    const created = planReadme(null, url);
-    expect(created.action).toBe("create");
-    expect(created.action !== "none" && created.text).toMatch(/^# <a .*<\/a> me's Skills\n/);
-    const added = planReadme("# Mine\n\nNotes.\n", url);
-    expect(added.action).toBe("add");
-    if (added.action === "none") throw new Error("unreachable");
-    expect(planReadme(added.text, url).action).toBe("none");
-    const stale = added.text.replace(readmeSection(url), "<!-- skill-library:start -->\nold\n<!-- skill-library:end -->") + "\nFooter\n";
-    const updated = planReadme(stale, url);
-    expect(updated.action).toBe("update");
-    expect(updated.action !== "none" && updated.text).toBe(added.text + "\nFooter\n");
-  });
 });
