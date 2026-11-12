@@ -42,15 +42,14 @@ function printResult(r: SyncResult): void {
 }
 
 export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<number> {
-  const f = parseFlags(args, { booleans: { background: ["--background"], json: ["--json"], noReadme: ["--no-readme"] }, lists: { share: ["--share"] } });
+  const f = parseFlags(args, { booleans: { background: ["--background"], noReadme: ["--no-readme"] }, lists: { share: ["--share"] } });
   if (f.missing.length > 0) {
     console.error(`Error: ${f.missing[0]} requires a value`);
     return 1;
   }
   const base = { cwd: g.cwd, ...(g.store ? { store: g.store } : {}) };
   const [sub, ...rest] = f.positionals;
-  const json = f.booleans.has("json");
-  const tty = !json && !!process.stdin.isTTY && !isRunningInAgent();
+  const tty = !!process.stdin.isTTY && !isRunningInAgent();
   // init / update: a repo without a README gets ours; one with a README is replaced only when you
   // say so (no terminal to ask in: kept). --no-readme leaves the README alone either way.
   const readmeOpts: ReadmeOptions = f.booleans.has("noReadme")
@@ -71,8 +70,7 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
           return 0;
         }
         const r = await runSync(base);
-        if (json) console.log(JSON.stringify(r));
-        else if (r) printResult(r);
+        if (r) printResult(r);
         return r && r.errors.length > 0 ? 1 : 0;
       }
       case "init": {
@@ -101,16 +99,11 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
             : {}),
         });
         if (outcome.alreadySetUp) {
-          if (json) console.log(JSON.stringify({ alreadySetUp: true, url: outcome.url }));
-          else console.log(`Sync is already set up with ${outcome.url}. ${DIM}Run${RESET} skill-library sync ${DIM}to sync now.${RESET}`);
+          console.log(`Sync is already set up with ${outcome.url}. ${DIM}Run${RESET} skill-library sync ${DIM}to sync now.${RESET}`);
           return 0;
         }
         const { result, seeded, machineOnly, readme } = outcome;
         const gw = await placeGateway();
-        if (json) {
-          console.log(JSON.stringify({ ...result, seeded, machineOnly, readme }));
-          return result.errors.length > 0 ? 1 : 0;
-        }
         if (seeded.length > 0) console.log(`${DIM}The repository was empty; added this machine's ${seeded.length} global skill(s) to it.${RESET}`);
         if (machineOnly.length > 0) {
           console.log(`${DIM}Kept machine-only (not synced):${RESET} ${machineOnly.map(sanitizeMetadata).join(", ")}`);
@@ -128,15 +121,10 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
         if (!url) throw new CliError(1, "Missing required argument: git-url", "Usage: skill-library sync update <git-url>");
         const outcome = await updateSyncUrl(url, { ...base, ...readmeOpts });
         if (outcome.unchanged) {
-          if (json) console.log(JSON.stringify({ unchanged: true, url: outcome.url }));
-          else console.log(`Sync already uses ${outcome.url}`);
+          console.log(`Sync already uses ${outcome.url}`);
           return 0;
         }
         const { result, previousUrl, oldPullError, readme } = outcome;
-        if (json) {
-          console.log(JSON.stringify({ ...result, previousUrl, readme, ...(oldPullError ? { oldPullError } : {}) }));
-          return result.errors.length > 0 ? 1 : 0;
-        }
         if (oldPullError) note(`Could not pull from ${previousUrl} first: ${oldPullError} (this machine's skills were moved as they are)`);
         console.log(`Sync moved from ${previousUrl} to ${result.url}`);
         if (readme) console.log(readmeLine(readme));
@@ -146,7 +134,7 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
       }
       case "share": {
         let selectors = rest;
-        if (selectors.length === 0 && !json && process.stdin.isTTY && !isRunningInAgent()) {
+        if (selectors.length === 0 && process.stdin.isTTY && !isRunningInAgent()) {
           const candidates = await shareableSkills(base);
           if (candidates.length === 0) {
             console.log("No machine-only global skills to share.");
@@ -161,10 +149,6 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
           selectors = picked as string[];
         }
         const r = await shareSkills(selectors, base);
-        if (json) {
-          console.log(JSON.stringify(r));
-          return r.errors.length > 0 ? 1 : 0;
-        }
         for (const s of r.shared) {
           console.log(`  ${pc.green("✓")} Shared ${pc.cyan(sanitizeMetadata(s.name))}`);
           console.log(`    ${DIM}edit it here from now on:${RESET} ${s.path}`);
@@ -187,10 +171,6 @@ export async function runSyncCommand(args: string[], g: GlobalOpts): Promise<num
       }
       case "status": {
         const s = await syncStatus(base);
-        if (json) {
-          console.log(JSON.stringify(s));
-          return 0;
-        }
         if (!s.configured) {
           console.log("Sync is not set up. Run skill-library sync init <git-url>");
           return 0;
