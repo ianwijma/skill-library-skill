@@ -53,6 +53,7 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   const f = parseFlags(args, {
     booleans: {
       global: ["-g", "--global"],
+      project: ["-p", "--project"],
       list: ["-l", "--list"],
       yes: ["-y", "--yes"],
       all: ["--all"],
@@ -75,6 +76,7 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   if (f.missing.length > 0) return fail(new CliError(1, `${f.missing[0]} requires a value`));
   if (json && f.booleans.has("list")) return fail(new CliError(1, "--json cannot be combined with --list"));
   if (json && !yes) return fail(new CliError(1, "--json requires -y (or --all) so no prompt is needed"));
+  if (f.booleans.has("global") && f.booleans.has("project")) return fail(new CliError(1, "--global cannot be combined with --project"));
   if (f.booleans.has("share") && f.booleans.has("noShare")) return fail(new CliError(1, "--share cannot be combined with --no-share"));
   const source = f.positionals[0];
   if (!source) return fail(new CliError(1, "Missing required argument: source", "Usage: skill-library add <package> [options]"));
@@ -89,25 +91,37 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   }
 
   if (!json) showLogo();
-  let global = f.booleans.has("global");
-  const interactive = !yes && !!process.stdin.isTTY;
-  if (!global && interactive && !f.booleans.has("list")) {
+  // Global by default. With a skill-library.json here, ask; without a prompt (-y, no TTY, inside an
+  // agent) the scope must be explicit (-p / -g), as for remove. -y never picks the scope.
+  let projectScope = f.booleans.has("project");
+  if (!projectScope && !f.booleans.has("global") && !f.booleans.has("list")) {
     const project = await loadProject(g.cwd);
-    if (project) {
-      const choice = await p.select({
-        message: "Installation scope",
-        options: [
-          { value: "project", label: "Project", hint: `${project.root}/skill-library.json` },
-          { value: "global", label: "Global", hint: "the whole library, every project" },
-        ],
-      });
-      if (p.isCancel(choice)) {
-        p.cancel("Installation cancelled");
-        return 0;
+    if (project?.exists) {
+      if (!yes && process.stdin.isTTY) {
+        const choice = await p.select({
+          message: "Add to",
+          options: [
+            { value: "global", label: "Global", hint: "the whole library, every project" },
+            { value: "project", label: "Project", hint: project.file },
+          ],
+        });
+        if (p.isCancel(choice)) {
+          p.cancel("Installation cancelled");
+          return 0;
+        }
+        projectScope = choice === "project";
+      } else {
+        return fail(
+          new CliError(
+            1,
+            `This folder has a project (${project.file}); say where to add to.`,
+            "Use -p to pin in the project's skill-library.json, or -g to add to the global library.",
+          ),
+        );
       }
-      global = choice === "global";
     }
   }
+  const global = !projectScope;
 
   // With sync on, a global skill from a local folder is machine-only unless shared: the CLI can't
   // tell a skill you wrote from a copy of someone else's, so sharing is the user's call.
@@ -120,7 +134,7 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
     // addSkills reports a bad source.
   }
   let share: boolean | undefined = f.booleans.has("share") ? true : f.booleans.has("noShare") ? false : undefined;
-  if (share !== undefined && !(global && syncUrl)) note("--share/--no-share only apply to add -g while sync is enabled");
+  if (share !== undefined && !(global && syncUrl)) note("--share/--no-share only apply to global adds while sync is enabled");
 
   const spinner = !json && process.stderr.isTTY ? p.spinner({ output: process.stderr }) : null;
   spinner?.start(`Fetching ${source}`);
@@ -129,7 +143,7 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
     result = await addSkills(source, {
       cwd: g.cwd,
       ...(g.store ? { store: g.store } : {}),
-      global,
+      project: projectScope,
       ...(agents ? { agents } : {}),
       ...(skills ? { skills } : {}),
       fullDepth: f.booleans.has("fullDepth"),

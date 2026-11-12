@@ -19,7 +19,7 @@ describe("manifest is validated before any work", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "Solo") });
     const dir = await project(sb);
-    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     const marker = path.join(sb.root, "pwned");
     for (const commit of [`--upload-pack=touch ${marker}`, "main"]) {
       await editManifest(dir, (m) => {
@@ -72,10 +72,10 @@ describe("ambiguous names", () => {
     const sb = await sandbox();
     const dir = await project(sb);
     await writeFiles(dir, { "a/react/SKILL.md": skillMd("react", "one"), "b/react/SKILL.md": skillMd("react", "two") });
-    await run(sb, ["add", "./a/react", "-y"], { cwd: dir });
-    await run(sb, ["add", "./b/react", "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", "./a/react", "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", "./b/react", "-y"], { cwd: dir });
     const before = await fsp.readFile(path.join(dir, "skill-library.json"), "utf8");
-    expect((await run(sb, ["remove", "react", "-y"], { cwd: dir })).code).toBe(1);
+    expect((await run(sb, ["remove", "-p", "react", "-y"], { cwd: dir })).code).toBe(1);
     expect(await fsp.readFile(path.join(dir, "skill-library.json"), "utf8")).toBe(before);
   });
 });
@@ -85,7 +85,7 @@ describe("repair and staging", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "Solo") });
     const dir = await project(sb);
-    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     const rows = JSON.parse((await run(sb, ["ls", "--json"], { cwd: dir })).stdout);
     await fsp.rm(path.join(rows[0].path, "SKILL.md"));
     const r = await run(sb, ["install"], { cwd: dir });
@@ -120,10 +120,10 @@ describe("concurrency", () => {
     const names = ["a", "b", "c", "d", "e", "f"];
     await writeFiles(path.join(sb.root, "src"), Object.fromEntries(names.map((n) => [`${n}/SKILL.md`, skillMd(n, n)])));
     await writeFiles(dir, { "local/x/SKILL.md": skillMd("x", "x") });
-    await run(sb, ["add", "./local/x", "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", "./local/x", "-y"], { cwd: dir });
     const results = await Promise.all([
-      ...names.map((n) => run(sb, ["add", path.join(sb.root, "src", n), "-y"], { cwd: dir })),
-      run(sb, ["remove", "x", "-y"], { cwd: dir }),
+      ...names.map((n) => run(sb, ["add", "-p", path.join(sb.root, "src", n), "-y"], { cwd: dir })),
+      run(sb, ["remove", "-p", "x", "-y"], { cwd: dir }),
     ]);
     for (const r of results) expect(r.code, r.stderr).toBe(0);
     const m = await readJson(path.join(dir, "skill-library.json"));
@@ -180,7 +180,7 @@ describe("missing project skills keep their real name", () => {
     const dir = await project(sb);
     await writeFiles(path.join(sb.home, "skills"), { "folder-name/SKILL.md": skillMd("react", "project react") });
     await writeFiles(path.join(sb.root, "g"), { "react/SKILL.md": skillMd("react", "global react") });
-    await run(sb, ["add", path.join(sb.home, "skills", "folder-name"), "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", path.join(sb.home, "skills", "folder-name"), "-y"], { cwd: dir });
     const other = fresh(sb);
     await run(other, ["add", path.join(sb.root, "g", "react"), "-g", "-y"]);
     const bodies: any[] = [];
@@ -218,7 +218,6 @@ describe("API", () => {
       ]);
       expect(a.skills.map((s) => s.name)).toEqual(["bar"]);
       expect(l.skills).toEqual([]);
-      expect(w1.some((m) => m.includes("No project here"))).toBe(true);
       expect(w1.some((m) => m.includes("missing required frontmatter"))).toBe(true);
       expect(w2).toEqual([]);
       expect(spy).not.toHaveBeenCalled();
@@ -260,7 +259,7 @@ describe("second review", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "Solo") });
     const dir = await project(sb);
-    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     const before = await fsp.readFile(path.join(dir, "skill-library.json"), "utf8");
     await fsp.writeFile(path.join(repo.work, "other.md"), skillMd("solo", "Solo v2"));
     await fsp.rm(path.join(repo.work, "SKILL.md"));
@@ -277,7 +276,7 @@ describe("second review", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("old", "Old") });
     const dir = await project(sb);
-    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     await repo.commit({ "SKILL.md": skillMd("new", "New") });
     expect((await run(sb, ["update", "-y"], { cwd: dir })).code).toBe(0);
     const m = await readJson(path.join(dir, "skill-library.json"));
@@ -297,8 +296,8 @@ describe("second review", () => {
     const sb = await sandbox();
     const dir = await project(sb);
     await writeFiles(dir, { "a:b/SKILL.md": skillMd("colon", "C"), "x\\y/SKILL.md": skillMd("slash", "S") });
-    expect((await run(sb, ["add", "./a:b", "-y"], { cwd: dir })).code).toBe(0);
-    expect((await run(sb, ["add", "./x\\y", "-y"], { cwd: dir })).code).toBe(0);
+    expect((await run(sb, ["add", "-p", "./a:b", "-y"], { cwd: dir })).code).toBe(0);
+    expect((await run(sb, ["add", "-p", "./x\\y", "-y"], { cwd: dir })).code).toBe(0);
     const rows = JSON.parse((await run(sb, ["ls", "--json"], { cwd: dir })).stdout);
     expect(rows.map((r: any) => r.name).sort()).toEqual(["colon", "slash"]);
   });
@@ -354,7 +353,7 @@ describe("third review", () => {
     const dir = await project(sb);
     await run(sb, ["add", repo.url, "-g", "-y"]);
     const c2 = await repo.commit({ "SKILL.md": skillMd("solo", "v2") });
-    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     const index = await readJson(path.join(sb.store, "index.json"));
     const rec = index.skills[0];
     await fsp.rm(path.join(sb.store, rec.dir, c2.slice(0, 12), "SKILL.md"));
