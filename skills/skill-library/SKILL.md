@@ -71,9 +71,10 @@ Run the command before declaring a failure. If it fails, use its stderr and exit
 code to explain the specific cause briefly:
 
 - CLI missing: check `command -v skill-library` and `PATH`; install it with
-  `npm i -g skill-library`.
+  `npx skill-library self setup`.
 - Missing `SKILL_LIBRARY_TYPESAFE_API_KEY` or HTTP 401: query needs a valid
-  TypeSafe key in the agent's environment. Never print the key.
+  TypeSafe key in the agent's environment. Never print the key. Suggest the
+  user run `skill-library self doctor`, which checks the setup and says what's missing.
 - Connection error or timeout: online scoring could not reach TypeSafe. Check
   network/DNS, proxy settings, and agent sandbox restrictions. This does not
   establish that the service is down. If the environment reports restricted
