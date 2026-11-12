@@ -91,19 +91,25 @@ jobs:
           E2E_IMAGE_BUILT: "1"
 
   e2e-live:
-    name: End-to-end tests against the real services
+    name: End-to-end tests against the real services (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     # Real services and a real model: a failure is reported on the run, but never blocks a merge.
     continue-on-error: true
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The same release lines as the test job; the suite runs on the container's Node.
+        node: ["22", "24", "26"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      # Only runs scripts/e2e.mjs on the host; the tests use the container's Node.
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version: ${{ matrix.node }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -113,10 +119,10 @@ jobs:
         with:
           context: .
           file: test/e2e/Dockerfile
-          build-args: NODE_VERSION=24
+          build-args: NODE_VERSION=${{ matrix.node }}
           tags: skill-library-e2e
           load: true
-          cache-from: type=gha,scope=e2e-node24
+          cache-from: type=gha,scope=e2e-node${{ matrix.node }}
 
       # Real GitHub and skills.sh (read-only), and the real TypeSafe API with the repository secret.
       # Pull requests from forks get no secrets: the TypeSafe test is then skipped.
