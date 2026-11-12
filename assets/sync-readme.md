@@ -1,4 +1,4 @@
-# <a href="https://github.com/ianwijma/skill-library-skill"><img src="https://github.com/ianwijma/skill-library-skill/raw/develop/assets/icon.svg" alt="Skill Library" width="40" height="40" align="center"></a> {{title}}
+# <a href="https://github.com/ianwijma/skill-library-skill"><img src="https://github.com/ianwijma/skill-library-skill/raw/develop/assets/icon.svg" alt="Skill Library" width="32" height="32" align="absmiddle"></a> {{title}}
 
 <!-- skill-library:start -->
 ### Setup
