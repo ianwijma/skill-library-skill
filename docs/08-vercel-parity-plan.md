@@ -319,10 +319,11 @@ Exit codes: 0 / 1 (usage, incl. invalid agent) / 2 (runtime: API key, network, l
 - Source: `skills/skill-library/SKILL.md`, embedded at build time (`--loader:.md=text`, typed by
   `src/md.d.ts`). Content: when to query, the query command and its output, and failures (missing
   key, network). **`query` is the only command the gateway names**: no `list`, no management
-  commands, no sync, no store layout. It tells
-  the agent to use the plain output, not `--json` (that is for scripts). The agent reads only the paths `query` prints and is told not
+  commands, no sync, no store layout. It doesn't
+  mention `--json` or the tuning flags (`--threshold`, `--top`, stdin `-`): only `-a`. The agent reads only the paths `query` prints and is told not
   to look for skills anywhere else, so it never browses the library folder, the sync clone or its
-  git history. When `query` fails, the agent reports the cause and continues without skills.
+  git history. When `query` exits non-zero, the agent reports the cause and continues without skills; stderr notes
+  on a successful query are passed on to the user. A missing CLI or key points to the repo's quick start.
 - **Placement only during `add`** (after a successful add, not with `-l`; also when the source held only
   the gateway): for each installed agent with a global skills dir (plus agents named with `-a`), grouped
   by resolved physical dir, if `<dir>/skill-library/SKILL.md` is missing or differs, write it and print
