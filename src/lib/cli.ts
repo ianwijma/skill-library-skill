@@ -20,38 +20,57 @@ export function msgOf(err: unknown): string {
 
 /** Render an error the way vercel's diagnostics do: the message, then the fix on its own line(s). */
 export function formatError(err: unknown): string {
-  if (err instanceof CliError) return err.fix ? `${err.message}\n${err.fix}` : err.message;
+  if (err instanceof CliError) {
+    return err.fix ? `${err.message}\n${err.fix}` : err.message;
+  }
+
   return msgOf(err);
 }
 
 const sinks = new AsyncLocalStorage<(message: string) => void>();
 
-/** Run `fn` with warnings routed to `sink` instead of stderr (per async context, so overlapping API calls stay separate). */
+/**
+ * Run `fn` with warnings routed to `sink` instead of stderr
+ * (per async context, so overlapping API calls stay separate).
+ */
 export function withWarnSink<T>(sink: (message: string) => void, fn: () => Promise<T>): Promise<T> {
   return sinks.run(sink, fn);
 }
 
 export function warn(message: string): void {
   const sink = sinks.getStore();
-  if (sink) sink(message);
-  else console.error(`${pc.yellow("warning:")} ${message}`);
+
+  if (sink) {
+    sink(message);
+  } else {
+    console.error(`${pc.yellow("warning:")} ${message}`);
+  }
 }
 
 /** Notices that must never reach stdout (JSON mode keeps stdout to one value). */
 export function note(message: string): void {
   const sink = sinks.getStore();
-  if (sink) sink(message);
-  else console.error(message);
+
+  if (sink) {
+    sink(message);
+  } else {
+    console.error(message);
+  }
 }
 
 /** Strip terminal escapes from untrusted strings (port of vercel's sanitize.ts, MIT). */
 export function stripTerminalEscapes(str: string): string {
   return str
+    // eslint-disable-next-line no-control-regex -- stripping terminal control characters is the intent
     .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, "")
+    // eslint-disable-next-line no-control-regex -- stripping terminal control characters is the intent
     .replace(/\x1b[P^_][\s\S]*?(?:\x1b\\)/g, "")
+    // eslint-disable-next-line no-control-regex -- stripping terminal control characters is the intent
     .replace(/\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, "")
+    // eslint-disable-next-line no-control-regex -- stripping terminal control characters is the intent
     .replace(/\x1b[\x20-\x7e]/g, "")
     .replace(/[\x80-\x9f]/g, "")
+    // eslint-disable-next-line no-control-regex -- stripping terminal control characters is the intent
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
 }
 

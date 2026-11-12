@@ -15,12 +15,12 @@ import { CliError, msgOf } from "./cli.ts";
 
 export const DEFAULT_BASE_URL = "https://api.typesafe.ai";
 export const MODEL = "jev-latest";
-export const QUESTION_TEMPLATE =
-  "Would reading the skill `skill.name`, described below, improve how the assistant handles `state.task`?";
-export const CRITERIA_TRUE =
-  "The skill is directly relevant to the task and would change or guide how it is done";
-export const CRITERIA_FALSE =
-  "The skill is unrelated, redundant, or would not meaningfully help";
+export const QUESTION_TEMPLATE
+  = "Would reading the skill `skill.name`, described below, improve how the assistant handles `state.task`?";
+export const CRITERIA_TRUE
+  = "The skill is directly relevant to the task and would change or guide how it is done";
+export const CRITERIA_FALSE
+  = "The skill is unrelated, redundant, or would not meaningfully help";
 
 const MAX_RETRIES = 3;
 const ATTEMPT_TIMEOUT_MS = 30_000;
@@ -47,7 +47,11 @@ export function buildRequest(
   skills: SkillInput[],
 ): SystemOneRequest<Record<string, NoulQuestion>> {
   const questions: Record<string, NoulQuestion> = {};
-  for (const skill of skills) questions[skill.id] = buildQuestion(skill);
+
+  for (const skill of skills) {
+    questions[skill.id] = buildQuestion(skill);
+  }
+
   return { state: { task }, model: MODEL, questions };
 }
 
@@ -74,6 +78,7 @@ export async function callSystemOne(
       maxRetryAfterMs: MAX_RETRY_AFTER_MS,
     },
   });
+
   try {
     return await client.systemOne<Record<string, NoulQuestion>>(request);
   } catch (err) {
@@ -85,34 +90,41 @@ function toCliError(err: unknown, maxRetries: number): CliError {
   if (err instanceof APITimeoutError || err instanceof APIConnectionError) {
     return new CliError(
       2,
-      `typesafe api unreachable after ${maxRetries} retries: ${msgOf(err)}. ` +
-        "Check network access, DNS, proxy settings, and agent sandbox restrictions; " +
-        "a connection failure does not establish a service outage. " +
-        "Use 'skill-library list' to browse the local catalog without network access.",
+      `typesafe api unreachable after ${maxRetries} retries: ${msgOf(err)}. `
+      + "Check network access, DNS, proxy settings, and agent sandbox restrictions; "
+      + "a connection failure does not establish a service outage. "
+      + "Use 'skill-library list' to browse the local catalog without network access.",
     );
   }
+
   if (err instanceof AuthenticationError) {
     return new CliError(2, "typesafe api returned 401 unauthorized — check SKILL_LIBRARY_TYPESAFE_API_KEY");
   }
+
   if (err instanceof UnprocessableEntityError) {
     return new CliError(2, `typesafe api 422 (bad question construction): ${bodyOf(err.body)}`);
   }
+
   if (err instanceof RateLimitError) {
     return new CliError(2, `typesafe api ${err.status} after ${maxRetries} retries — try again shortly`);
   }
+
   if (err instanceof APIError) {
     return new CliError(2, `typesafe api ${err.status}: ${bodyOf(err.body)}`);
   }
+
   return new CliError(2, `typesafe api request failed: ${msgOf(err)}`);
 }
 
 function bodyOf(body: unknown): string {
   const text = typeof body === "string" ? body : body === undefined ? "" : JSON.stringify(body);
   const oneLine = text.replace(/\s+/g, " ").trim();
+
   return oneLine.length > 500 ? `${oneLine.slice(0, 500)}…` : oneLine;
 }
 
 function retryBaseMsFromEnv(): number {
-  const v = Number(process.env.SKILL_LIBRARY_RETRY_BASE_MS);
-  return Number.isFinite(v) && v >= 0 && v <= 60_000 ? v : 1_000;
+  const value = Number(process.env.SKILL_LIBRARY_RETRY_BASE_MS);
+
+  return Number.isFinite(value) && value >= 0 && value <= 60_000 ? value : 1_000;
 }

@@ -20,7 +20,7 @@ const SKILL = process.env.E2E_LIVE_SKILL ?? "frontend-design";
 /** The README's example library, and tasks whose answer is obvious: which skills must come back,
  *  and which must never. Set-based, at the default threshold, as a user would run it. */
 const README_SKILLS = ["pdf", "xlsx", "frontend-design"];
-const TASKS: { task: string; want: string[]; never: string[] }[] = [
+const TASKS: Array<{ task: string; want: string[]; never: string[] }> = [
   // The README's own examples.
   { task: "pull the totals table out of invoice.pdf into a spreadsheet", want: ["pdf", "xlsx"], never: ["frontend-design"] },
   { task: "build a landing page for a coffee shop", want: ["frontend-design"], never: ["pdf", "xlsx"] },
@@ -36,53 +36,79 @@ const TASKS: { task: string; want: string[]; never: string[] }[] = [
 describe.skipIf(!LIVE)("live services", () => {
   /** Real github.com and skills.sh: a git config without the local rewrite, the real search API. */
   async function liveWorld() {
-    const w = await world();
-    const gitconfig = path.join(w.root, "live-gitconfig");
+    const testWorld = await world();
+    const gitconfig = path.join(testWorld.root, "live-gitconfig");
+
     await fsp.writeFile(gitconfig, [...PUSH_BLOCK, ""].join("\n"));
-    return { w, env: { GIT_CONFIG_GLOBAL: gitconfig, SKILLS_API_URL: undefined } as Record<string, string | undefined> };
+
+    return {
+      testWorld,
+      env: { GIT_CONFIG_GLOBAL: gitconfig, SKILLS_API_URL: undefined } as Record<string, string | undefined>,
+    };
   }
 
   test("add from real GitHub, list, check", async () => {
-    const { w, env } = await liveWorld();
-    const listed = await w.ok(["add", SOURCE, "-l"], { env });
+    const { testWorld, env } = await liveWorld();
+    const listed = await testWorld.ok(["add", SOURCE, "-l"], { env });
+
     expect(listed.stdout).toContain(SKILL);
-    const added = (await w.ok(["add", SOURCE, "-g", "-y", "-s", SKILL, "--json"], { env })).json();
-    expect(added.map((r: any) => [r.name, r.status])).toEqual([[SKILL, "installed"]]);
-    await validateAll(w);
-    expect((await w.ok(["check", "-g"], { env })).stdout).toContain("All skills are up to date.");
+    const added = (await testWorld.ok(["add", SOURCE, "-g", "-y", "-s", SKILL, "--json"], { env })).json();
+
+    expect(added.map((row: any) => [row.name, row.status])).toEqual([[SKILL, "installed"]]);
+    await validateAll(testWorld);
+    expect((await testWorld.ok(["check", "-g"], { env })).stdout).toContain("All skills are up to date.");
   });
 
   test("find against the real skills.sh: results link to skills.sh; --owner narrows them", async () => {
-    const { w, env } = await liveWorld();
-    const r = await w.ok(["find", "frontend design"], { env });
-    expect(r.stdout).toMatch(/└ https:\/\/skills\.sh\/\S+/);
-    const owned = await w.ok(["find", "pdf", "--owner", "anthropics"], { env });
-    const links = [...owned.stdout.matchAll(/└ https:\/\/skills\.sh\/(\S+)/g)].map((m) => m[1]!);
+    const { testWorld, env } = await liveWorld();
+    const result = await testWorld.ok(["find", "frontend design"], { env });
+
+    expect(result.stdout).toMatch(/└ https:\/\/skills\.sh\/\S+/);
+    const owned = await testWorld.ok(["find", "pdf", "--owner", "anthropics"], { env });
+    const links = [...owned.stdout.matchAll(/└ https:\/\/skills\.sh\/(\S+)/g)].map((match) => match[1]!);
+
     expect(links.length, owned.stdout).toBeGreaterThan(0);
-    for (const l of links) expect(l.toLowerCase().startsWith("anthropics/"), l).toBe(true);
+
+    for (const link of links) {
+      expect(link.toLowerCase().startsWith("anthropics/"), link).toBe(true);
+    }
   });
 
   // The real model decides, so CI runs this tier with continue-on-error: a miss is reported, not blocking.
   const QUERY_TEST = "query against the real TypeSafe API: the README's library returns the right skills, never the unrelated one";
+
   if (!KEY) {
     console.warn("⚠ SKILL_LIBRARY_TYPESAFE_API_KEY is not set: skipping the real TypeSafe query test.");
     test.skip(`${QUERY_TEST} (SKILL_LIBRARY_TYPESAFE_API_KEY is not set)`, () => {});
-  } else test(QUERY_TEST, async () => {
-    const { w, env } = await liveWorld();
-    await w.ok(["add", SOURCE, "-g", "-y", "-s", ...README_SKILLS], { env });
-    const live = { ...env, SKILL_LIBRARY_TYPESAFE_API_KEY: KEY, SKILL_LIBRARY_TYPESAFE_API_BASE: undefined };
-    const misses: string[] = [];
-    for (const { task, want, never } of TASKS) {
-      const out = (await w.ok(["query", task, "--json"], { env: live })).json();
-      assertQueryJson(out);
-      const got = out.matches.filter((m: any) => !m.always);
-      const names = got.map((m: any) => m.name);
-      for (const m of got) expect(await exists(m.path), m.path).toBe(true);
-      const missing = want.filter((n) => !names.includes(n));
-      const wrong = never.filter((n) => names.includes(n));
-      if (missing.length || wrong.length) misses.push(`"${task}": got [${names.join(", ")}]${missing.length ? `, missing ${missing.join(", ")}` : ""}${wrong.length ? `, unexpected ${wrong.join(", ")}` : ""}`);
-    }
-    // Every task runs before failing, so one report shows all the misses.
-    expect(misses).toEqual([]);
-  });
+  } else {
+    test(QUERY_TEST, async () => {
+      const { testWorld, env } = await liveWorld();
+
+      await testWorld.ok(["add", SOURCE, "-g", "-y", "-s", ...README_SKILLS], { env });
+      const live = { ...env, SKILL_LIBRARY_TYPESAFE_API_KEY: KEY, SKILL_LIBRARY_TYPESAFE_API_BASE: undefined };
+      const misses: string[] = [];
+
+      for (const { task, want, never } of TASKS) {
+        const out = (await testWorld.ok(["query", task, "--json"], { env: live })).json();
+
+        assertQueryJson(out);
+        const got = out.matches.filter((match: any) => !match.always);
+        const names = got.map((match: any) => match.name);
+
+        for (const match of got) {
+          expect(await exists(match.path), match.path).toBe(true);
+        }
+
+        const missing = want.filter((name) => !names.includes(name));
+        const wrong = never.filter((name) => names.includes(name));
+
+        if (missing.length || wrong.length) {
+          misses.push(`"${task}": got [${names.join(", ")}]${missing.length ? `, missing ${missing.join(", ")}` : ""}${wrong.length ? `, unexpected ${wrong.join(", ")}` : ""}`);
+        }
+      }
+
+      // Every task runs before failing, so one report shows all the misses.
+      expect(misses).toEqual([]);
+    });
+  }
 });

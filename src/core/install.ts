@@ -55,12 +55,20 @@ interface Fetched {
 export async function installProject(opts: InstallOptions = {}): Promise<InstallResult> {
   const ctx = ctxOf(opts);
   const project = await loadProject(ctx.cwd);
-  if (!project || !project.exists) {
-    if (opts.frozen) throw new CliError(1, "No skill-library.json found (frozen lockfile).");
+
+  if (!project?.exists) {
+    if (opts.frozen) {
+      throw new CliError(1, "No skill-library.json found (frozen lockfile).");
+    }
+
     return { projectRoot: project?.root ?? ctx.cwd, skills: [], ok: true };
   }
+
   const entries = Object.entries(project.manifest.skills);
-  if (entries.length === 0 && opts.frozen) throw new CliError(1, "skill-library.json has no skills (frozen lockfile).");
+
+  if (entries.length === 0 && opts.frozen) {
+    throw new CliError(1, "skill-library.json has no skills (frozen lockfile).");
+  }
 
   const rows: InstallRow[] = [];
   const work: Array<{ id: string; entry: ManifestEntry; repair: boolean }> = [];
@@ -71,57 +79,78 @@ export async function installProject(opts: InstallOptions = {}): Promise<Install
       rows.push({ id, status: "local" });
       continue;
     }
+
     const record = findRecord(index, id);
     const key = record ? findVersion(record, pinOf(entry)) : undefined;
     const dir = record && key ? versionDir(ctx.store, record, key) : null;
     const hasDir = dir !== null && (await exists(dir));
     const hasMd = dir !== null && (await exists(path.join(dir, "SKILL.md")));
+
     if (!hasDir) {
       work.push({ id, entry, repair: false });
       continue;
     }
+
     // An existing folder without SKILL.md is incomplete: always repair it.
     if (!hasMd) {
       work.push({ id, entry, repair: true });
       continue;
     }
-    if (opts.force && (await hashSkillDir(dir!)) !== record!.versions[key!]!.hash) {
+
+    if (opts.force && (await hashSkillDir(dir)) !== record!.versions[key!]!.hash) {
       work.push({ id, entry, repair: true });
       continue;
     }
+
     rows.push({ id, status: "present" });
   }
 
   if (opts.dryRun) {
-    for (const w of work) rows.push({ id: w.id, status: "would-install" });
+    for (const item of work) {
+      rows.push({ id: item.id, status: "would-install" });
+    }
+
     return { projectRoot: project.root, skills: rows, ok: true };
   }
 
   const fetched = new Map<string, Fetched>();
-  for (const w of work) {
+
+  for (const item of work) {
     try {
-      fetched.set(w.id, await fetchPinned(ctx.store, w.id, w.entry));
+      fetched.set(item.id, await fetchPinned(ctx.store, item.id, item.entry));
     } catch (err) {
       const refused = err instanceof PinMismatch;
-      rows.push({ id: w.id, status: refused ? "refused" : "missing", message: msgOf(err) });
+
+      rows.push({ id: item.id, status: refused ? "refused" : "missing", message: msgOf(err) });
     }
   }
 
   if (fetched.size > 0) {
     await mutateIndex(ctx.store, async (idx) => {
-      for (const w of work) {
-        const f = fetched.get(w.id);
-        if (!f) continue;
+      for (const item of work) {
+        const fetchedSkill = fetched.get(item.id);
+
+        if (!fetchedSkill) {
+          continue;
+        }
+
         try {
-          rows.push({ id: w.id, status: await place(ctx.store, idx, w.id, w.entry, f, w.repair) });
+          const status = await place(ctx.store, idx, item.id, item.entry, fetchedSkill, item.repair);
+
+          rows.push({ id: item.id, status });
         } catch (err) {
-          rows.push({ id: w.id, status: "missing", message: msgOf(err) });
+          rows.push({ id: item.id, status: "missing", message: msgOf(err) });
         }
       }
     });
   }
-  for (const f of fetched.values()) await fsp.rm(f.staged, { recursive: true, force: true }).catch(() => {});
-  const ok = rows.every((r) => r.status !== "refused" && r.status !== "missing");
+
+  for (const fetchedSkill of fetched.values()) {
+    await fsp.rm(fetchedSkill.staged, { recursive: true, force: true }).catch(() => {});
+  }
+
+  const ok = rows.every((row) => row.status !== "refused" && row.status !== "missing");
+
   return { projectRoot: project.root, skills: rows, ok };
 }
 
@@ -132,44 +161,65 @@ class PinMismatch extends CliError {
 }
 
 function pinOf(entry: ManifestEntry): { commit?: string; hash?: string } {
-  return { ...(entry.commit !== undefined ? { commit: entry.commit } : {}), ...(entry.hash !== undefined ? { hash: entry.hash } : {}) };
+  return {
+    ...(entry.commit !== undefined ? { commit: entry.commit } : {}),
+    ...(entry.hash !== undefined ? { hash: entry.hash } : {}),
+  };
 }
 
 async function fetchPinned(store: string, id: string, entry: ManifestEntry): Promise<Fetched> {
   const staged = await stagingDir(store);
   let checkout: string | null = null;
+
   try {
     let src: string;
     let kind: "folder" | "file" = "folder";
     let tree: string | null = null;
+
     if (entry.commit !== undefined) {
-      if (!entry.source) throw new CliError(1, `${id} has no source in skill-library.json`);
+      if (!entry.source) {
+        throw new CliError(1, `${id} has no source in skill-library.json`);
+      }
+
       checkout = await fetchCommit(entry.source, entry.commit);
       src = path.join(checkout, entry.path ?? "");
       tree = await treeAt(checkout, entry.path ?? "");
-      if (!(await exists(path.join(src, "SKILL.md")))) throw new CliError(2, `${id}: ${entry.path || "SKILL.md"} not found at ${entry.commit.slice(0, 12)}`);
+
+      if (!(await exists(path.join(src, "SKILL.md")))) {
+        throw new CliError(2, `${id}: ${entry.path || "SKILL.md"} not found at ${entry.commit.slice(0, 12)}`);
+      }
     } else {
-      if (!entry.source) throw new CliError(1, `${id} has no source in skill-library.json`);
+      if (!entry.source) {
+        throw new CliError(1, `${id} has no source in skill-library.json`);
+      }
+
       src = path.resolve(expandHome(entry.source));
       let st;
+
       try {
         st = await fsp.stat(src);
       } catch {
         throw new CliError(2, `${id}: folder not found: ${src}`);
       }
+
       kind = st.isFile() ? "file" : "folder";
     }
+
     await copySkill(src, staged, kind);
     const hash = await hashSkillDir(staged);
+
     if (entry.hash !== undefined && hash !== entry.hash) {
       const name = id.split("/").pop();
+
       throw new PinMismatch(
         entry.commit !== undefined
           ? `${id}: content hash does not match skill-library.json (expected ${entry.hash}, got ${hash}); refusing to install`
-          : `${name} changed since it was pinned; run skill-library add ${entry.source} to re-pin`,
+          : `${String(name)} changed since it was pinned; run skill-library add ${entry.source} to re-pin`,
       );
     }
+
     const meta = await requireStagedSkill(staged, id, entry.name ? { name: entry.name, description: "" } : undefined);
+
     return { staged, hash, tree, name: meta.name, description: meta.description };
   } catch (err) {
     await fsp.rm(staged, { recursive: true, force: true }).catch(() => {});
@@ -179,9 +229,17 @@ async function fetchPinned(store: string, id: string, entry: ManifestEntry): Pro
   }
 }
 
-async function place(store: string, index: StoreIndex, id: string, entry: ManifestEntry, f: Fetched, repair: boolean): Promise<InstallStatus> {
+async function place(
+  store: string,
+  index: StoreIndex,
+  id: string,
+  entry: ManifestEntry,
+  fetchedSkill: Fetched,
+  repair: boolean,
+): Promise<InstallStatus> {
   const at = now();
   let record = findRecord(index, id);
+
   if (!record) {
     record = {
       id,
@@ -189,7 +247,7 @@ async function place(store: string, index: StoreIndex, id: string, entry: Manife
         entry.commit !== undefined
           ? { type: "git", url: entry.source!, ref: entry.ref ?? null, path: entry.path ?? "" }
           : { type: "folder", url: path.resolve(expandHome(entry.source!)), ref: null, path: "" },
-      dir: skillDirFor(id, f.name),
+      dir: skillDirFor(id, fetchedSkill.name),
       versions: {},
       current: "",
       global: false,
@@ -199,20 +257,27 @@ async function place(store: string, index: StoreIndex, id: string, entry: Manife
     };
     index.skills.push(record);
   }
-  const info = { ...(entry.commit !== undefined ? { commit: entry.commit } : {}), hash: f.hash };
+
+  const info = { ...(entry.commit !== undefined ? { commit: entry.commit } : {}), hash: fetchedSkill.hash };
   const key = findVersion(record, info) ?? versionKeyFor(record, info);
   const dest = versionDir(store, record, key);
+
   // Re-check under the lock: an existing folder is kept only if intact, else replaced with rollback.
-  await placeVersion(f.staged, dest, f.hash);
+  await placeVersion(fetchedSkill.staged, dest, fetchedSkill.hash);
   record.versions[key] ??= {
     ...(entry.commit !== undefined ? { commit: entry.commit } : {}),
-    ...(f.tree ? { tree: f.tree } : {}),
-    hash: f.hash,
-    name: f.name,
-    description: f.description,
+    ...(fetchedSkill.tree ? { tree: fetchedSkill.tree } : {}),
+    hash: fetchedSkill.hash,
+    name: fetchedSkill.name,
+    description: fetchedSkill.description,
     addedAt: at,
   };
-  if (record.current === "") record.current = key;
+
+  if (record.current === "") {
+    record.current = key;
+  }
+
   record.updatedAt = at;
+
   return repair ? "repaired" : "installed";
 }

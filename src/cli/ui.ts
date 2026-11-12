@@ -5,10 +5,10 @@ import { isRunningInAgent } from "../lib/detect-agent.ts";
 /** Replaced with package.json's version by scripts/build.mjs; unset when running from src. */
 declare const __SKILL_LIBRARY_VERSION__: string | undefined;
 
-export const VERSION: string =
-  typeof __SKILL_LIBRARY_VERSION__ === "string"
+export const VERSION: string
+  = typeof __SKILL_LIBRARY_VERSION__ === "string"
     ? __SKILL_LIBRARY_VERSION__
-    : JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version;
+    : (JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string }).version;
 
 const LOGO_LINES = [
   "┌─┐┬┌─┬┬  ┬    ┬  ┬┌┐ ┬─┐┌─┐┬─┐┬ ┬",
@@ -21,13 +21,17 @@ const RESET = "\x1b[0m";
 
 /** Logo only on a TTY and never inside an agent (vercel hides it there too). */
 function logoAllowed(): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-conversion -- isTTY is undefined off a TTY
   return !!process.stdout.isTTY && !isRunningInAgent();
 }
 
 export function showLogo(): void {
-  if (!logoAllowed()) return;
+  if (!logoAllowed()) {
+    return;
+  }
+
   console.log();
-  LOGO_LINES.forEach((line, i) => console.log(`${GRAYS[i]}${line}${RESET}`));
+  LOGO_LINES.forEach((line, index) => console.log(`${GRAYS[index]!}${line}${RESET}`));
 }
 
 export function showBanner(): void {
@@ -37,8 +41,10 @@ export function showBanner(): void {
     console.log(pc.gray("A skill library for agents — skills load on demand through one query"));
     console.log();
   }
+
   const row = (cmd: string, arg: string, desc: string) =>
     console.log(`  ${pc.gray("$")} skill-library ${cmd}${arg ? ` ${pc.gray(arg)}` : ""}${" ".repeat(Math.max(1, 30 - cmd.length - (arg ? arg.length + 1 : 0)))}${pc.gray(desc)}`);
+
   row("self setup", "", "Install, update and connect your agents");
   row("add", "<package>", "Add a skill to the library");
   row("query", '"<task>"', "Find the skills for a task");

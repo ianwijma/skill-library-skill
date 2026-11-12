@@ -24,19 +24,22 @@ function isVersionPin(value: string): boolean {
 
 function isLocalPath(input: string): boolean {
   return (
-    isAbsolute(input) ||
-    input.startsWith("./") ||
-    input.startsWith("../") ||
-    input === "." ||
-    input === ".." ||
-    /^[a-zA-Z]:[/\\]/.test(input)
+    isAbsolute(input)
+    || input.startsWith("./")
+    || input.startsWith("../")
+    || input === "."
+    || input === ".."
+    || /^[a-zA-Z]:[/\\]/.test(input)
   );
 }
 
 function sanitizeSubpath(subpath: string): string {
   for (const segment of subpath.replace(/\\/g, "/").split("/")) {
-    if (segment === "..") throw new CliError(1, `Unsafe subpath: ${subpath}`);
+    if (segment === "..") {
+      throw new CliError(1, `Unsafe subpath: ${subpath}`);
+    }
   }
+
   return subpath;
 }
 
@@ -53,21 +56,40 @@ function decode(value: string): string {
 }
 
 function looksLikeGitSource(input: string): boolean {
-  if (/^(github:|gitlab:|git@|ssh:\/\/|git:\/\/|file:\/\/)/.test(input)) return true;
-  if (/^https?:\/\//.test(input)) return true;
+  if (/^(github:|gitlab:|git@|ssh:\/\/|git:\/\/|file:\/\/)/.test(input)) {
+    return true;
+  }
+
+  if (/^https?:\/\//.test(input)) {
+    return true;
+  }
+
   return !input.includes(":") && !input.startsWith(".") && !input.startsWith("/") && /^([^/]+)\/([^/]+)(?:\/(.+)|@(.+))?$/.test(input);
 }
 
 function parseFragment(input: string): { rest: string; ref?: string; skillFilter?: string } {
-  const i = input.indexOf("#");
-  if (i < 0) return { rest: input };
-  const rest = input.slice(0, i);
-  const fragment = input.slice(i + 1);
-  if (!fragment || !looksLikeGitSource(rest)) return { rest: input };
+  const hashIndex = input.indexOf("#");
+
+  if (hashIndex < 0) {
+    return { rest: input };
+  }
+
+  const rest = input.slice(0, hashIndex);
+  const fragment = input.slice(hashIndex + 1);
+
+  if (!fragment || !looksLikeGitSource(rest)) {
+    return { rest: input };
+  }
+
   const at = fragment.indexOf("@");
-  if (at === -1) return { rest, ref: decode(fragment) };
+
+  if (at === -1) {
+    return { rest, ref: decode(fragment) };
+  }
+
   const ref = fragment.slice(0, at);
   const skill = fragment.slice(at + 1);
+
   return { rest, ...(ref ? { ref: decode(ref) } : {}), ...(skill ? { skillFilter: decode(skill) } : {}) };
 }
 
@@ -76,85 +98,135 @@ function unsupported(input: string, what: string): never {
 }
 
 export function parseSource(input: string, cwd: string = process.cwd()): ParsedSource {
-  if (isLocalPath(input)) return { type: "local", url: resolve(cwd, input) };
+  if (isLocalPath(input)) {
+    return { type: "local", url: resolve(cwd, input) };
+  }
 
   const frag = parseFragment(input);
   let rest = SOURCE_ALIASES[frag.rest] ?? frag.rest;
   const fragRef = frag.ref;
   const fragSkill = frag.skillFilter;
-  const withFrag = (s: ParsedSource): ParsedSource => ({
-    ...s,
-    ...(s.ref === undefined && fragRef ? { ref: fragRef } : {}),
-    ...(s.skillFilter === undefined && fragSkill ? { skillFilter: fragSkill } : {}),
+  const withFrag = (parsed: ParsedSource): ParsedSource => ({
+    ...parsed,
+    ...(parsed.ref === undefined && fragRef ? { ref: fragRef } : {}),
+    ...(parsed.skillFilter === undefined && fragSkill ? { skillFilter: fragSkill } : {}),
   });
 
   const gh = rest.match(/^github:(.+)$/);
-  if (gh) return withFrag(parseSource(gh[1]!, cwd));
+
+  if (gh) {
+    return withFrag(parseSource(gh[1]!, cwd));
+  }
+
   const gl = rest.match(/^gitlab:(.+)$/);
-  if (gl) rest = `https://gitlab.com/${gl[1]!}`;
+
+  if (gl) {
+    rest = `https://gitlab.com/${gl[1]!}`;
+  }
 
   if (/^https?:\/\//.test(rest)) {
-    let u: URL;
+    let parsedUrl: URL;
+
     try {
-      u = new URL(rest);
+      parsedUrl = new URL(rest);
     } catch {
       throw new CliError(1, `Invalid source URL: ${input}`);
     }
-    const host = u.hostname.toLowerCase();
+
+    const host = parsedUrl.hostname.toLowerCase();
+
     if (host === "raw.githubusercontent.com" || host === "codeload.github.com" || host === "objects.githubusercontent.com") {
       unsupported(input, "Download");
     }
+
     if (host === "github.com") {
-      if (/^\/[^/]+\/[^/]+\/(?:archive\/|raw\/|releases\/)/.test(u.pathname)) unsupported(input, "Download");
-      const tree = u.pathname.match(/^\/([^/]+)\/([^/]+)\/tree\/([^/]+)(?:\/(.+?))?\/?$/);
+      if (/^\/[^/]+\/[^/]+\/(?:archive\/|raw\/|releases\/)/.test(parsedUrl.pathname)) {
+        unsupported(input, "Download");
+      }
+
+      const tree = parsedUrl.pathname.match(/^\/([^/]+)\/([^/]+)\/tree\/([^/]+)(?:\/(.+?))?\/?$/);
+
       if (tree) {
         const [, owner, repo, ref, sub] = tree;
+
         return withFrag({
           type: "git",
-          url: `https://github.com/${owner}/${repo!.replace(/\.git$/, "")}.git`,
+          url: `https://github.com/${owner!}/${repo!.replace(/\.git$/, "")}.git`,
           ref: ref!,
           ...(sub ? { subpath: sanitizeSubpath(decode(sub)) } : {}),
         });
       }
-      const repo = u.pathname.match(/^\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
-      if (repo) return withFrag({ type: "git", url: `https://github.com/${repo[1]}/${repo[2]}.git` });
+
+      const repo = parsedUrl.pathname.match(/^\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
+
+      if (repo) {
+        return withFrag({ type: "git", url: `https://github.com/${repo[1]!}/${repo[2]!}.git` });
+      }
+
       throw new CliError(1, `Unrecognised GitHub URL: ${input}`);
     }
-    if (/\/-\/(?:tree|archive|raw)\//.test(u.pathname)) unsupported(input, "GitLab tree/archive URL");
-    if (host === "gitlab.com") {
-      const repoPath = u.pathname.replace(/^\/+/, "").replace(/\/+$/, "").replace(/\.git$/, "");
-      if (repoPath.includes("/")) return withFrag({ type: "git", url: `https://gitlab.com/${repoPath}.git` });
+
+    if (/\/-\/(?:tree|archive|raw)\//.test(parsedUrl.pathname)) {
+      unsupported(input, "GitLab tree/archive URL");
     }
-    if (/\.git(?:$|[/?])/i.test(rest) || u.pathname.split("/").includes("_git")) {
+
+    if (host === "gitlab.com") {
+      const repoPath = parsedUrl.pathname.replace(/^\/+/, "").replace(/\/+$/, "").replace(/\.git$/, "");
+
+      if (repoPath.includes("/")) {
+        return withFrag({ type: "git", url: `https://gitlab.com/${repoPath}.git` });
+      }
+    }
+
+    if (/\.git(?:$|[/?])/i.test(rest) || parsedUrl.pathname.split("/").includes("_git")) {
       return withFrag({ type: "git", url: rest });
     }
+
     unsupported(input, "Well-known / download");
   }
 
   if (/^(git@|ssh:\/\/|git:\/\/|file:\/\/)/.test(rest)) {
     const sshTree = rest.match(/^git@([^:]+):([^/]+)\/([^/]+?)(?:\.git)?\/tree\/([^/]+)(?:\/(.+))?$/);
+
     if (sshTree) {
       const [, host, owner, repo, ref, sub] = sshTree;
-      return withFrag({ type: "git", url: `git@${host}:${owner}/${repo}.git`, ref: ref!, ...(sub ? { subpath: sanitizeSubpath(sub) } : {}) });
+
+      return withFrag({
+        type: "git",
+        url: `git@${host!}:${owner!}/${repo!}.git`,
+        ref: ref!,
+        ...(sub ? { subpath: sanitizeSubpath(sub) } : {}),
+      });
     }
-    if (/^ext::/i.test(rest)) throw new CliError(1, "Unsupported git transport: ext");
+
+    if (/^ext::/i.test(rest)) {
+      throw new CliError(1, "Unsupported git transport: ext");
+    }
+
     return withFrag({ type: "git", url: rest });
   }
 
   const at = rest.match(/^([^/]+)\/([^/@]+)@(.+)$/);
+
   if (at && !rest.includes(":") && !rest.startsWith(".") && !rest.startsWith("/")) {
     const [, owner, repo, sel] = at;
-    const url = `https://github.com/${owner}/${repo}.git`;
-    if (!fragRef && !fragSkill && isVersionPin(sel!)) return { type: "git", url, ref: sel! };
+    const url = `https://github.com/${owner!}/${repo!}.git`;
+
+    if (!fragRef && !fragSkill && isVersionPin(sel!)) {
+      return { type: "git", url, ref: sel! };
+    }
+
     return withFrag({ type: "git", url, skillFilter: fragSkill || sel! });
   }
 
   const short = rest.match(/^([^/]+)\/([^/]+)(?:\/(.+?))?\/?$/);
+
   if (short && !rest.includes(":") && !rest.startsWith(".") && !rest.startsWith("/")) {
     const [, owner, repo, sub] = short;
+
     return withFrag({
       type: "git",
-      url: `https://github.com/${owner}/${repo}.git`,
+      url: `https://github.com/${owner!}/${repo!}.git`,
       ...(sub ? { subpath: sanitizeSubpath(sub) } : {}),
     });
   }
@@ -162,5 +234,6 @@ export function parseSource(input: string, cwd: string = process.cwd()): ParsedS
   if (/^[a-z0-9-]+$/i.test(rest)) {
     throw new CliError(1, `Unrecognised source: ${input}`, "Use owner/repo, a git URL or a local path (./path).");
   }
+
   return withFrag({ type: "git", url: rest });
 }

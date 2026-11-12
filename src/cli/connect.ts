@@ -6,7 +6,7 @@ export function connectCommand(ctx: Ctx) {
   return warnUnknownOptions(newCommand("connect"))
     .description("Replaced by skill-library self setup")
     .action(() => {
-    console.error("Error: connect was replaced by self setup\nRun skill-library self setup to install the gateway skill into your agents.");
-    ctx.done(1);
-  });
+      console.error("Error: connect was replaced by self setup\nRun skill-library self setup to install the gateway skill into your agents.");
+      ctx.done(1);
+    });
 }

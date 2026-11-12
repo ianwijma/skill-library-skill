@@ -23,8 +23,12 @@ export async function listSkills(opts: ListOptions = {}): Promise<ListResult> {
   // Without a skill-library.json there is no project: list the global library.
   const project = found?.exists ? found : null;
   const global = !project;
-  const skills = global ? await storeSkills(ctx.store, index, true) : await projectSkills(ctx.store, index, project!);
-  const matches = filter === "all" ? skills : skills.filter((s) => filter.some((a) => agentsMatch(s.agents, a)));
-  matches.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : 1));
+  const skills = global ? await storeSkills(ctx.store, index, true) : await projectSkills(ctx.store, index, project);
+  const matches = filter === "all" ? skills : skills.filter((skill) => filter.some((agent) => agentsMatch(skill.agents, agent)));
+
+  matches.sort((left, right) => (
+    left.name < right.name ? -1 : left.name > right.name ? 1 : left.id < right.id ? -1 : 1
+  ));
+
   return { scope: global ? "global" : "project", projectRoot: project?.root ?? null, skills: matches };
 }

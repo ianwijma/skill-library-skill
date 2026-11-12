@@ -48,8 +48,13 @@ export function buildProgram(argv: string[], done: (code: number) => void): Comm
     done,
     argv,
     globals(): GlobalOpts {
-      const o = program.opts();
-      return { cwd: process.cwd(), ...(o.store !== undefined ? { store: o.store } : {}), verbose: !!o.verbose };
+      const flags = program.opts();
+
+      return {
+        cwd: process.cwd(),
+        ...(flags.store !== undefined ? { store: flags.store } : {}),
+        verbose: !!flags.verbose,
+      };
     },
   };
 
@@ -58,20 +63,31 @@ export function buildProgram(argv: string[], done: (code: number) => void): Comm
   // are passed on to it).
   program.allowUnknownOption().action(() => {
     const [first] = program.args;
+
     if (first === undefined) {
       showBanner();
-      return done(0);
+
+      done(0);
+
+      return;
     }
+
     if (first === "-v") {
       console.log(VERSION);
-      return done(0);
+
+      done(0);
+
+      return;
     }
+
     console.log(`Unknown command: ${first}\nRun skill-library --help for usage.`);
     done(1);
   });
 
   program.commandsGroup("Manage Skills:");
-  program.addCommand(addCommand(ctx)).addCommand(useCommand(ctx)).addCommand(removeCommand(ctx)).addCommand(listCommand(ctx)).addCommand(findCommand(ctx));
+  program.addCommand(addCommand(ctx)).addCommand(useCommand(ctx)).addCommand(removeCommand(ctx))
+    .addCommand(listCommand(ctx))
+    .addCommand(findCommand(ctx));
   program.commandsGroup("Updates:");
   program.addCommand(updateCommand(ctx)).addCommand(checkCommand(ctx));
   program.commandsGroup("Project:");
@@ -83,5 +99,6 @@ export function buildProgram(argv: string[], done: (code: number) => void): Comm
   program.commandsGroup("Add-ons:");
   program.addCommand(queryCommand(ctx));
   program.addCommand(connectCommand(ctx), { hidden: true });
+
   return program;
 }

@@ -6,35 +6,49 @@ import { exists, plain, world } from "./harness.ts";
 
 describe("help", () => {
   test("--help and -h print the top-level page: every command and the global options; exit 0", async () => {
-    const w = await world();
-    const main = plain((await w.ok(["--help"])).stdout);
-    expect(plain((await w.ok(["-h"])).stdout)).toBe(main);
-    for (const cmd of ["add", "install", "list", "remove", "update", "check", "find", "init", "query", "sync", "self", "use"]) expect(main).toContain(cmd);
-    for (const opt of ["--store", "--verbose", "--version"]) expect(main).toContain(opt);
+    const testWorld = await world();
+    const main = plain((await testWorld.ok(["--help"])).stdout);
+
+    expect(plain((await testWorld.ok(["-h"])).stdout)).toBe(main);
+
+    for (const cmd of ["add", "install", "list", "remove", "update", "check", "find", "init", "query", "sync", "self", "use"]) {
+      expect(main).toContain(cmd);
+    }
+
+    for (const opt of ["--store", "--verbose", "--version"]) {
+      expect(main).toContain(opt);
+    }
   });
 
   test("--help / -h after any command or subcommand (and alias) exits 0 and runs nothing", async () => {
-    const w = await world();
+    const testWorld = await world();
+
     for (const spec of HELP_SPECS) {
       for (const cmd of [spec.cmd, ...(spec.aliases ?? [])]) {
         for (const flag of ["--help", "-h"]) {
-          const r = await w.run([...cmd.split(" "), flag]);
-          expect(r.code, `${cmd} ${flag}`).toBe(0);
-          expect(r.stdout.trim(), `${cmd} ${flag}`).not.toBe("");
+          const result = await testWorld.run([...cmd.split(" "), flag]);
+
+          expect(result.code, `${cmd} ${flag}`).toBe(0);
+          expect(result.stdout.trim(), `${cmd} ${flag}`).not.toBe("");
         }
       }
     }
-    expect(await exists(w.store)).toBe(false);
-    expect(await exists(`${w.home}/.config`)).toBe(false);
+
+    expect(await exists(testWorld.store)).toBe(false);
+    expect(await exists(`${testWorld.home}/.config`)).toBe(false);
   });
 
   for (const spec of HELP_SPECS) {
     test(`${spec.cmd} --help is ${spec.cmd}'s own page${spec.aliases ? ` (also ${spec.aliases.join(", ")})` : ""}`, async () => {
-      const w = await world();
-      const own = (await w.ok([...spec.cmd.split(" "), "--help"])).stdout;
+      const testWorld = await world();
+      const own = (await testWorld.ok([...spec.cmd.split(" "), "--help"])).stdout;
+
       expectCommandHelp(own, spec);
-      expect(plain((await w.ok([...spec.cmd.split(" "), "-h"])).stdout)).toBe(plain(own));
-      for (const alias of spec.aliases ?? []) expect(plain((await w.ok([alias, "--help"])).stdout), alias).toBe(plain(own));
+      expect(plain((await testWorld.ok([...spec.cmd.split(" "), "-h"])).stdout)).toBe(plain(own));
+
+      for (const alias of spec.aliases ?? []) {
+        expect(plain((await testWorld.ok([alias, "--help"])).stdout), alias).toBe(plain(own));
+      }
     });
   }
 });

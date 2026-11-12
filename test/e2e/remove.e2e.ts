@@ -6,281 +6,323 @@ import { exists, readJson, skillMd, world, type World } from "./harness.ts";
 import { expectUsageError } from "./contract.ts";
 import { validateAll, type Manifest, type StoreIndex } from "./validate.ts";
 
-async function index(w: World): Promise<StoreIndex> {
-  return readJson<StoreIndex>(path.join(w.store, "index.json"));
+async function index(testWorld: World): Promise<StoreIndex> {
+  return readJson<StoreIndex>(path.join(testWorld.store, "index.json"));
 }
 
-async function names(w: World): Promise<string[]> {
-  return (await index(w)).skills.map((s) => s.versions[s.current]!.name).sort();
+async function names(testWorld: World): Promise<string[]> {
+  return (await index(testWorld)).skills.map((skill) => skill.versions[skill.current]!.name).sort();
 }
 
 /** A library with three global folder skills: alpha, beta (codex + claude-code), gamma (codex only). */
-async function seeded(): Promise<{ w: World; src: string }> {
-  const w = await world();
-  const src = await w.write(await w.dir("src"), {
+async function seeded(): Promise<{ testWorld: World; src: string }> {
+  const testWorld = await world();
+  const src = await testWorld.write(await testWorld.dir("src"), {
     "alpha/SKILL.md": skillMd("alpha", "Alpha skill"),
     "beta/SKILL.md": skillMd("beta", "Beta skill"),
     "gamma/SKILL.md": skillMd("gamma", "Gamma skill"),
   });
-  await w.ok(["add", path.join(src, "alpha"), "-g", "-y"]);
-  await w.ok(["add", path.join(src, "beta"), "-g", "-y", "-a", "codex", "claude-code"]);
-  await w.ok(["add", path.join(src, "gamma"), "-g", "-y", "-a", "codex"]);
-  await validateAll(w);
-  return { w, src };
+
+  await testWorld.ok(["add", path.join(src, "alpha"), "-g", "-y"]);
+  await testWorld.ok(["add", path.join(src, "beta"), "-g", "-y", "-a", "codex", "claude-code"]);
+  await testWorld.ok(["add", path.join(src, "gamma"), "-g", "-y", "-a", "codex"]);
+  await validateAll(testWorld);
+
+  return { testWorld, src };
 }
 
 describe("remove", () => {
   test("global: by name, -s/--skill and full id, under every alias; folders are deleted", async () => {
-    const { w, src } = await seeded();
-    const alphaDir = path.join(w.store, (await index(w)).skills.find((s) => s.id.endsWith("/alpha"))!.dir);
+    const { testWorld, src } = await seeded();
+    const alphaDir = path.join(testWorld.store, (await index(testWorld)).skills.find((skill) => skill.id.endsWith("/alpha"))!.dir);
+
     expect(await exists(alphaDir)).toBe(true);
 
-    const r = await w.ok(["remove", "alpha", "-y"]);
-    expect(r.stdout).toContain(`✓ Removed alpha (path://${path.join(src, "alpha")})`);
-    expect(r.stdout).toContain("Successfully removed 1 skill(s)");
-    expect(r.stdout).toContain("Done!");
+    const result = await testWorld.ok(["remove", "alpha", "-y"]);
+
+    expect(result.stdout).toContain(`✓ Removed alpha (path://${path.join(src, "alpha")})`);
+    expect(result.stdout).toContain("Successfully removed 1 skill(s)");
+    expect(result.stdout).toContain("Done!");
     expect(await exists(alphaDir)).toBe(false);
-    expect(await names(w)).toEqual(["beta", "gamma"]);
-    await validateAll(w);
+    expect(await names(testWorld)).toEqual(["beta", "gamma"]);
+    await validateAll(testWorld);
 
-    await w.ok(["rm", "-g", "-s", "beta", "-y"]);
-    expect(await names(w)).toEqual(["gamma"]);
-    await validateAll(w);
+    await testWorld.ok(["rm", "-g", "-s", "beta", "-y"]);
+    expect(await names(testWorld)).toEqual(["gamma"]);
+    await validateAll(testWorld);
 
-    await w.ok(["r", "--global", "--skill", `path://${path.join(src, "gamma")}`, "--yes"]);
-    expect(await names(w)).toEqual([]);
+    await testWorld.ok(["r", "--global", "--skill", `path://${path.join(src, "gamma")}`, "--yes"]);
+    expect(await names(testWorld)).toEqual([]);
     // Removing the last skill leaves a valid, empty library.
-    const idx = await validateAll(w);
+    const idx = await validateAll(testWorld);
+
     expect(idx.skills).toEqual([]);
-    expect(await fsp.readdir(path.join(w.store, "skills"))).toEqual([]);
-    expect((await w.ok(["list", "-g"])).stdout).toContain("No global skills found.");
+    expect(await fsp.readdir(path.join(testWorld.store, "skills"))).toEqual([]);
+    expect((await testWorld.ok(["list", "-g"])).stdout).toContain("No global skills found.");
   });
 
   test("several names at once (positionals + -s), and unmatched names exit 0", async () => {
-    const { w } = await seeded();
-    const r = await w.ok(["remove", "alpha", "nope", "-s", "gamma", "-y"]);
-    expect(r.stdout).toContain("✓ Removed alpha");
-    expect(r.stdout).toContain("✓ Removed gamma");
-    expect(r.stdout).toContain("Successfully removed 2 skill(s)");
-    expect(await names(w)).toEqual(["beta"]);
-    await validateAll(w);
+    const { testWorld } = await seeded();
+    const result = await testWorld.ok(["remove", "alpha", "nope", "-s", "gamma", "-y"]);
 
-    const none = await w.ok(["remove", "nope", "nada", "-y"]);
+    expect(result.stdout).toContain("✓ Removed alpha");
+    expect(result.stdout).toContain("✓ Removed gamma");
+    expect(result.stdout).toContain("Successfully removed 2 skill(s)");
+    expect(await names(testWorld)).toEqual(["beta"]);
+    await validateAll(testWorld);
+
+    const none = await testWorld.ok(["remove", "nope", "nada", "-y"]);
+
     expect(none.stdout).toBe("No matching skills found for: nope, nada\n");
-    expect(await names(w)).toEqual(["beta"]);
+    expect(await names(testWorld)).toEqual(["beta"]);
   });
 
   test("-a removes agents from a skill's list; the last agent removes the skill; all-agents skills explain", async () => {
-    const { w } = await seeded();
-    const agentsOf = async (n: string) => (await index(w)).skills.find((s) => s.versions[s.current]!.name === n)?.agents;
+    const { testWorld } = await seeded();
+    const agentsOf = async (skillName: string) =>
+      (await index(testWorld)).skills.find((skill) => skill.versions[skill.current]!.name === skillName)?.agents;
 
-    const one = await w.ok(["remove", "beta", "-a", "codex", "-y"]);
+    const one = await testWorld.ok(["remove", "beta", "-a", "codex", "-y"]);
+
     expect(one.stdout).toContain("✓ Updated agents for beta");
     expect(await agentsOf("beta")).toEqual(["claude-code"]);
-    await validateAll(w);
+    await validateAll(testWorld);
     // Agents not on the list change nothing but still count as handled.
-    await w.ok(["remove", "beta", "--agent", "cursor", "-y"]);
+    await testWorld.ok(["remove", "beta", "--agent", "cursor", "-y"]);
     expect(await agentsOf("beta")).toEqual(["claude-code"]);
 
-    const last = await w.ok(["remove", "gamma", "-a", "codex", "-y"]);
+    const last = await testWorld.ok(["remove", "gamma", "-a", "codex", "-y"]);
+
     expect(last.stdout).toContain("✓ Removed gamma");
     expect(await agentsOf("gamma")).toBeUndefined();
-    await validateAll(w);
+    await validateAll(testWorld);
 
-    const all = await w.ok(["remove", "alpha", "-a", "codex", "-y"]);
+    const all = await testWorld.ok(["remove", "alpha", "-a", "codex", "-y"]);
+
     expect(all.stdout).toContain("! alpha is available to all agents; remove it without -a");
     expect(all.stdout).not.toContain("Successfully removed");
     expect(await agentsOf("alpha")).toBe("all");
 
     // -a '*' removes the skill entirely.
-    await w.ok(["remove", "alpha", "-a", "*", "-y"]);
-    expect(await names(w)).toEqual(["beta"]);
+    await testWorld.ok(["remove", "alpha", "-a", "*", "-y"]);
+    expect(await names(testWorld)).toEqual(["beta"]);
 
-    const bad = await w.run(["remove", "beta", "-a", "nope", "-y"]);
+    const bad = await testWorld.run(["remove", "beta", "-a", "nope", "-y"]);
+
     expect(bad.code).toBe(1);
     expect(bad.stderr).toContain("Invalid agents: nope");
-    expect(await names(w)).toEqual(["beta"]);
-    await validateAll(w);
+    expect(await names(testWorld)).toEqual(["beta"]);
+    await validateAll(testWorld);
   });
 
   test("--all empties the scope; --all with names is an error", async () => {
-    const { w } = await seeded();
-    const both = await w.run(["remove", "--all", "alpha"]);
+    const { testWorld } = await seeded();
+    const both = await testWorld.run(["remove", "--all", "alpha"]);
+
     expect(both.code).toBe(1);
     expect(both.stderr).toContain("Cannot combine --all with specific skill names.");
     expect(both.stderr).toContain("skill-library remove alpha -y");
-    expect(await names(w)).toEqual(["alpha", "beta", "gamma"]);
+    expect(await names(testWorld)).toEqual(["alpha", "beta", "gamma"]);
 
     // --all needs no -y; '*' as a name works the same.
-    const all = await w.ok(["remove", "--all"]);
+    const all = await testWorld.ok(["remove", "--all"]);
+
     expect(all.stdout).toContain("Successfully removed 3 skill(s)");
-    expect(await names(w)).toEqual([]);
-    await validateAll(w);
-    const again = await w.ok(["remove", "--all"]);
+    expect(await names(testWorld)).toEqual([]);
+    await validateAll(testWorld);
+    const again = await testWorld.ok(["remove", "--all"]);
+
     expect(again.stdout).toBe("Done!\n");
   });
 
   test("'*' selects everything in scope", async () => {
-    const { w } = await seeded();
-    await w.ok(["remove", "*", "-y"]);
-    expect(await names(w)).toEqual([]);
-    await validateAll(w);
+    const { testWorld } = await seeded();
+
+    await testWorld.ok(["remove", "*", "-y"]);
+    expect(await names(testWorld)).toEqual([]);
+    await validateAll(testWorld);
   });
 
   test("without a TTY and without -y nothing is removed; inside an agent -y is implied", async () => {
-    const { w } = await seeded();
-    const noYes = await w.run(["remove", "alpha"]);
+    const { testWorld } = await seeded();
+    const noYes = await testWorld.run(["remove", "alpha"]);
+
     expect(noYes.code).toBe(1);
     expect(noYes.stderr).toContain("Interactive prompt required but stdin is not a TTY. Nothing was removed. Use -y to run non-interactively.");
-    const noNames = await w.run(["remove"]);
+    const noNames = await testWorld.run(["remove"]);
+
     expect(noNames.code).toBe(1);
     expect(noNames.stderr).toContain("Name the skills to remove (or use --all)");
-    const noNamesYes = await w.run(["rm", "-y"]);
-    expect(noNamesYes.code).toBe(1);
-    expect(await names(w)).toEqual(["alpha", "beta", "gamma"]);
+    const noNamesYes = await testWorld.run(["rm", "-y"]);
 
-    for (const env of [{ CLAUDECODE: "1" }, { CODEX_SANDBOX: "seatbelt" }, { AI_AGENT: "x" }]) expect((await w.run(["remove", "nope"], { env })).code).toBe(0);
-    await w.ok(["remove", "alpha"], { env: { CLAUDECODE: "1" } });
-    expect(await names(w)).toEqual(["beta", "gamma"]);
-    await validateAll(w);
+    expect(noNamesYes.code).toBe(1);
+    expect(await names(testWorld)).toEqual(["alpha", "beta", "gamma"]);
+
+    for (const env of [{ CLAUDECODE: "1" }, { CODEX_SANDBOX: "seatbelt" }, { AI_AGENT: "x" }]) {
+      expect((await testWorld.run(["remove", "nope"], { env })).code).toBe(0);
+    }
+
+    await testWorld.ok(["remove", "alpha"], { env: { CLAUDECODE: "1" } });
+    expect(await names(testWorld)).toEqual(["beta", "gamma"]);
+    await validateAll(testWorld);
   });
 
   test("a name matching two skills fails and deletes nothing; the id picks one", async () => {
-    const w = await world();
-    const one = await w.write(await w.dir("one"), { "react/SKILL.md": skillMd("react", "React one") });
-    const two = await w.write(await w.dir("two"), { "react/SKILL.md": skillMd("react", "React two") });
-    await w.ok(["add", path.join(one, "react"), "-g", "-y"]);
+    const testWorld = await world();
+    const one = await testWorld.write(await testWorld.dir("one"), { "react/SKILL.md": skillMd("react", "React one") });
+    const two = await testWorld.write(await testWorld.dir("two"), { "react/SKILL.md": skillMd("react", "React two") });
+
+    await testWorld.ok(["add", path.join(one, "react"), "-g", "-y"]);
     // A second global skill with the same name replaces the first (kept in the store, not global).
-    await w.ok(["add", path.join(two, "react"), "-g", "-y"]);
-    expect((await index(w)).skills).toHaveLength(2);
-    const r = await w.run(["remove", "react", "-y"]);
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain('"react" matches several skills:');
-    expect(r.stderr).toContain(`  - path://${path.join(one, "react")}`);
-    expect(r.stderr).toContain(`  - path://${path.join(two, "react")}`);
-    expect(r.stderr).toContain("Pass the full id to pick one.");
-    expect((await index(w)).skills).toHaveLength(2);
-    await w.ok(["remove", `path://${path.join(one, "react")}`, "-y"]);
-    expect((await index(w)).skills.map((s) => s.id)).toEqual([`path://${path.join(two, "react")}`]);
-    await validateAll(w);
+    await testWorld.ok(["add", path.join(two, "react"), "-g", "-y"]);
+    expect((await index(testWorld)).skills).toHaveLength(2);
+    const result = await testWorld.run(["remove", "react", "-y"]);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('"react" matches several skills:');
+    expect(result.stderr).toContain(`  - path://${path.join(one, "react")}`);
+    expect(result.stderr).toContain(`  - path://${path.join(two, "react")}`);
+    expect(result.stderr).toContain("Pass the full id to pick one.");
+    expect((await index(testWorld)).skills).toHaveLength(2);
+    await testWorld.ok(["remove", `path://${path.join(one, "react")}`, "-y"]);
+    expect((await index(testWorld)).skills.map((skill) => skill.id)).toEqual([`path://${path.join(two, "react")}`]);
+    await validateAll(testWorld);
   });
 
   test("the built-in find-skills can't be removed", async () => {
-    const w = await world();
-    const r = await w.ok(["remove", "find-skills", "-y"]);
-    expect(r.stderr).toContain("find-skills is built into skill-library: it can't be removed or updated on its own");
-    expect(r.stdout).not.toContain("No matching skills found");
-    expect(await exists(path.join(w.store, "index.json"))).toBe(false);
+    const testWorld = await world();
+    const result = await testWorld.ok(["remove", "find-skills", "-y"]);
+
+    expect(result.stderr).toContain("find-skills is built into skill-library: it can't be removed or updated on its own");
+    expect(result.stdout).not.toContain("No matching skills found");
+    expect(await exists(path.join(testWorld.store, "index.json"))).toBe(false);
   });
 
   test("project: -p drops the reference, -g deletes; scope must be explicit without a prompt", async () => {
-    const w = await world();
-    const proj = await w.dir("proj");
-    const src = await w.write(await w.dir("src"), { "bar/SKILL.md": skillMd("bar", "Bar skill"), "qux/SKILL.md": skillMd("qux", "Qux skill") });
-    await w.write(proj, { "skills/local/SKILL.md": skillMd("local", "Local skill") });
-    await w.ok(["add", "-p", src, "-y", "-a", "codex", "claude-code"], { cwd: proj });
-    await w.ok(["add", "-p", "./skills/local", "-y"], { cwd: proj });
-    await w.ok(["add", "-g", path.join(src, "qux"), "-y"], { cwd: proj });
-    await validateAll(w, [proj]);
+    const testWorld = await world();
+    const proj = await testWorld.dir("proj");
+    const src = await testWorld.write(await testWorld.dir("src"), { "bar/SKILL.md": skillMd("bar", "Bar skill"), "qux/SKILL.md": skillMd("qux", "Qux skill") });
+
+    await testWorld.write(proj, { "skills/local/SKILL.md": skillMd("local", "Local skill") });
+    await testWorld.ok(["add", "-p", src, "-y", "-a", "codex", "claude-code"], { cwd: proj });
+    await testWorld.ok(["add", "-p", "./skills/local", "-y"], { cwd: proj });
+    await testWorld.ok(["add", "-g", path.join(src, "qux"), "-y"], { cwd: proj });
+    await validateAll(testWorld, [proj]);
     const manifest = () => fsp.readFile(path.join(proj, "skill-library.json"), "utf8");
     const before = await manifest();
-    const beforeIndex = await fsp.readFile(path.join(w.store, "index.json"), "utf8");
+    const beforeIndex = await fsp.readFile(path.join(testWorld.store, "index.json"), "utf8");
 
     // -y, inside an agent, or no TTY: none of them picks the scope.
     const cases: Array<[string[], Record<string, string>]> = [[["remove", "bar", "-y"], {}], [["rm", "bar"], { CLAUDECODE: "1" }], [["r", "bar"], {}], [["remove", "--all"], {}]];
+
     for (const [args, env] of cases) {
-      const r = await w.run(args, { cwd: proj, env });
-      expect(r.code).toBe(1);
-      expect(r.stderr).toContain(`This folder has a project (${path.join(proj, "skill-library.json")}); say where to remove from.`);
-      expect(r.stderr).toContain("Use -p to drop the project's reference, or -g to delete from the global library.");
+      const result = await testWorld.run(args, { cwd: proj, env });
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(`This folder has a project (${path.join(proj, "skill-library.json")}); say where to remove from.`);
+      expect(result.stderr).toContain("Use -p to drop the project's reference, or -g to delete from the global library.");
     }
-    const pg = await w.run(["remove", "-p", "-g", "bar", "-y"], { cwd: proj });
+
+    const pg = await testWorld.run(["remove", "-p", "-g", "bar", "-y"], { cwd: proj });
+
     expect(pg.code).toBe(1);
     expect(pg.stderr).toContain("--global cannot be combined with --project");
     expect(await manifest()).toBe(before);
-    expect(await fsp.readFile(path.join(w.store, "index.json"), "utf8")).toBe(beforeIndex);
+    expect(await fsp.readFile(path.join(testWorld.store, "index.json"), "utf8")).toBe(beforeIndex);
 
     // -p -a: agents only.
-    expect((await w.ok(["remove", "-p", "bar", "-a", "codex", "-y"], { cwd: proj })).stdout).toContain("✓ Updated agents for bar");
+    expect((await testWorld.ok(["remove", "-p", "bar", "-a", "codex", "-y"], { cwd: proj })).stdout).toContain("✓ Updated agents for bar");
     expect((await readJson<Manifest>(path.join(proj, "skill-library.json"))).skills[`path://${path.join(src, "bar")}`]!.agents).toEqual(["claude-code"]);
-    const allAgents = await w.ok(["remove", "-p", "local", "-a", "codex", "-y"], { cwd: proj });
+    const allAgents = await testWorld.ok(["remove", "-p", "local", "-a", "codex", "-y"], { cwd: proj });
+
     expect(allAgents.stdout).toContain("! local is available to all agents; remove it without -a");
-    await validateAll(w, [proj]);
+    await validateAll(testWorld, [proj]);
 
     // -p: the reference goes, the skill stays in the library (not global).
-    const p = await w.ok(["remove", "--project", "bar", "-y"], { cwd: proj });
-    expect(p.stdout).toContain("✓ Removed bar");
-    const m = await readJson<Manifest>(path.join(proj, "skill-library.json"));
-    expect(Object.keys(m.skills).sort()).toEqual(["local://skills/local", `path://${path.join(src, "qux")}`]);
-    const bar = (await index(w)).skills.find((s) => s.id === `path://${path.join(src, "bar")}`)!;
+    const projectRemove = await testWorld.ok(["remove", "--project", "bar", "-y"], { cwd: proj });
+
+    expect(projectRemove.stdout).toContain("✓ Removed bar");
+    const projectManifest = await readJson<Manifest>(path.join(proj, "skill-library.json"));
+
+    expect(Object.keys(projectManifest.skills).sort()).toEqual(["local://skills/local", `path://${path.join(src, "qux")}`]);
+    const bar = (await index(testWorld)).skills.find((skill) => skill.id === `path://${path.join(src, "bar")}`)!;
+
     expect(bar.global).toBe(false);
-    expect((await w.ok(["list", "-g", "--json"], { cwd: proj })).json().find((r: any) => r.name === "bar").status).toBe("untracked");
-    await validateAll(w, [proj]);
+    expect((await testWorld.ok(["list", "-g", "--json"], { cwd: proj })).json().find((row: any) => row.name === "bar").status).toBe("untracked");
+    await validateAll(testWorld, [proj]);
 
     // A name that is global but not in the project: a note pointing at -g.
-    await w.ok(["remove", "-p", "qux", "-y"], { cwd: proj });
-    const notHere = await w.ok(["remove", "-p", "qux", "-y"], { cwd: proj });
+    await testWorld.ok(["remove", "-p", "qux", "-y"], { cwd: proj });
+    const notHere = await testWorld.ok(["remove", "-p", "qux", "-y"], { cwd: proj });
+
     expect(notHere.stderr).toContain("qux is not in this project but in the global library; use -g");
     expect(notHere.stdout).toContain("No matching skills found for: qux");
 
     // -g of a skill the project still references: deleted, with a hint about install.
-    await w.ok(["add", "-p", path.join(src, "qux"), "-y"], { cwd: proj });
-    const g = await w.ok(["remove", "-g", "qux", "-y"], { cwd: proj });
-    expect(g.stderr).toContain(`qux is still referenced by ${path.join(proj, "skill-library.json")}; run skill-library install to fetch it again`);
-    expect((await index(w)).skills.some((s) => s.id.endsWith("/qux"))).toBe(false);
-    await validateAll(w); // the manifest now pins a skill the library lacks: list shows it missing
-    expect((await w.ok(["list", "--json"], { cwd: proj })).json().find((r: any) => r.name === "qux").status).toBe("missing");
-    await w.ok(["install"], { cwd: proj });
-    await validateAll(w, [proj]);
+    await testWorld.ok(["add", "-p", path.join(src, "qux"), "-y"], { cwd: proj });
+    const globalRemove = await testWorld.ok(["remove", "-g", "qux", "-y"], { cwd: proj });
+
+    expect(globalRemove.stderr).toContain(`qux is still referenced by ${path.join(proj, "skill-library.json")}; run skill-library install to fetch it again`);
+    expect((await index(testWorld)).skills.some((skill) => skill.id.endsWith("/qux"))).toBe(false);
+    await validateAll(testWorld); // the manifest now pins a skill the library lacks: list shows it missing
+    expect((await testWorld.ok(["list", "--json"], { cwd: proj })).json().find((row: any) => row.name === "qux").status).toBe("missing");
+    await testWorld.ok(["install"], { cwd: proj });
+    await validateAll(testWorld, [proj]);
 
     // -p --all drops every reference; the library keeps the skills.
-    const before2 = (await index(w)).skills.length;
-    const all = await w.ok(["remove", "-p", "--all"], { cwd: proj });
+    const before2 = (await index(testWorld)).skills.length;
+    const all = await testWorld.ok(["remove", "-p", "--all"], { cwd: proj });
+
     expect(all.stdout).toContain("Successfully removed 2 skill(s)");
     expect((await readJson<Manifest>(path.join(proj, "skill-library.json"))).skills).toEqual({});
-    expect((await index(w)).skills.length).toBe(before2);
-    await validateAll(w, [proj]);
+    expect((await index(testWorld)).skills.length).toBe(before2);
+    await validateAll(testWorld, [proj]);
   });
 
   test("-p without a skill-library.json, and ambiguous project names, change nothing", async () => {
-    const w = await world();
-    const proj = await w.dir("proj");
-    const r = await w.run(["remove", "-p", "x", "-y"], { cwd: proj });
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain("No skill-library.json here, so there is no project to remove from.");
-    expect(r.stderr).toContain("Drop -p to remove from the global library.");
+    const testWorld = await world();
+    const proj = await testWorld.dir("proj");
+    const result = await testWorld.run(["remove", "-p", "x", "-y"], { cwd: proj });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("No skill-library.json here, so there is no project to remove from.");
+    expect(result.stderr).toContain("Drop -p to remove from the global library.");
     expect(await exists(path.join(proj, "skill-library.json"))).toBe(false);
 
-    await w.write(proj, { "a/react/SKILL.md": skillMd("react", "one"), "b/react/SKILL.md": skillMd("react", "two") });
-    await w.ok(["add", "-p", "./a/react", "-y"], { cwd: proj });
-    await w.ok(["add", "-p", "./b/react", "-y"], { cwd: proj });
+    await testWorld.write(proj, { "a/react/SKILL.md": skillMd("react", "one"), "b/react/SKILL.md": skillMd("react", "two") });
+    await testWorld.ok(["add", "-p", "./a/react", "-y"], { cwd: proj });
+    await testWorld.ok(["add", "-p", "./b/react", "-y"], { cwd: proj });
     const before = await fsp.readFile(path.join(proj, "skill-library.json"), "utf8");
-    const amb = await w.run(["remove", "-p", "react", "-y"], { cwd: proj });
+    const amb = await testWorld.run(["remove", "-p", "react", "-y"], { cwd: proj });
+
     expect(amb.code).toBe(1);
     expect(amb.stderr).toContain('"react" matches several skills');
     expect(await fsp.readFile(path.join(proj, "skill-library.json"), "utf8")).toBe(before);
-    await w.ok(["remove", "-p", "local://a/react", "-y"], { cwd: proj });
+    await testWorld.ok(["remove", "-p", "local://a/react", "-y"], { cwd: proj });
     expect(Object.keys((await readJson<Manifest>(path.join(proj, "skill-library.json"))).skills)).toEqual(["local://b/react"]);
-    await validateAll(w, [proj]);
+    await validateAll(testWorld, [proj]);
   });
 
   test("inline forms: --skill=a,b and --agent=<agent> work like -s and -a", async () => {
-    const { w } = await seeded();
+    const { testWorld } = await seeded();
+
     // --agent= drops codex from beta (codex + claude-code): beta stays, for Claude Code only.
-    await w.ok(["remove", "beta", "-g", "-y", "--agent=codex"]);
-    expect((await index(w)).skills.find((r) => r.versions[r.current]!.name === "beta")!.agents).toEqual(["claude-code"]);
-    await validateAll(w);
-    await w.ok(["remove", "-g", "--yes", "--skill=alpha,gamma"]);
-    expect(await names(w)).toEqual(["beta"]);
-    await validateAll(w);
+    await testWorld.ok(["remove", "beta", "-g", "-y", "--agent=codex"]);
+    expect((await index(testWorld)).skills.find((skill) => skill.versions[skill.current]!.name === "beta")!.agents).toEqual(["claude-code"]);
+    await validateAll(testWorld);
+    await testWorld.ok(["remove", "-g", "--yes", "--skill=alpha,gamma"]);
+    expect(await names(testWorld)).toEqual(["beta"]);
+    await validateAll(testWorld);
   });
 
   test("a missing -a / --agent value is a usage error and changes nothing", async () => {
-    const { w } = await seeded();
-    const before = await fsp.readFile(path.join(w.store, "index.json"), "utf8");
+    const { testWorld } = await seeded();
+    const before = await fsp.readFile(path.join(testWorld.store, "index.json"), "utf8");
+
     for (const args of [["remove", "beta", "-g", "-y", "-a"], ["remove", "beta", "-g", "-y", "--agent="]]) {
-      expectUsageError(await w.run(args), "-a", "--agent");
+      expectUsageError(await testWorld.run(args), "-a", "--agent");
     }
-    expect(await fsp.readFile(path.join(w.store, "index.json"), "utf8")).toBe(before);
+
+    expect(await fsp.readFile(path.join(testWorld.store, "index.json"), "utf8")).toBe(before);
   });
 });

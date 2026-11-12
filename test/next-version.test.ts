@@ -25,7 +25,11 @@ describe("nextVersion", () => {
   test("each prerelease run of the same bump makes the next release candidate", () => {
     let version = "0.2.0";
     const seen = [];
-    for (let i = 0; i < 4; i++) seen.push((version = nextVersion(version, "minor", "prerelease")));
+
+    for (let index = 0; index < 4; index++) {
+      seen.push((version = nextVersion(version, "minor", "prerelease")));
+    }
+
     expect(seen).toEqual(["0.3.0-rc.0", "0.3.0-rc.1", "0.3.0-rc.2", "0.3.0-rc.3"]);
   });
 
@@ -92,6 +96,7 @@ describe("next-version script", () => {
   test("fails on an unknown bump or release type", () => {
     const fails = (...args: string[]) =>
       execFileSync(process.execPath, ["scripts/next-version.mjs", ...args], { cwd: root, stdio: "pipe" });
+
     expect(() => fails("huge", "release")).toThrow();
     expect(() => fails("minor")).toThrow();
   });

@@ -8,6 +8,7 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const dist = path.join(root, "dist");
 const { version } = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+
 rmSync(dist, { recursive: true, force: true });
 
 const common = {
@@ -30,6 +31,7 @@ const cli = await build({
   outfile: path.join(dist, "skill-library"),
   banner: { js: `#!/usr/bin/env node\n${common.banner.js}` },
 });
+
 chmodSync(path.join(dist, "skill-library"), 0o755);
 // Built-in skills ship as files next to the bundles (see src/lib/builtin.ts).
 cpSync(path.join(root, "assets/builtin"), path.join(dist, "builtin"), { recursive: true });
@@ -40,19 +42,29 @@ execFileSync(process.execPath, [path.join(root, "node_modules/typescript/bin/tsc
 // Declarations: point relative imports at .js so every resolver (and older TypeScript) finds the .d.ts.
 for (const entry of readdirSync(dist, { recursive: true })) {
   const file = path.join(dist, String(entry));
-  if (!file.endsWith(".d.ts")) continue;
+
+  if (!file.endsWith(".d.ts")) {
+    continue;
+  }
+
   const text = readFileSync(file, "utf8");
+
   writeFileSync(file, text.replace(/(from\s+["'])(\.{1,2}\/[^"']+)\.ts(["'])/g, "$1$2.js$3"));
 }
 
 // Third-party notices: every node_modules package that ended up in a bundle, plus ported code.
 const pkgs = new Map();
+
 for (const meta of [cli.metafile, api.metafile]) {
   for (const input of Object.keys(meta.inputs)) {
-    const m = input.match(/node_modules\/((?:@[^/]+\/)?[^/]+)\//);
-    if (m) pkgs.set(m[1], path.join(root, "node_modules", m[1]));
+    const match = input.match(/node_modules\/((?:@[^/]+\/)?[^/]+)\//);
+
+    if (match) {
+      pkgs.set(match[1], path.join(root, "node_modules", match[1]));
+    }
   }
 }
+
 const sections = [
   "skill-library bundles or adapts the following third-party software.",
   "",
@@ -62,12 +74,19 @@ const sections = [
   "-".repeat(78),
   readFileSync(path.join(root, "third_party/vercel-labs-skills.LICENSE"), "utf8").trim(),
 ];
+
 for (const [name, dir] of [...pkgs.entries()].sort()) {
   const pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
-  const licFile = readdirSync(dir).find((f) => /^(license|licence|copying)(\..*)?$/i.test(f));
+  const licFile = readdirSync(dir).find((fileName) => /^(license|licence|copying)(\..*)?$/i.test(fileName));
   const text = licFile ? readFileSync(path.join(dir, licFile), "utf8").trim() : `License: ${pkg.license ?? "unknown"}`;
+
   sections.push("", "=".repeat(78), `${name}@${pkg.version} (${pkg.license ?? "unknown"})`, "-".repeat(78), text);
 }
+
 writeFileSync(path.join(root, "ThirdPartyNotices.txt"), sections.join("\n") + "\n");
-if (!existsSync(path.join(dist, "api.d.ts"))) throw new Error("dist/api.d.ts was not emitted");
+
+if (!existsSync(path.join(dist, "api.d.ts"))) {
+  throw new Error("dist/api.d.ts was not emitted");
+}
+
 console.log(`built dist/skill-library, dist/index.js, dist/api.d.ts; notices for ${pkgs.size} packages`);

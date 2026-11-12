@@ -24,38 +24,62 @@ const live = process.argv[2] === "--live";
 const args = process.argv.slice(live ? 3 : 2);
 
 function docker(dockerArgs) {
-  const r = spawnSync("docker", dockerArgs, { stdio: "inherit", cwd: root });
-  if (r.error) {
-    console.error(`Error: can't run docker (${r.error.message}). The end-to-end tests only run in Docker; install it from https://docs.docker.com/get-docker/`);
+  const result = spawnSync("docker", dockerArgs, { stdio: "inherit", cwd: root });
+
+  if (result.error) {
+    console.error(`Error: can't run docker (${result.error.message}). The end-to-end tests only run in Docker; install it from https://docs.docker.com/get-docker/`);
     process.exit(1);
   }
-  return r.status ?? 1;
+
+  return result.status ?? 1;
 }
 
 // CI builds the image itself (with a layer cache) and sets E2E_IMAGE_BUILT=1.
 if (process.env.E2E_IMAGE_BUILT !== "1") {
   const build = ["build", "--file", "test/e2e/Dockerfile", "--tag", image];
-  if (process.env.E2E_NODE_VERSION) build.push("--build-arg", `NODE_VERSION=${process.env.E2E_NODE_VERSION}`);
+
+  if (process.env.E2E_NODE_VERSION) {
+    build.push("--build-arg", `NODE_VERSION=${process.env.E2E_NODE_VERSION}`);
+  }
+
   build.push(".");
   const built = docker(build);
-  if (built !== 0) process.exit(built);
+
+  if (built !== 0) {
+    process.exit(built);
+  }
 }
 
 const run = ["run", "--rm", "--init"];
-if (!live) run.push("--network", "none");
-if (process.stdout.isTTY) run.push("--tty");
+
+if (!live) {
+  run.push("--network", "none");
+}
+
+if (process.stdout.isTTY) {
+  run.push("--tty");
+}
+
 // Only these reach the container; `-e NAME` copies the value without putting it on the command line.
-for (const name of ["CI", ...(live ? ["E2E_LIVE_SOURCE", "E2E_LIVE_SKILL"] : [])]) if (process.env[name] !== undefined) run.push("-e", name);
+for (const name of ["CI", ...(live ? ["E2E_LIVE_SOURCE", "E2E_LIVE_SKILL"] : [])]) {
+  if (process.env[name] !== undefined) {
+    run.push("-e", name);
+  }
+}
+
 const vitest = ["npx", "vitest", "run", "--config", "vitest.e2e.config.ts"];
+
 if (live) {
   if (!process.env.SKILL_LIBRARY_TYPESAFE_API_KEY) {
     console.warn("\n⚠ SKILL_LIBRARY_TYPESAFE_API_KEY is not set: the real TypeSafe query test will be skipped.\n");
   } else {
     run.push("-e", "SKILL_LIBRARY_TYPESAFE_API_KEY");
   }
+
   run.push("-e", "E2E_LIVE=1");
   run.push(image, ...vitest, LIVE_FILE, ...args);
 } else {
   run.push(image, ...vitest, "--exclude", LIVE_FILE, ...args);
 }
+
 process.exit(docker(run));

@@ -40,7 +40,9 @@ export async function mutateIndex<T>(store: string, fn: (index: StoreIndex) => P
   return withLock(store, async () => {
     const index = await openIndex(store);
     const out = await fn(index);
+
     await saveIndex(store, index);
+
     return out;
   });
 }
@@ -51,38 +53,62 @@ export async function mutateIndex<T>(store: string, fn: (index: StoreIndex) => P
 
 /** Validate `-a` values; `'*'` means all agents. Returns "all" or the agent list. */
 export function agentsArg(values: string[] | undefined, allowStar = true): AgentsValue {
-  if (!values || values.length === 0) return "all";
-  if (values.includes("*")) {
-    if (!allowStar) throw new CliError(1, "Invalid agents: *", `Valid agents: ${agentIds().join(", ")}`);
+  if (!values || values.length === 0) {
     return "all";
   }
+
+  if (values.includes("*")) {
+    if (!allowStar) {
+      throw new CliError(1, "Invalid agents: *", `Valid agents: ${agentIds().join(", ")}`);
+    }
+
+    return "all";
+  }
+
   validateAgents(values);
+
   return [...new Set(values)];
 }
 
 export function validateAgents(values: string[]): void {
   const valid = agentIds();
-  const invalid = values.filter((v) => v !== "*" && !valid.includes(v));
-  if (invalid.length > 0) throw new CliError(1, `Invalid agents: ${invalid.join(", ")}`, `Valid agents: ${valid.join(", ")}`);
+  const invalid = values.filter((value) => value !== "*" && !valid.includes(value));
+
+  if (invalid.length > 0) {
+    throw new CliError(1, `Invalid agents: ${invalid.join(", ")}`, `Valid agents: ${valid.join(", ")}`);
+  }
 }
 
 /** §4: "all" absorbs additions; a first assignment takes the request as-is. */
 export function mergeAgents(current: AgentsValue | undefined, requested: AgentsValue): AgentsValue {
-  if (requested === "all" || current === "all") return "all";
-  if (current === undefined) return requested;
+  if (requested === "all" || current === "all") {
+    return "all";
+  }
+
+  if (current === undefined) {
+    return requested;
+  }
+
   return [...new Set([...current, ...requested])];
 }
 
 export type SubtractResult = { kind: "all" } | { kind: "empty" } | { kind: "rest"; value: string[] };
 
 export function subtractAgents(current: AgentsValue, remove: string[]): SubtractResult {
-  if (current === "all") return { kind: "all" };
-  const rest = current.filter((a) => !remove.includes(a));
+  if (current === "all") {
+    return { kind: "all" };
+  }
+
+  const rest = current.filter((agent) => !remove.includes(agent));
+
   return rest.length === 0 ? { kind: "empty" } : { kind: "rest", value: rest };
 }
 
 export function agentsMatch(value: AgentsValue, agent: string | undefined): boolean {
-  if (agent === undefined || value === "all") return true;
+  if (agent === undefined || value === "all") {
+    return true;
+  }
+
   return value.includes(agent);
 }
 
@@ -102,8 +128,14 @@ export type GlobalKind = "remote" | "own" | "machine-only";
 
 /** `syncUrl` is the sync repository's URL, or null when sync is not set up. */
 export function globalKindOf(skill: { id: string; sourceType: "git" | "local" | null }, syncUrl: string | null): GlobalKind {
-  if (skill.sourceType !== "git") return "machine-only";
-  if (syncUrl !== null && skill.id.startsWith(gitSkillId(syncUrl, ""))) return "own";
+  if (skill.sourceType !== "git") {
+    return "machine-only";
+  }
+
+  if (syncUrl !== null && skill.id.startsWith(gitSkillId(syncUrl, ""))) {
+    return "own";
+  }
+
   return "remote";
 }
 
@@ -128,18 +160,21 @@ export interface ScopedSkill {
 
 function nameFromId(id: string): string {
   const parts = id.split("/").filter(Boolean);
+
   return parts[parts.length - 1] ?? id;
 }
 
 /** Skills referenced by the project (manifest order: sorted by id). */
 export async function projectSkills(store: string, index: StoreIndex, project: Project): Promise<ScopedSkill[]> {
   const out: ScopedSkill[] = [];
+
   for (const [id, entry] of Object.entries(project.manifest.skills)) {
     if (id.startsWith("local://")) {
       const rel = id.slice("local://".length);
       const dir = path.resolve(project.root, rel === "." ? "" : rel);
       const inside = dir === project.root || dir.startsWith(project.root + path.sep);
       const parsed = inside && (await exists(path.join(dir, "SKILL.md"))) ? await parseSkillFile(path.join(dir, "SKILL.md"), "folder", true) : null;
+
       out.push({
         id,
         name: parsed?.name ?? entry.name ?? nameFromId(id),
@@ -155,11 +190,18 @@ export async function projectSkills(store: string, index: StoreIndex, project: P
       });
       continue;
     }
+
     const record = findRecord(index, id);
-    const key = record ? findVersion(record, { ...(entry.commit !== undefined ? { commit: entry.commit } : {}), ...(entry.hash !== undefined ? { hash: entry.hash } : {}) }) : undefined;
+    const key = record
+      ? findVersion(record, {
+          ...(entry.commit !== undefined ? { commit: entry.commit } : {}),
+          ...(entry.hash !== undefined ? { hash: entry.hash } : {}),
+        })
+      : undefined;
     const dir = record && key ? versionDir(store, record, key) : null;
     const present = dir !== null && (await exists(path.join(dir, "SKILL.md")));
     const meta = record && key ? record.versions[key] : undefined;
+
     out.push({
       id,
       name: meta?.name ?? entry.name ?? nameFromId(id),
@@ -176,17 +218,23 @@ export async function projectSkills(store: string, index: StoreIndex, project: P
       sourceType: entry.commit !== undefined || record?.source.type === "git" ? "git" : "local",
     });
   }
+
   return out;
 }
 
 /** Store skills at their `current` version. Non-global records only when `includeHidden`. */
 export async function storeSkills(store: string, index: StoreIndex, includeHidden: boolean): Promise<ScopedSkill[]> {
   const out: ScopedSkill[] = [];
+
   for (const record of index.skills) {
-    if (!record.global && !includeHidden) continue;
+    if (!record.global && !includeHidden) {
+      continue;
+    }
+
     const meta = record.versions[record.current];
     const dir = versionDir(store, record, record.current);
     const present = meta !== undefined && (await exists(path.join(dir, "SKILL.md")));
+
     out.push({
       id: record.id,
       name: meta?.name ?? nameFromId(record.id),
@@ -202,6 +250,7 @@ export async function storeSkills(store: string, index: StoreIndex, includeHidde
       sourceType: record.source.type === "git" ? "git" : "local",
     });
   }
+
   return out;
 }
 
@@ -210,31 +259,45 @@ export async function storeSkills(store: string, index: StoreIndex, includeHidde
  * ambiguous: `choose` (TTY picker) decides, otherwise it is an error listing the ids.
  * Unmatched selectors are returned separately. Nothing is mutated here.
  */
-export async function resolveSelectors<T extends { id: string; name: string }>(
-  items: T[],
+export async function resolveSelectors(
+  items: Array<{ id: string; name: string }>,
   selectors: string[],
   choose?: (selector: string, ids: string[]) => Promise<string | null>,
 ): Promise<{ ids: string[]; unmatched: string[] }> {
   const ids: string[] = [];
   const unmatched: string[] = [];
+
   for (const sel of selectors) {
-    const exact = items.filter((i) => i.id === sel);
+    const exact = items.filter((item) => item.id === sel);
     const byName = exact.length > 0 ? exact : filterSkills(items, [sel]);
-    const distinct = [...new Set(byName.map((i) => i.id))];
+    const distinct = [...new Set(byName.map((item) => item.id))];
+
     if (distinct.length === 0) {
       unmatched.push(sel);
       continue;
     }
+
     let id: string | null = distinct[0]!;
+
     if (distinct.length > 1) {
       id = choose ? await choose(sel, distinct) : null;
+
       if (id === null) {
-        if (choose) continue;
-        throw new CliError(1, `"${sel}" matches several skills:\n${distinct.map((d) => `  - ${d}`).join("\n")}`, "Pass the full id to pick one.");
+        if (choose) {
+          continue;
+        }
+
+        const listing = distinct.map((candidate) => `  - ${candidate}`).join("\n");
+
+        throw new CliError(1, `"${sel}" matches several skills:\n${listing}`, "Pass the full id to pick one.");
       }
     }
-    if (!ids.includes(id)) ids.push(id);
+
+    if (!ids.includes(id)) {
+      ids.push(id);
+    }
   }
+
   return { ids, unmatched };
 }
 
@@ -242,6 +305,7 @@ export async function loadScope(opts: BaseOptions): Promise<{ ctx: Ctx; index: S
   const ctx = ctxOf(opts);
   const index = await openIndex(ctx.store);
   const project = await loadProject(ctx.cwd);
+
   return { ctx, index, project };
 }
 

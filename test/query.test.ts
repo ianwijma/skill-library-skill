@@ -15,14 +15,21 @@ async function startMock(handler: (body: any, call: number) => Response): Promis
   const bodies: any[] = [];
   const server = http.createServer(async (req, res) => {
     const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(chunk as Buffer);
+
+    for await (const chunk of req) {
+      chunks.push(chunk as Buffer);
+    }
+
     bodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
     const reply = handler(bodies[bodies.length - 1], bodies.length - 1);
+
     res.writeHead(reply.status, Object.fromEntries(reply.headers));
     res.end(Buffer.from(await reply.arrayBuffer()));
   });
+
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
+
   return {
     url: `http://127.0.0.1:${port}`,
     bodies,
@@ -40,13 +47,14 @@ function byName(probs: Record<string, number>) {
       model: "jev-1.13.0",
       usage: { input_tokens: 535, output_tokens: 58 },
       answers: Object.fromEntries(
-        Object.entries(body.questions as Record<string, any>).map(([k, q]) => [k, { type: "noul", noul: probs[q.instructions.skill.name] ?? 0.1 }]),
+        Object.entries(body.questions as Record<string, any>).map(([key, question]) => [key, { type: "noul", noul: probs[question.instructions.skill.name] ?? 0.1 }]),
       ),
     });
 }
 
 async function seed(sb: Sandbox): Promise<void> {
   const src = path.join(sb.root, "src");
+
   await writeFiles(src, {
     "a-skill/SKILL.md": skillMd("a-skill", "Skill A"),
     "b-skill/SKILL.md": skillMd("b-skill", "Skill B"),
@@ -57,25 +65,29 @@ async function seed(sb: Sandbox): Promise<void> {
   expect((await run(sb, ["add", path.join(src, "codex-only"), "-g", "-y", "-a", "codex"])).code).toBe(0);
 }
 
-function q(sb: Sandbox, args: string[], mock: MockServer, opts: { cwd?: string; stdin?: string } = {}) {
+function runQuery(sb: Sandbox, args: string[], mock: MockServer, opts: { cwd?: string; stdin?: string } = {}) {
   return run(sb, ["query", ...args], { ...opts, env: { SKILL_LIBRARY_TYPESAFE_API_KEY: "test-key", SKILL_LIBRARY_TYPESAFE_API_BASE: mock.url } });
 }
 
 describe("query", () => {
   test("request: one noul question per skill, today's template, opaque keys", async () => {
     const sb = await sandbox();
+
     await seed(sb);
     const mock = await startMock(byName({}));
-    const res = await q(sb, ["fix the buttons"], mock);
+    const res = await runQuery(sb, ["fix the buttons"], mock);
+
     mock.stop();
     expect(res.code).toBe(0);
     const body = mock.bodies[0];
+
     expect(body.model).toBe("jev-latest");
     expect(body.state).toEqual({ task: "fix the buttons" });
     // Three library skills, then the built-in find-skills.
     expect(Object.keys(body.questions).sort()).toEqual(["s0", "s1", "s2", "s3"]);
     expect(body.questions.s3.instructions.skill.name).toBe("find-skills");
-    const question = Object.values(body.questions as Record<string, any>).find((x) => x.instructions.skill.name === "a-skill");
+    const question = Object.values(body.questions as Record<string, any>).find((candidate) => candidate.instructions.skill.name === "a-skill");
+
     expect(question).toEqual({
       type: "noul",
       instructions: {
@@ -93,42 +105,53 @@ describe("query", () => {
 
   test("text output: instruction, matches sorted, path lines; threshold and --top", async () => {
     const sb = await sandbox();
+
     await seed(sb);
     const mock = await startMock(byName({ "a-skill": 0.78, "b-skill": 0.91, "codex-only": 0.699 }));
-    const res = await q(sb, ["task"], mock);
+    const res = await runQuery(sb, ["task"], mock);
+
     expect(res.code).toBe(0);
     const lines = res.stdout.split("\n");
+
     expect(lines[0]).toBe("Read these skill files before continuing with the task:");
     expect(lines[2]).toBe("b-skill (91%)");
     expect(lines[3]).toMatch(/^└ .*\/skills\/b-skill-[0-9a-f]{8}\/h-[0-9a-f]{12}\/SKILL\.md$/);
     expect(lines[5]).toBe("a-skill (78%)");
     expect(res.stdout).not.toContain("codex-only");
-    const top = await q(sb, ["task", "--top", "1", "--json"], mock);
+    const top = await runQuery(sb, ["task", "--top", "1", "--json"], mock);
+
     mock.stop();
     const json = JSON.parse(top.stdout);
-    expect(json.matches.map((m: any) => m.name)).toEqual(["b-skill"]);
+
+    expect(json.matches.map((match: any) => match.name)).toEqual(["b-skill"]);
     expect(Object.keys(json.matches[0]).sort()).toEqual(["always", "description", "id", "name", "path", "probability", "scope"]);
     await fsp.access(json.matches[0].path);
   });
 
   test("always skills: never scored, listed first at probability 1, outside --top", async () => {
     const sb = await sandbox();
+
     await seed(sb);
     const src = path.join(sb.root, "src");
+
     await writeFiles(src, {
       "house-rules/SKILL.md": "---\nname: house-rules\ndescription: Team conventions\nmetadata:\n  always: true\n---\n\n# House rules\n",
     });
     expect((await run(sb, ["add", path.join(src, "house-rules"), "-g", "-y"])).code).toBe(0);
     const mock = await startMock(byName({ "a-skill": 0.78, "b-skill": 0.91 }));
-    const res = await q(sb, ["task", "--top", "1"], mock);
+    const res = await runQuery(sb, ["task", "--top", "1"], mock);
+
     expect(res.code).toBe(0);
-    const names = Object.values(mock.bodies[0].questions).map((x: any) => x.instructions.skill.name);
+    const names = Object.values(mock.bodies[0].questions).map((question: any) => question.instructions.skill.name);
+
     expect(names).not.toContain("house-rules");
     const lines = res.stdout.split("\n");
+
     expect(lines[2]).toBe("house-rules (always)");
     expect(lines[5]).toBe("b-skill (91%)");
     expect(res.stdout).not.toContain("a-skill");
-    const json = JSON.parse((await q(sb, ["task", "--json"], mock)).stdout);
+    const json = JSON.parse((await runQuery(sb, ["task", "--json"], mock)).stdout);
+
     mock.stop();
     expect(json.matches[0]).toMatchObject({ name: "house-rules", probability: 1, always: true });
     expect(json.matches[1]).toMatchObject({ name: "b-skill", always: false });
@@ -136,30 +159,38 @@ describe("query", () => {
 
   test("only always skills: no API call and no key needed", async () => {
     const sb = await sandbox();
+
     await writeFiles(path.join(sb.root, "src"), {
       "house-rules/SKILL.md": "---\nname: house-rules\ndescription: Team conventions\nmetadata:\n  always: \"true\"\n---\n",
     });
     expect((await run(sb, ["add", path.join(sb.root, "src", "house-rules"), "-g", "-y"])).code).toBe(0);
     const res = await run(sb, ["query", "task"], { env: { SKILL_LIBRARY_TYPESAFE_API_KEY: "" } });
+
     expect(res.code).toBe(0);
     expect(res.stdout).toContain("house-rules (always)");
   });
 
   test("built-in find-skills: returned like any skill with its packaged path, can't be removed or updated, shadowed by a library skill", async () => {
     const sb = await sandbox();
+
     await seed(sb);
     const mock = await startMock(byName({ "find-skills": 0.82, "a-skill": 0.9 }));
-    const res = await q(sb, ["is there a skill for changelogs?"], mock);
+    const res = await runQuery(sb, ["is there a skill for changelogs?"], mock);
+
     expect(res.code).toBe(0);
     const lines = res.stdout.split("\n");
+
     expect(lines[2]).toBe("a-skill (90%)");
     expect(lines[5]).toBe("find-skills (82%, built-in)");
     const builtinPath = path.join(path.dirname(BIN), "builtin", "find-skills", "SKILL.md");
+
     expect(lines[6]).toBe(`└ ${builtinPath}`);
     const md = await fsp.readFile(builtinPath, "utf8");
+
     expect(md).toMatch(/^---\nname: find-skills\n/);
     expect(md).toContain("skill-library find <query>");
-    const json = JSON.parse((await q(sb, ["task", "--json"], mock)).stdout);
+    const json = JSON.parse((await runQuery(sb, ["task", "--json"], mock)).stdout);
+
     expect(json.matches[1]).toEqual({
       id: "builtin://find-skills",
       name: "find-skills",
@@ -172,35 +203,44 @@ describe("query", () => {
 
     // Part of skill-library itself: not in the library, not removable or updatable.
     expect((await run(sb, ["list", "-g", "--json"])).stdout).not.toContain("find-skills");
+
     for (const cmd of [["remove", "find-skills", "-g", "-y"], ["update", "find-skills", "-g"]]) {
-      const r = await run(sb, cmd);
-      expect(r.code).toBe(0);
-      expect(r.stderr).toContain("find-skills is built into skill-library");
-      expect(r.stdout).not.toContain("No matching skills");
+      const result = await run(sb, cmd);
+
+      expect(result.code).toBe(0);
+      expect(result.stderr).toContain("find-skills is built into skill-library");
+      expect(result.stdout).not.toContain("No matching skills");
     }
+
     await fsp.access(builtinPath);
 
     // A library skill with the same name wins: the built-in is not sent.
     await writeFiles(path.join(sb.root, "src"), { "find-skills/SKILL.md": skillMd("find-skills", "My own finder") });
     expect((await run(sb, ["add", path.join(sb.root, "src", "find-skills"), "-g", "-y"])).code).toBe(0);
-    const own = await q(sb, ["task"], mock);
+    const own = await runQuery(sb, ["task"], mock);
+
     mock.stop();
-    const sent = Object.values(mock.bodies[2].questions).map((x: any) => x.instructions.skill);
-    expect(sent.filter((x: any) => x.name === "find-skills").map((x: any) => x.description)).toEqual(["My own finder"]);
+    const sent = Object.values(mock.bodies[2].questions).map((question: any) => question.instructions.skill);
+
+    expect(sent.filter((skill: any) => skill.name === "find-skills").map((skill: any) => skill.description)).toEqual(["My own finder"]);
     expect(own.stdout).toContain("find-skills (82%)");
     expect(own.stdout).not.toContain("built-in");
   });
 
   test("-a filters agent-specific skills; invalid agent lists valid ones (exit 1)", async () => {
     const sb = await sandbox();
+
     await seed(sb);
     const mock = await startMock(byName({ "a-skill": 0.9, "b-skill": 0.9, "codex-only": 0.9 }));
-    const claude = await q(sb, ["task", "-a", "claude-code"], mock);
-    expect(Object.values(mock.bodies[0].questions).map((x: any) => x.instructions.skill.name)).toEqual(["a-skill", "b-skill", "find-skills"]);
+    const claude = await runQuery(sb, ["task", "-a", "claude-code"], mock);
+
+    expect(Object.values(mock.bodies[0].questions).map((question: any) => question.instructions.skill.name)).toEqual(["a-skill", "b-skill", "find-skills"]);
     expect(claude.stdout).not.toContain("codex-only");
-    const codex = await q(sb, ["task", "-a", "codex"], mock);
+    const codex = await runQuery(sb, ["task", "-a", "codex"], mock);
+
     expect(codex.stdout).toContain("codex-only");
-    const bad = await q(sb, ["task", "-a", "claude"], mock);
+    const bad = await runQuery(sb, ["task", "-a", "claude"], mock);
+
     mock.stop();
     expect(bad.code).toBe(1);
     expect(bad.stderr).toContain("Invalid agents: claude");
@@ -211,11 +251,13 @@ describe("query", () => {
   test("no match message; stdin task; empty library scores only the built-ins", async () => {
     const sb = await sandbox();
     const mock = await startMock(byName({}));
-    const empty = await q(sb, ["task"], mock);
+    const empty = await runQuery(sb, ["task"], mock);
+
     expect(empty.stdout).toBe("No matching skills. Continue without one.\n");
-    expect(Object.values(mock.bodies[0].questions).map((x: any) => x.instructions.skill.name)).toEqual(["find-skills"]);
+    expect(Object.values(mock.bodies[0].questions).map((question: any) => question.instructions.skill.name)).toEqual(["find-skills"]);
     await seed(sb);
-    const res = await q(sb, ["-"], mock, { stdin: "task from stdin" });
+    const res = await runQuery(sb, ["-"], mock, { stdin: "task from stdin" });
+
     mock.stop();
     expect(res.stdout).toBe("No matching skills. Continue without one.\n");
     expect(mock.bodies[1].state.task).toBe("task from stdin");
@@ -224,18 +266,22 @@ describe("query", () => {
   test("project skill shadows a global skill with the same name; missing project skills noted", async () => {
     const sb = await sandbox();
     const dir = await project(sb);
+
     await writeFiles(path.join(sb.root, "g"), { "dup/SKILL.md": skillMd("dup", "global copy") });
     await writeFiles(dir, { "skills/dup/SKILL.md": skillMd("dup", "project copy") });
     await run(sb, ["add", path.join(sb.root, "g", "dup"), "-g", "-y"]);
     await run(sb, ["add", "-p", "./skills/dup", "-y"], { cwd: dir });
     const manifest = JSON.parse(await fsp.readFile(path.join(dir, "skill-library.json"), "utf8"));
+
     manifest.skills["repo://github.com/x/y/gone"] = { source: "https://github.com/x/y.git", ref: null, path: "", commit: "0".repeat(40), hash: `sha256-${"0".repeat(64)}`, agents: "all", name: "gone" };
     await fsp.writeFile(path.join(dir, "skill-library.json"), JSON.stringify(manifest));
     const mock = await startMock(byName({ dup: 0.9 }));
-    const res = await q(sb, ["task"], mock, { cwd: dir });
+    const res = await runQuery(sb, ["task"], mock, { cwd: dir });
+
     mock.stop();
-    const sent = Object.values(mock.bodies[0].questions).map((x: any) => x.instructions.skill);
-    expect(sent.filter((x: any) => x.name === "dup").map((x: any) => x.description)).toEqual(["project copy"]);
+    const sent = Object.values(mock.bodies[0].questions).map((question: any) => question.instructions.skill);
+
+    expect(sent.filter((skill: any) => skill.name === "dup").map((skill: any) => skill.description)).toEqual(["project copy"]);
     expect(res.stdout).toContain("dup (90%, project)");
     expect(res.stdout).toContain(path.join(dir, "skills", "dup", "SKILL.md"));
     expect(res.stderr).toContain("1 project skill is not installed — run skill-library install");
@@ -243,44 +289,54 @@ describe("query", () => {
 
   test("failures keep exit 2 and the old diagnostics", async () => {
     const sb = await sandbox();
+
     await seed(sb);
     const unauth = await startMock(() => new Response("nope", { status: 401 }));
-    const r401 = await q(sb, ["task"], unauth);
+    const r401 = await runQuery(sb, ["task"], unauth);
+
     unauth.stop();
     expect(r401.code).toBe(2);
     expect(r401.stderr).toContain("check SKILL_LIBRARY_TYPESAFE_API_KEY");
     const net = await run(sb, ["query", "task"], { env: { SKILL_LIBRARY_TYPESAFE_API_KEY: "k", SKILL_LIBRARY_TYPESAFE_API_BASE: "http://127.0.0.1:1" } });
+
     expect(net.code).toBe(2);
     expect(net.stderr).toContain("unreachable after 3 retries");
     expect(net.stdout).toBe("");
     // Only the prefixed variable is read; a general TYPESAFE_API_KEY is ignored.
     const nokey = await run(sb, ["query", "task"], { env: { TYPESAFE_API_KEY: "general-key" } });
+
     expect(nokey.code).toBe(2);
     expect(nokey.stderr).toContain("SKILL_LIBRARY_TYPESAFE_API_KEY is not set");
   });
 
   test("reports skills a background sync changed once, then clears them", async () => {
     const sb = await sandbox();
+
     await seed(sb);
     const unreported = { added: ["zeta"], removed: ["old-one"], updated: [] };
+
     await fsp.writeFile(path.join(sb.store, "sync-status.json"), JSON.stringify({ unreported }));
     const mock = await startMock(byName({ "b-skill": 0.9 }));
 
     // A failed query keeps them for later.
     const failed = await run(sb, ["query", "task"]);
+
     expect(failed.code).toBe(2);
 
-    const first = await q(sb, ["task"], mock);
+    const first = await runQuery(sb, ["task"], mock);
+
     expect(first.code, first.stderr).toBe(0);
     expect(first.stdout).toContain("b-skill (90%)");
     expect(first.stdout).toContain("Your skills changed — tell the user:\n  added: zeta\n  removed: old-one\n");
     expect(first.stdout).not.toContain("updated:");
 
-    const second = await q(sb, ["task"], mock);
+    const second = await runQuery(sb, ["task"], mock);
+
     expect(second.stdout).not.toContain("Your skills changed");
 
     await fsp.writeFile(path.join(sb.store, "sync-status.json"), JSON.stringify({ unreported }));
-    const json = await q(sb, ["task", "--json"], mock);
+    const json = await runQuery(sb, ["task", "--json"], mock);
+
     mock.stop();
     expect(JSON.parse(json.stdout).syncChanges).toEqual(unreported);
   });

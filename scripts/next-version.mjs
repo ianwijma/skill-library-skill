@@ -40,17 +40,24 @@ export const DEFAULT_PRERELEASE_IDENTIFIER = "rc";
  * @returns {string} The next version, e.g. "1.3.0-rc.0".
  */
 export function nextVersion(current, bump, releaseType, prereleaseIdentifier = DEFAULT_PRERELEASE_IDENTIFIER) {
-  if (!semver.valid(current)) throw new Error(`Current version "${current}" is not a valid semver version.`);
+  if (!semver.valid(current)) {
+    throw new Error(`Current version "${current}" is not a valid semver version.`);
+  }
+
   if (!(/** @type {readonly string[]} */ (BUMPS)).includes(bump)) {
     throw new Error(`Unknown version bump "${bump}". Use one of: ${BUMPS.join(", ")}.`);
   }
+
   if (!(/** @type {readonly string[]} */ (RELEASE_TYPES)).includes(releaseType)) {
     throw new Error(`Unknown release type "${releaseType}". Use one of: ${RELEASE_TYPES.join(", ")}.`);
   }
+
   const identifier = prereleaseIdentifier || DEFAULT_PRERELEASE_IDENTIFIER;
+
   if (!/^[0-9A-Za-z-]+$/.test(identifier)) {
     throw new Error(`Prerelease identifier "${identifier}" may only contain letters, digits and hyphens.`);
   }
+
   // SemVer also forbids leading zeros in a numeric identifier ("01").
   if (!semver.valid(`0.0.0-${identifier}`)) {
     throw new Error(`Prerelease identifier "${identifier}" is not valid in a semver version.`);
@@ -58,17 +65,27 @@ export function nextVersion(current, bump, releaseType, prereleaseIdentifier = D
 
   // The stable version this run releases, or makes a candidate of.
   const target = semver.inc(current, /** @type {Bump} */ (bump));
-  if (!target) throw new Error(`Cannot apply "${bump}" to ${current}.`);
-  if (releaseType === "release") return target;
+
+  if (!target) {
+    throw new Error(`Cannot apply "${bump}" to ${current}.`);
+  }
+
+  if (releaseType === "release") {
+    return target;
+  }
 
   // Already a candidate of the same version: the next candidate (a new identifier
   // starts again at .0, e.g. 1.3.0-beta.3 → 1.3.0-rc.0).
   const parsed = semver.parse(current);
-  const next =
-    parsed && parsed.prerelease.length > 0 && `${parsed.major}.${parsed.minor}.${parsed.patch}` === target
+  const next
+    = parsed && parsed.prerelease.length > 0 && `${parsed.major}.${parsed.minor}.${parsed.patch}` === target
       ? semver.inc(current, "prerelease", identifier)
       : `${target}-${identifier}.0`;
-  if (!next || !semver.valid(next)) throw new Error(`Cannot make the next prerelease of ${current}.`);
+
+  if (!next || !semver.valid(next)) {
+    throw new Error(`Cannot make the next prerelease of ${current}.`);
+  }
+
   // A new identifier can sort before the current one (1.3.0-rc.2 → 1.3.0-beta.0):
   // never go backwards.
   if (!semver.gt(next, current)) {
@@ -76,6 +93,7 @@ export function nextVersion(current, bump, releaseType, prereleaseIdentifier = D
       `The next prerelease ${next} is not newer than ${current}. Use a prerelease identifier that sorts after the current one, or a bigger version bump.`,
     );
   }
+
   return next;
 }
 
@@ -84,6 +102,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const [bump = "", releaseType = "", prereleaseIdentifier] = process.argv.slice(2);
   const packageJson = path.resolve(import.meta.dirname, "..", "package.json");
   const { version } = JSON.parse(readFileSync(packageJson, "utf8"));
+
   try {
     console.log(nextVersion(version, bump, releaseType, prereleaseIdentifier));
   } catch (error) {

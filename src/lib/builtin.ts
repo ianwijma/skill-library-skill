@@ -19,38 +19,56 @@ export interface BuiltinSkill {
 function builtinRoot(): string | null {
   for (const rel of ["./builtin/", "../../assets/builtin/"]) {
     const dir = fileURLToPath(new URL(rel, import.meta.url));
-    if (existsSync(dir)) return dir;
+
+    if (existsSync(dir)) {
+      return dir;
+    }
   }
+
   return null;
 }
 
 let cache: readonly BuiltinSkill[] | undefined;
 
 export function builtinSkills(): readonly BuiltinSkill[] {
-  if (cache) return cache;
+  if (cache) {
+    return cache;
+  }
+
   const root = builtinRoot();
   const out: BuiltinSkill[] = [];
+
   if (root) {
     for (const entry of readdirSync(root, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
       const dir = path.join(root, entry.name);
       let data: Record<string, unknown>;
+
       try {
         ({ data } = parseFrontmatter(readFileSync(path.join(dir, "SKILL.md"), "utf8")));
       } catch {
         continue;
       }
-      if (typeof data.name !== "string" || typeof data.description !== "string") continue;
+
+      if (typeof data.name !== "string" || typeof data.description !== "string") {
+        continue;
+      }
+
       out.push({ id: `builtin://${data.name}`, name: data.name, description: data.description, dir });
     }
   }
-  out.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+
+  out.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
   cache = out;
+
   return out;
 }
 
 export function isBuiltinName(name: string): boolean {
-  return builtinSkills().some((s) => s.name === name || s.id === name);
+  return builtinSkills().some((skill) => skill.name === name || skill.id === name);
 }
 
 /** The note `remove` and `update` print for a built-in skill. */

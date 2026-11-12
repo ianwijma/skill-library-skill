@@ -25,17 +25,26 @@ export function newCommand(name: string) {
       styleTitle: (title) => pc.bold(title),
       showGlobalOptions: true,
       // Global options are the top-level ones (--store, --verbose, --version), not a parent command's.
-      visibleGlobalOptions: (cmd): Option[] => {
-        if (!cmd.parent) return [];
-        let root = cmd;
-        while (root.parent) root = root.parent;
-        return root.options.filter((o) => !o.hidden);
+      visibleGlobalOptions: (helpCmd): Option[] => {
+        if (!helpCmd.parent) {
+          return [];
+        }
+
+        let root = helpCmd;
+
+        while (root.parent) {
+          root = root.parent;
+        }
+
+        return root.options.filter((option) => !option.hidden);
       },
     })
     .exitOverride()
     .allowExcessArguments()
     .showHelpAfterError(pc.gray("Run with --help for usage."));
+
   readInlineValuesAsBefore(cmd);
+
   return cmd;
 }
 
@@ -44,50 +53,73 @@ export function newCommand(name: string) {
  *  on/off flag ignores the value (`--json=true` is --json). Rewrite them before commander parses. */
 function readInlineValuesAsBefore(cmd: CommandUnknownOpts): void {
   const parseOptions = cmd.parseOptions.bind(cmd);
+
   cmd.parseOptions = (args: string[]) => {
     const out: string[] = [];
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i]!;
+
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index]!;
+
       if (arg === "--") {
-        out.push(...args.slice(i));
+        out.push(...args.slice(index));
         break;
       }
-      const m = /^(--[^=]+)=([\s\S]*)$/.exec(arg);
-      const opt = m ? cmd.options.find((o) => o.long === m[1]) : undefined;
-      if (m && opt?.variadic) out.push(m[1]!, `=${m[2]}`); // the "=" marks it inline; list() strips it
-      else if (m && opt && !opt.required && !opt.optional) out.push(m[1]!);
-      else out.push(arg);
+
+      const match = /^(--[^=]+)=([\s\S]*)$/.exec(arg);
+      const opt = match ? cmd.options.find((option) => option.long === match[1]) : undefined;
+
+      // the "=" marks it inline; list() strips it
+      if (match && opt?.variadic) {
+        out.push(match[1]!, `=${match[2]!}`);
+      } else if (match && opt && !opt.required && !opt.optional) {
+        out.push(match[1]!);
+      } else {
+        out.push(arg);
+      }
     }
+
     return parseOptions(out);
   };
 }
 
-const isOptionLike = (v: string): boolean => v.length > 1 && v.startsWith("-");
+const isOptionLike = (text: string): boolean => text.length > 1 && text.startsWith("-");
 /** Commander reads `-a=codex` as -a with the value "=codex". */
-const inline = (v: string): string => (v.startsWith("=") ? v.slice(1) : v);
+const inline = (text: string): string => (text.startsWith("=") ? text.slice(1) : text);
 
 /** A one-value option. An empty or option-like value is a missing value: `--skill=` and
  *  `--skill --json` never select a skill. */
 export function value(raw: string): string {
-  const v = inline(raw);
-  if (v === "" || isOptionLike(v)) throw new InvalidArgumentError("requires a value");
-  return v;
+  const text = inline(raw);
+
+  if (text === "" || isOptionLike(text)) {
+    throw new InvalidArgumentError("requires a value");
+  }
+
+  return text;
 }
 
 /** A number option (query's --threshold / --top): only an empty value is a missing value; a
  *  negative number such as `--threshold=-0.1` reaches the command's own range check. */
 export function numberValue(raw: string): string {
-  const v = inline(raw);
-  if (v === "") throw new InvalidArgumentError("requires a value");
-  return v;
+  const text = inline(raw);
+
+  if (text === "") {
+    throw new InvalidArgumentError("requires a value");
+  }
+
+  return text;
 }
 
 /** vercel's list flags (`-s pdf docx`): values up to the next option, repeatable, and
  *  `--agent=a,b` splits on commas. */
 export function list(raw: string, previous: string[] | undefined): string[] {
-  const v = inline(raw);
-  const items = isOptionLike(v) ? [] : v.split(",").filter(Boolean);
-  if (items.length === 0) throw new InvalidArgumentError("requires a value");
+  const text = inline(raw);
+  const items = isOptionLike(text) ? [] : text.split(",").filter(Boolean);
+
+  if (items.length === 0) {
+    throw new InvalidArgumentError("requires a value");
+  }
+
   return [...(previous ?? []), ...items];
 }
 
@@ -99,22 +131,33 @@ const HELP_FLAGS = new Set(["-h", "--help"]);
 export function warnUnknownOptions<C extends CommandUnknownOpts>(cmd: C): C {
   cmd.allowUnknownOption();
   const parseOptions = cmd.parseOptions.bind(cmd);
+
   cmd.parseOptions = (args: string[]) => {
     const parsed = parseOptions(args);
     const operands = [...parsed.operands];
     const unknown: string[] = [];
-    for (let i = 0; i < parsed.unknown.length; i++) {
-      const arg = parsed.unknown[i]!;
+
+    for (let index = 0; index < parsed.unknown.length; index++) {
+      const arg = parsed.unknown[index]!;
+
       if (arg === "--") {
-        operands.push(...parsed.unknown.slice(i + 1));
+        operands.push(...parsed.unknown.slice(index + 1));
         break;
       }
-      if (HELP_FLAGS.has(arg)) unknown.push(arg); // commander looks for help among the unknown arguments
-      else if (isOptionLike(arg)) warn(`ignoring unknown option ${arg}`);
-      else operands.push(arg);
+
+      // commander looks for help among the unknown arguments
+      if (HELP_FLAGS.has(arg)) {
+        unknown.push(arg);
+      } else if (isOptionLike(arg)) {
+        warn(`ignoring unknown option ${arg}`);
+      } else {
+        operands.push(arg);
+      }
     }
+
     return { operands, unknown };
   };
+
   return cmd;
 }
 
@@ -122,14 +165,20 @@ export function warnUnknownOptions<C extends CommandUnknownOpts>(cmd: C): C {
  *  own wording. Help still wins, as for every command. */
 export function rejectUnknownOptions<C extends CommandUnknownOpts>(cmd: C): C {
   const parseOptions = cmd.parseOptions.bind(cmd);
+
   cmd.parseOptions = (args: string[]) => {
     const parsed = parseOptions(args);
     const end = parsed.unknown.indexOf("--");
     const options = end === -1 ? parsed.unknown : parsed.unknown.slice(0, end);
-    const flag = options.find((a) => isOptionLike(a) && !HELP_FLAGS.has(a));
-    if (flag && !options.some((a) => HELP_FLAGS.has(a))) cmd.error(`Unknown option: ${flag}`, { code: "commander.unknownOption" });
+    const flag = options.find((arg) => isOptionLike(arg) && !HELP_FLAGS.has(arg));
+
+    if (flag && !options.some((arg) => HELP_FLAGS.has(arg))) {
+      cmd.error(`Unknown option: ${flag}`, { code: "commander.unknownOption" });
+    }
+
     return parsed;
   };
+
   return cmd;
 }
 
@@ -138,32 +187,55 @@ export function rejectUnknownOptions<C extends CommandUnknownOpts>(cmd: C): C {
  *  before the subcommand's name: `sync --no-readme init <url>`, or `sync -- status`), the options
  *  are handed to that subcommand here. Otherwise `run` gets the leftover positionals, after a
  *  warning for each unknown option. */
-export function withSubcommands(cmd: CommandUnknownOpts, ctx: Ctx, run: (rest: string[]) => Promise<number> | number): void {
+export function withSubcommands(
+  cmd: CommandUnknownOpts,
+  ctx: Ctx,
+  run: (rest: string[]) => Promise<number> | number,
+): void {
   cmd.allowUnknownOption();
   cmd.action(async () => {
     const args = cmd.args;
     const leading: string[] = [];
     let literal = false;
-    let i = 0;
-    for (; i < args.length; i++) {
-      const arg = args[i]!;
-      if (!literal && arg === "--") literal = true;
-      else if (!literal && isOptionLike(arg)) leading.push(arg);
-      else break;
+    let index = 0;
+
+    for (; index < args.length; index++) {
+      const arg = args[index]!;
+
+      if (!literal && arg === "--") {
+        literal = true;
+      } else if (!literal && isOptionLike(arg)) {
+        leading.push(arg);
+      } else {
+        break;
+      }
     }
-    const name = args[i];
-    const sub = name === undefined ? undefined : cmd.commands.find((c) => c.name() === name || c.aliases().includes(name));
+
+    const name = args[index];
+    const sub = name === undefined
+      ? undefined
+      : cmd.commands.find((child) => child.name() === name || child.aliases().includes(name));
+
     if (sub) {
-      await sub.parseAsync([...leading, ...(literal ? ["--"] : []), ...args.slice(i + 1)], { from: "user" });
+      await sub.parseAsync([...leading, ...(literal ? ["--"] : []), ...args.slice(index + 1)], { from: "user" });
+
       return;
     }
+
     const rest: string[] = [];
+
     literal = false;
+
     for (const arg of args) {
-      if (!literal && arg === "--") literal = true;
-      else if (!literal && isOptionLike(arg)) warn(`ignoring unknown option ${arg}`);
-      else rest.push(arg);
+      if (!literal && arg === "--") {
+        literal = true;
+      } else if (!literal && isOptionLike(arg)) {
+        warn(`ignoring unknown option ${arg}`);
+      } else {
+        rest.push(arg);
+      }
     }
+
     ctx.done(await run(rest));
   });
 }
@@ -172,11 +244,12 @@ export function withSubcommands(cmd: CommandUnknownOpts, ctx: Ctx, run: (rest: s
 export function subcommandOptions(cmd: CommandUnknownOpts): () => string {
   return () => {
     const rows = cmd.commands.flatMap((sub) =>
-      sub.options.filter((o) => !o.hidden).map((o, i) => [i === 0 ? sub.name() : "", o.flags, o.description] as const),
+      sub.options.filter((option) => !option.hidden).map((option, index) => [index === 0 ? sub.name() : "", option.flags, option.description] as const),
     );
-    const nameW = Math.max(...rows.map(([n]) => n.length));
-    const flagsW = Math.max(...rows.map(([, f]) => f.length));
-    const lines = rows.map(([n, f, d]) => `  ${n.padEnd(nameW)}  ${f.padEnd(flagsW)}  ${d}`);
+    const nameW = Math.max(...rows.map(([subName]) => subName.length));
+    const flagsW = Math.max(...rows.map(([, flags]) => flags.length));
+    const lines = rows.map(([subName, flags, description]) => `  ${subName.padEnd(nameW)}  ${flags.padEnd(flagsW)}  ${description}`);
+
     return `\n${pc.bold("Command options:")}\n${lines.join("\n")}`;
   };
 }
@@ -184,7 +257,10 @@ export function subcommandOptions(cmd: CommandUnknownOpts): () => string {
 /** With --json, stdout stays one JSON value even when the arguments are wrong. */
 export function jsonOnError<C extends CommandUnknownOpts>(cmd: C, ctx: Ctx): C {
   return cmd.exitOverride((err) => {
-    if (err.exitCode !== 0 && ctx.argv.includes("--json")) console.log("[]");
+    if (err.exitCode !== 0 && ctx.argv.includes("--json")) {
+      console.log("[]");
+    }
+
     throw err;
   });
 }
@@ -193,13 +269,18 @@ export function jsonOnError<C extends CommandUnknownOpts>(cmd: C, ctx: Ctx): C {
  *  error, or where one wins whatever the order. */
 export function given(cmd: CommandUnknownOpts, ...flags: string[]): Set<string> {
   const seen = new Set<string>();
-  for (const flag of flags) cmd.on(`option:${flag}`, () => seen.add(flag));
+
+  for (const flag of flags) {
+    cmd.on(`option:${flag}`, () => seen.add(flag));
+  }
+
   return seen;
 }
 
 /** An "Examples:" help section. */
 export function examples(rows: Array<[string, string?]>): string {
-  const width = Math.max(0, ...rows.filter(([, d]) => d).map(([c]) => c.length));
-  const lines = rows.map(([c, d]) => `  ${pc.gray("$")} ${c}${d ? `${" ".repeat(width - c.length + 2)}${pc.gray(`# ${d}`)}` : ""}`);
+  const width = Math.max(0, ...rows.filter(([, description]) => description).map(([example]) => example.length));
+  const lines = rows.map(([example, description]) => `  ${pc.gray("$")} ${example}${description ? `${" ".repeat(width - example.length + 2)}${pc.gray(`# ${description}`)}` : ""}`);
+
   return `\n${pc.bold("Examples:")}\n${lines.join("\n")}`;
 }
