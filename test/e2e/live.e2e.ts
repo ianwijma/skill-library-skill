@@ -1,9 +1,10 @@
-// Opt-in: the real services, read-only. E2E_LIVE=1 adds from a public GitHub repository and searches
-// the real skills.sh; with SKILL_LIBRARY_TYPESAFE_API_KEY set it also scores against the real
-// TypeSafe API (Jev). CI runs this tier in its own job (.github/workflows/ci.yml, e2e-live).
+// The live suite: the real services, read-only. Adds from a public GitHub repository, searches the
+// real skills.sh and, with SKILL_LIBRARY_TYPESAFE_API_KEY set, scores against the real TypeSafe API
+// (Jev). Runs only through `npm run test:e2e:live`, in a container with a network; the main suite
+// (`npm run test:e2e`) has no network and never includes this file. CI runs it in the e2e-live job.
 // Nothing here writes outside the container: no sync, no credentials but the TypeSafe key, and
 // pushes are blocked.
-//   E2E_LIVE=1 SKILL_LIBRARY_TYPESAFE_API_KEY=… npm run test:e2e -- live
+//   SKILL_LIBRARY_TYPESAFE_API_KEY=… npm run test:e2e:live
 import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
@@ -62,7 +63,11 @@ describe.skipIf(!LIVE)("live services", () => {
   });
 
   // The real model decides, so CI runs this tier with continue-on-error: a miss is reported, not blocking.
-  test.skipIf(!KEY)("query against the real TypeSafe API: the README's library returns the right skills, never the unrelated one", async () => {
+  const QUERY_TEST = "query against the real TypeSafe API: the README's library returns the right skills, never the unrelated one";
+  if (!KEY) {
+    console.warn("⚠ SKILL_LIBRARY_TYPESAFE_API_KEY is not set: skipping the real TypeSafe query test.");
+    test.skip(`${QUERY_TEST} (SKILL_LIBRARY_TYPESAFE_API_KEY is not set)`, () => {});
+  } else test(QUERY_TEST, async () => {
     const { w, env } = await liveWorld();
     await w.ok(["add", SOURCE, "-g", "-y", "-s", ...README_SKILLS], { env });
     const live = { ...env, SKILL_LIBRARY_TYPESAFE_API_KEY: KEY, SKILL_LIBRARY_TYPESAFE_API_BASE: undefined };

@@ -121,8 +121,7 @@ jobs:
       # Real GitHub and skills.sh (read-only), and the real TypeSafe API with the repository secret.
       # Pull requests from forks get no secrets: the TypeSafe test is then skipped.
       - name: Run live end-to-end tests
-        run: npm run test:e2e -- live
+        run: npm run test:e2e:live
         env:
           E2E_IMAGE_BUILT: "1"
-          E2E_LIVE: "1"
           SKILL_LIBRARY_TYPESAFE_API_KEY: ${{ secrets.SKILL_LIBRARY_TYPESAFE_API_KEY }}

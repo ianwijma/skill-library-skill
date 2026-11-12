@@ -9,7 +9,8 @@ Node.js 22 or newer; CI tests it on 22.0.0 and the latest 24 and 26.
 ```sh
 npm install
 npm test            # vitest (builds the bundle first)
-npm run test:e2e    # end-to-end suite (see below)
+npm run test:e2e        # end-to-end suite, no network (see below)
+npm run test:e2e:live   # live end-to-end suite: real GitHub, skills.sh, TypeSafe
 npm run typecheck   # tsc --noEmit
 npm run build       # dist/skill-library (CLI), dist/index.js + dist/api.d.ts (API)
 ```
@@ -54,13 +55,19 @@ When one gets it, vitest reports the unexpected pass; move the command into
 `HAS_OWN_HELP` then.
 
 Arguments go to vitest (`npm run test:e2e -- sync` runs `sync.e2e.ts`).
-`E2E_NODE_VERSION=24` picks the container's Node line (default 22). `E2E_LIVE=1`
-gives the container a network for `test/e2e/live.e2e.ts`. It adds skills from
-real GitHub and searches the real skills.sh. When `SKILL_LIBRARY_TYPESAFE_API_KEY`
-is set, it also checks that the real TypeSafe API returns the right skills, and never the unrelated one, for a
-few tasks (the README's `pdf`, `xlsx` and `frontend-design` examples). It only reads.
-CI runs it in the `e2e-live` job (`continue-on-error`: it reports, never blocks) with the repository
-secret `SKILL_LIBRARY_TYPESAFE_API_KEY`.
+`E2E_NODE_VERSION=24` picks the container's Node line (default 22).
+
+#### Live suite
+
+`npm run test:e2e:live` is a separate suite (`test/e2e/live.e2e.ts`) in its own
+container, the only one with a network. It adds skills from real GitHub and
+searches the real skills.sh. With `SKILL_LIBRARY_TYPESAFE_API_KEY` set, it also
+checks that the real TypeSafe API returns the right skills (and never the unrelated
+one) for the README's `pdf`, `xlsx` and `frontend-design` examples. Without the key
+it warns and skips that test. It only reads; the key is the only credential passed
+in. CI runs it in the `e2e-live` job with the repository secret
+`SKILL_LIBRARY_TYPESAFE_API_KEY`. That job is `continue-on-error`: a failure is
+reported but never blocks a merge.
 
 ## Pull requests
 

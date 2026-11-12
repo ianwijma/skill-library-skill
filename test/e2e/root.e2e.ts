@@ -28,7 +28,7 @@ describe("sandbox guarantees", () => {
     }
   });
 
-  test.skipIf(process.env.E2E_LIVE === "1")("there is no network outside the container", async () => {
+  test("there is no network outside the container", async () => {
     await expect(fetch("https://github.com", { signal: AbortSignal.timeout(5_000) })).rejects.toThrow();
   });
 });
