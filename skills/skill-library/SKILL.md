@@ -1,6 +1,6 @@
 ---
 name: skill-library
-description: Use whenever a task might benefit from a skill — query often, erring on the side of querying. Skills are not loaded into context automatically; this skill queries the skill library (skill-library CLI) to discover and read the skills relevant to the current task.
+description: TRIGGER — run `skill-library query -a <your-agent-id> "<task in 1-3 sentences>"` at the start of every task, and again whenever the work moves to a new language, framework, tool, file type or kind of work (tests, CI, release, docs, deploy). Do it even when the task looks well defined, because you cannot know which skills the library holds without querying. Then read every SKILL.md path it prints before continuing. Agent ids look like claude-code, codex, opencode, cursor or gemini-cli; an unknown id prints the valid list. Skills are not loaded into context automatically, so this query is the only way to find them. Load this skill for output details, options, failures and the offline fallback.
 ---
 
 # Skill Library
@@ -8,12 +8,14 @@ description: Use whenever a task might benefit from a skill — query often, err
 Skills are NOT loaded into context automatically. They live in a managed library
 and must be loaded on demand, per task.
 
-## Workflow — query whenever a skill might help
+## Workflow — query at the start of every task and on every shift
 
-1. Whenever you think a skill might be needed — before starting a task, when the
-   work shifts into new territory, or when unsure — summarize the task into a
-   1–3 sentence description (include key technologies, file types, and the goal),
-   then run, passing your own agent id:
+1. Run a query at the start of every task, and again whenever the work moves to
+   a new language, framework, tool, file type or kind of work (tests, CI,
+   release, docs, deploy). Do it even when the task looks well defined: you
+   can't know which skills the library holds without querying. Summarize the
+   task in 1–3 sentences (key technologies, file types and the goal), then run,
+   passing your own agent id:
 
    ```sh
    skill-library query -a <your-agent-id> "<task description>"
@@ -24,8 +26,7 @@ and must be loaded on demand, per task.
    `Invalid agents: …` followed by `Valid agents: …` — pick yours from that list
    and run the query again.
 
-   This fires very often, and that is fine: a query is cheap; a missed skill is
-   not.
+   This fires often, and that is fine: a query is cheap; a missed skill is not.
 
 2. The output lists matching skills, each followed by a `└ <path>` line. Read
    every listed `SKILL.md` path **before** working on the task and follow it.

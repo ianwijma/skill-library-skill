@@ -184,6 +184,12 @@ describe("gateway", () => {
     const md = gatewaySkillMd();
     expect(parseFrontmatter(md).data.name).toBe("skill-library");
     expect(md).toContain("skill-library query -a <your-agent-id>");
+    // The description must carry the trigger and the command itself (agents often never load the
+    // body) and stay within the Agent Skills spec limit of 1024 characters.
+    const description = parseFrontmatter(md).data.description as string;
+    expect(description).toMatch(/^TRIGGER/);
+    expect(description).toContain("skill-library query -a <your-agent-id>");
+    expect(description.length).toBeLessThanOrEqual(1024);
     expect(md).toBe(await fsp.readFile(path.join(import.meta.dirname, "..", "skills", "skill-library", "SKILL.md"), "utf8"));
   });
 });
