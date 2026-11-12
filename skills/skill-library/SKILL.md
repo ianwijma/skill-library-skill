@@ -47,7 +47,8 @@ with `skill-library query`. It is the only way to find skills: read only the
 - `--threshold <0..1>`: minimum probability (default 0.7). Use `0.8` to be
   stricter, `0.5` to recover misses.
 - `--top <n>`: cap the number of matches.
-- `--json`: `{"matches":[{id,name,description,path,probability,scope,always}]}`.
+- Use the plain output. Don't add `--json`: it is for scripts, and the plain
+  output is what this workflow expects.
 - Any other line the command prints on stderr is meant for the user: pass it on
   briefly.
 

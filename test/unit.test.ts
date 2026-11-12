@@ -190,6 +190,7 @@ describe("gateway", () => {
     const md = gatewaySkillMd();
     const commands = [...md.matchAll(/skill-library ([a-z-]+)/g)].map((m) => m[1]);
     expect(new Set(commands)).toEqual(new Set(["query"]));
+    expect(md).not.toContain('{"matches"'); // --json is for scripts; the gateway steers agents away from it
     expect(md).not.toMatch(/\bsync|\bgit\b|\brepo(sitory)?\b|\.local\/share|SKILL_LIBRARY_DIR|--store|list --json|list -g/i);
   });
 });
