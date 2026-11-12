@@ -37,7 +37,7 @@ export function showBanner(): void {
   }
   const row = (cmd: string, arg: string, desc: string) =>
     console.log(`  ${DIM}$${RESET} ${TEXT}skill-library ${cmd}${arg ? ` ${DIM}${arg}` : ""}${RESET}${" ".repeat(Math.max(1, 30 - cmd.length - (arg ? arg.length + 1 : 0)))}${DIM}${desc}${RESET}`);
-  row("connect", "", "Teach your agents to use the library");
+  row("self setup", "", "Install, update and connect your agents");
   row("add", "<package>", "Add a skill to the library");
   row("query", '"<task>"', "Find the skills for a task");
   row("use", "<package>@<skill>", "Use a skill without adding it");
@@ -59,8 +59,10 @@ export function showBanner(): void {
 
 export function showHelp(): void {
   const examples: Array<[string, string?]> = [
-    ["skill-library connect", "install the gateway skill into your agents"],
-    ["skill-library connect -a claude-code codex", "only these agents"],
+    ["npx skill-library self setup", "install skill-library and set up your agents"],
+    ["skill-library self setup -a claude-code codex", "only these agents"],
+    ["skill-library self update", "update skill-library and its gateway skill"],
+    ["skill-library self doctor", "check that everything is in place"],
     ["skill-library add anthropics/skills", "add to the global library"],
     ["skill-library add anthropics/skills -p", "pin in this project's skill-library.json"],
     ["skill-library add anthropics/skills --agent claude-code", "only for Claude Code"],
@@ -169,10 +171,16 @@ ${BOLD}List Options:${RESET}
   -a, --agent <agents>   Filter by specific agents
   --json                 Output as JSON (machine-readable, no ANSI codes)
 
-${BOLD}Add-ons:${RESET}
-  connect                Install the gateway skill into your agents, so they query the library
+${BOLD}skill-library itself:${RESET}
+  self setup             Check this machine, install or update skill-library (npm -g), install the
+                         gateway skill into your agents, then run the doctor. Re-run it any time
     -a, --agent <agents> Only these agents (default: every agent found on this machine)
+  self update            Update skill-library (npm -g) and refresh the gateway skill where it's installed
+  self doctor            Check that everything skill-library needs is in place; changes nothing
+    -a, --agent <agents> Check only these agents' gateway skill
     --json               Output as JSON
+
+${BOLD}Add-ons:${RESET}
   query "<task>" | -     Find the skills for a task (TypeSafe Jev scoring)
     -a, --agent <agent>  Your agent id; skips skills meant only for other agents
     --threshold <0..1>   Minimum probability (default 0.7)

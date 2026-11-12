@@ -832,6 +832,8 @@ export async function updateSyncUrl(url: string, opts: BaseOptions & ReadmeOptio
 
 export async function setSyncEnabled(enabled: boolean, opts: BaseOptions = {}): Promise<SyncConfig> {
   const { store } = ctxOf(opts);
+  // Not set up (on a fresh machine the library folder doesn't even exist): say so before taking the lock.
+  await requireConfig(store);
   return withFileLock(syncPaths(store).lock, async () => {
     const cfg = await requireConfig(store);
     cfg.enabled = enabled;
@@ -1032,7 +1034,8 @@ export function maybeStartBackgroundSync(store: string): string | null {
     });
     child.on("error", () => {});
     child.unref();
-    return status.lastError ? `skill-library: the last sync failed: ${status.lastError} (see skill-library sync status)` : null;
+    // Printed to the agent: no git error text, paths or URLs, just a pointer for the user.
+    return status.lastError ? "skill-library: updating your skills failed last time — the user can run skill-library sync status for details" : null;
   } catch {
     return null;
   }

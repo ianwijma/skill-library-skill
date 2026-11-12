@@ -12,26 +12,26 @@ async function readStdin(): Promise<string> {
 }
 
 function parseThreshold(raw: string): number {
-  const n = Number(raw);
+  const n = raw.trim() === "" ? NaN : Number(raw);
   if (!Number.isFinite(n) || n < 0 || n > 1) throw new CliError(1, "--threshold must be a number between 0 and 1");
   return n;
 }
 
 function parseTop(raw: string): number {
-  const n = Number(raw);
+  const n = raw.trim() === "" ? NaN : Number(raw);
   if (!Number.isInteger(n) || n < 1) throw new CliError(1, "--top must be a positive integer");
   return n;
 }
 
-/** Lines telling the agent what a background sync changed, so it can pass it on to the user. */
+/** Lines telling the agent what a background sync changed (worded without sync internals), so it can pass it on to the user. */
 function syncChangeLines(c: SyncChanges): string[] {
   const list = (names: string[]) => names.map(sanitizeMetadata).join(", ");
-  const lines = ["Sync changed your global skills — tell the user:"];
+  const lines = ["Your skills changed — tell the user:"];
   if (c.added.length > 0) lines.push(`  added: ${list(c.added)}`);
   if (c.removed.length > 0) lines.push(`  removed: ${list(c.removed)}`);
   if (c.updated.length > 0) lines.push(`  updated: ${list(c.updated)}`);
   if (c.shadowed && c.shadowed.length > 0) {
-    lines.push(`  now shadowing a skill with the same name: ${list(c.shadowed)} (the user can pick one; see skill-library list -g)`);
+    lines.push(`  now shadowing a skill with the same name: ${list(c.shadowed)} (the user can choose which one to keep)`);
   }
   return lines;
 }
@@ -80,7 +80,8 @@ export async function runQuery(args: string[], g: GlobalOpts): Promise<number> {
   const lines = ["Read these skill files before continuing with the task:", ""];
   for (const m of res.matches) {
     const label = m.always ? "always" : `${Math.round(m.probability * 100)}%`;
-    lines.push(`${sanitizeMetadata(m.name)} (${label}${m.scope === "project" ? ", project" : ""})`);
+    const scope = m.scope === "project" ? ", project" : m.scope === "builtin" ? ", built-in" : "";
+    lines.push(`${sanitizeMetadata(m.name)} (${label}${scope})`);
     lines.push(`└ ${m.path}`);
     lines.push("");
   }

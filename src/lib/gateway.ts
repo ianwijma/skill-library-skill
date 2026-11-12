@@ -1,7 +1,7 @@
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import gatewayContent from "../../skills/skill-library/SKILL.md";
-import { detectInstalledAgents, displayName, globalReadDir } from "./agents.ts";
+import { agentIds, detectInstalledAgents, displayName, globalReadDir } from "./agents.ts";
 import { parseFrontmatter } from "./frontmatter.ts";
 
 export const GATEWAY_NAME = "skill-library";
@@ -95,4 +95,26 @@ export async function writeGateway(agentIds: string[]): Promise<GatewayResult> {
     }
   }
   return result;
+}
+
+export type GatewayState = "current" | "outdated" | "missing";
+
+/** Is this agent's gateway installed, and is it this version's? Null for agents without a global skills dir. */
+export async function gatewayState(agentId: string): Promise<GatewayState | null> {
+  const dir = globalReadDir(agentId);
+  if (!dir) return null;
+  const file = path.join(dir, GATEWAY_NAME, "SKILL.md");
+  const existing = await fsp.readFile(file, "utf8").catch(() => null);
+  if (existing === null || (await frontmatterName(file)) !== GATEWAY_NAME) return "missing";
+  return existing === gatewaySkillMd() ? "current" : "outdated";
+}
+
+/** Every agent whose global skills dir already holds the gateway (any version). */
+export async function agentsWithGateway(): Promise<string[]> {
+  const out: string[] = [];
+  for (const id of agentIds()) {
+    const state = await gatewayState(id);
+    if (state === "current" || state === "outdated") out.push(id);
+  }
+  return out;
 }

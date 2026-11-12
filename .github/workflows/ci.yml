@@ -17,7 +17,7 @@ jobs:
   test:
     name: Tests, typecheck, and build (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -68,3 +68,66 @@ jobs:
 
       - name: Smoke-test built CLI
         run: ./dist/skill-library --version
+
+      # The e2e image, with its apt and npm ci layers cached between runs.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build end-to-end image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: test/e2e/Dockerfile
+          build-args: NODE_VERSION=${{ matrix.install-node }}
+          tags: skill-library-e2e
+          load: true
+          cache-from: type=gha,scope=e2e-node${{ matrix.install-node }}
+          cache-to: type=gha,mode=max,scope=e2e-node${{ matrix.install-node }}
+
+      # In a throwaway Docker container without network (scripts/e2e.mjs), on this job's Node line.
+      - name: Run end-to-end tests
+        run: npm run test:e2e
+        env:
+          E2E_IMAGE_BUILT: "1"
+
+  e2e-live:
+    name: End-to-end tests against the real services (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    # Real services and a real model: a failure is reported on the run, but never blocks a merge.
+    continue-on-error: true
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The same release lines as the test job; the suite runs on the container's Node.
+        node: ["22", "24", "26"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      # Only runs scripts/e2e.mjs on the host; the tests use the container's Node.
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build end-to-end image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: test/e2e/Dockerfile
+          build-args: NODE_VERSION=${{ matrix.node }}
+          tags: skill-library-e2e
+          load: true
+          cache-from: type=gha,scope=e2e-node${{ matrix.node }}
+
+      # Real GitHub and skills.sh (read-only), and the real TypeSafe API with the repository secret.
+      # Pull requests from forks get no secrets: the TypeSafe test is then skipped.
+      - name: Run live end-to-end tests
+        run: npm run test:e2e:live
+        env:
+          E2E_IMAGE_BUILT: "1"
+          SKILL_LIBRARY_TYPESAFE_API_KEY: ${{ secrets.SKILL_LIBRARY_TYPESAFE_API_KEY }}

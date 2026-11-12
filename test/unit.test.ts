@@ -11,6 +11,7 @@ import { findProjectRoot } from "../src/lib/manifest.ts";
 import { parseSource } from "../src/lib/source.ts";
 import { versionKeyFor, type StoreRecord } from "../src/lib/store.ts";
 import { gatewaySkillMd } from "../src/lib/gateway.ts";
+import { newerRelease } from "../src/lib/release.ts";
 import { parseFrontmatter } from "../src/lib/frontmatter.ts";
 import { formatTimestamp, relativeTime } from "../src/lib/time.ts";
 import { newReadme, readmeTitle, repoOwner, shareableUrl } from "../src/lib/sync-readme.ts";
@@ -192,6 +193,14 @@ describe("gateway", () => {
     expect(description.length).toBeLessThanOrEqual(1024);
     expect(md).toBe(await fsp.readFile(path.join(import.meta.dirname, "..", "skills", "skill-library", "SKILL.md"), "utf8"));
   });
+  test("gateway names only the query command and nothing about sync or the store", () => {
+    const md = gatewaySkillMd();
+    const commands = [...md.matchAll(/skill-library ([a-z-]+)/g)].map((m) => m[1]);
+    expect(new Set(commands)).toEqual(new Set(["query"]));
+    // --json and the tuning flags are for scripts and people; the agent only needs -a.
+    expect(md).not.toMatch(/--json|--threshold|--top|\{"matches"/);
+    expect(md).not.toMatch(/\bsync|\bgit\b|\brepo(sitory)?\b|\.local\/share|SKILL_LIBRARY_DIR|--store|list --json|list -g/i);
+  });
 });
 
 describe("time formatting", () => {
@@ -244,4 +253,22 @@ describe("sync README", () => {
     expect(readmeTitle("https://git.example.com/skills.git")).toBe("My Skills");
   });
 
+});
+
+describe("newerRelease", () => {
+  test("stable installs only move to latest; prereleases also consider next", () => {
+    expect(newerRelease("0.2.0", { latest: "0.3.0", next: "0.4.0-rc.0" })).toBe("0.3.0");
+    expect(newerRelease("0.3.0", { latest: "0.3.0", next: "0.4.0-rc.0" })).toBeNull();
+    expect(newerRelease("0.2.0-rc.0", { latest: "0.1.0", next: "0.2.0-rc.1" })).toBe("0.2.0-rc.1");
+    expect(newerRelease("0.2.0-rc.0", { latest: "0.2.0", next: "0.2.0-rc.1" })).toBe("0.2.0");
+    expect(newerRelease("0.2.0-rc.1", { latest: "0.1.0", next: "0.2.0-rc.1" })).toBeNull();
+    expect(newerRelease("0.2.0", { latest: 42, next: "garbage" })).toBeNull();
+  });
+
+  test("a stable install never moves to a prerelease, even one tagged latest", () => {
+    expect(newerRelease("0.2.0", { latest: "0.3.0-rc.0" })).toBeNull();
+    expect(newerRelease("0.2.0", { latest: "0.3.0-rc.0", next: "0.3.0-rc.1" })).toBeNull();
+    expect(newerRelease("0.2.0", { latest: "1.0.0-beta.1", next: "0.2.1" })).toBeNull();
+    expect(newerRelease("0.2.0-rc.0", { latest: "0.3.0-rc.0" })).toBe("0.3.0-rc.0");
+  });
 });

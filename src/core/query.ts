@@ -7,6 +7,7 @@ import { buildRequest, callSystemOne } from "../lib/typesafe.ts";
 import { agentsArg, agentsMatch, ctxOf, globalKindOf, projectSkills, storeSkills, type BaseOptions, type GlobalKind, type ScopedSkill } from "./context.ts";
 import { readSyncConfig } from "./sync.ts";
 import { parseSkillFile } from "../lib/discover.ts";
+import { builtinSkills } from "../lib/builtin.ts";
 
 export interface QueryOptions extends BaseOptions {
   /** Calling agent id; filters out skills meant only for other agents. */
@@ -24,7 +25,8 @@ export interface QueryMatch {
   /** Absolute path of the SKILL.md to read. */
   path: string;
   probability: number;
-  scope: "project" | "global";
+  /** `builtin`: ships with skill-library itself. */
+  scope: "project" | "global" | "builtin";
   /** Marked `metadata.always` in its SKILL.md: returned without scoring (probability 1). */
   always: boolean;
 }
@@ -94,7 +96,10 @@ export async function querySkills(task: string, opts: QueryOptions = {}): Promis
   if (trimmed === "") throw new CliError(1, "task text is empty");
   const threshold = opts.threshold ?? 0.7;
   const { candidates, notInstalled } = await gatherCandidates(opts);
-  if (candidates.length === 0) return { matches: [], notInstalled };
+  // Built-ins join the scoring unless a library skill already uses the name (it wins).
+  const taken = new Set(candidates.map((s) => s.name));
+  const builtins = builtinSkills().filter((b) => !taken.has(b.name));
+  if (candidates.length === 0 && builtins.length === 0) return { matches: [], notInstalled };
 
   // Always-on skills skip scoring; read the flag from the SKILL.md that will be printed.
   const always: ScopedSkill[] = [];
@@ -114,13 +119,34 @@ export async function querySkills(task: string, opts: QueryOptions = {}): Promis
   });
   const byName = (a: QueryMatch, b: QueryMatch): number => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   const alwaysMatches = always.map((s) => toMatch(s, 1, true)).sort(byName);
-  if (scored.length === 0) return { matches: alwaysMatches, notInstalled };
-
   const apiKey = opts.apiKey ?? process.env.SKILL_LIBRARY_TYPESAFE_API_KEY;
+  // Built-ins alone never make a key required: without library skills to score, skip them quietly.
+  if (scored.length === 0 && (builtins.length === 0 || !apiKey)) return { matches: alwaysMatches, notInstalled };
   if (!apiKey) throw new CliError(2, "SKILL_LIBRARY_TYPESAFE_API_KEY is not set (required for query). Export it and retry.");
 
+  interface Scorable {
+    name: string;
+    description: string;
+    match: (probability: number) => QueryMatch;
+  }
+  const scorable: Scorable[] = [
+    ...scored.map((s) => ({ name: s.name, description: s.description, match: (p: number) => toMatch(s, p, false) })),
+    ...builtins.map((b) => ({
+      name: b.name,
+      description: b.description,
+      match: (p: number): QueryMatch => ({
+        id: b.id,
+        name: b.name,
+        description: b.description,
+        path: path.join(b.dir, "SKILL.md"),
+        probability: p,
+        scope: "builtin",
+        always: false,
+      }),
+    })),
+  ];
   // Opaque keys: ids (which may contain local paths) never leave the machine.
-  const keyed = scored.map((s, i) => ({ key: `s${i}`, skill: s }));
+  const keyed = scorable.map((s, i) => ({ key: `s${i}`, skill: s }));
   const request = buildRequest(
     trimmed,
     keyed.map(({ key, skill }) => ({ id: key, name: skill.name, description: skill.description })),
@@ -133,7 +159,7 @@ export async function querySkills(task: string, opts: QueryOptions = {}): Promis
     const s = byKey.get(key);
     const probability = answer && typeof answer.noul === "number" ? answer.noul : undefined;
     if (!s || probability === undefined || probability < threshold) continue;
-    matches.push(toMatch(s, probability, false));
+    matches.push(s.match(probability));
   }
   matches.sort((a, b) => b.probability - a.probability || byName(a, b));
   // Always-on skills come first and don't count towards --top.

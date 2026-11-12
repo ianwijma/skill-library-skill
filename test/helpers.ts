@@ -12,12 +12,12 @@ export interface RunResult {
 }
 
 /** Env vars that make the CLI think it runs inside an agent; cleared unless a test sets them. */
-const AGENT_ENV = [
+export const AGENT_ENV = [
   "AI_AGENT", "CURSOR_TRACE_ID", "CURSOR_AGENT", "CURSOR_EXTENSION_HOST_ROLE", "GEMINI_CLI", "CODEX_SANDBOX", "CODEX_CI",
   "CODEX_THREAD_ID", "ANTIGRAVITY_AGENT", "AUGMENT_AGENT", "OPENCODE_CLIENT", "CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_IS_COWORK",
   "REPL_ID", "COPILOT_MODEL", "COPILOT_ALLOW_ALL", "COPILOT_GITHUB_TOKEN", "CLAUDE_CODE_ENTRYPOINT",
 ];
-const CI_ENV = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI", "TRAVIS", "BUILDKITE", "JENKINS_URL", "TEAMCITY_VERSION"];
+export const CI_ENV = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI", "TRAVIS", "BUILDKITE", "JENKINS_URL", "TEAMCITY_VERSION"];
 
 export interface Sandbox {
   root: string;
@@ -44,6 +44,7 @@ export async function sandbox(): Promise<Sandbox> {
     SKILL_LIBRARY_DIR: path.join(home, "library"),
     SKILL_LIBRARY_NO_GATEWAY: "1",
     SKILL_LIBRARY_RETRY_BASE_MS: "10",
+    SKILL_LIBRARY_NPM_REGISTRY: "http://127.0.0.1:1",
     GIT_AUTHOR_NAME: "Test",
     GIT_AUTHOR_EMAIL: "test@example.com",
     GIT_COMMITTER_NAME: "Test",
@@ -56,13 +57,90 @@ export async function sandbox(): Promise<Sandbox> {
 }
 
 export function run(sb: Sandbox, args: string[], opts: { cwd?: string; env?: Record<string, string | undefined>; stdin?: string } = {}): Promise<RunResult> {
+  return runFile(sb, BIN, args, opts);
+}
+
+/** A fake npm registry answering dist-tags requests with `tags`. */
+export async function registry(tags: Record<string, string>): Promise<{ url: string; close: () => void }> {
+  const http = await import("node:http");
+  const server = http.createServer((_req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify(tags));
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as import("node:net").AddressInfo).port;
+  return { url: `http://127.0.0.1:${port}`, close: () => server.close() };
+}
+
+export interface FakeNpm {
+  /** npm's global node_modules folder. */
+  root: string;
+  /** A PATH with the fake npm, npm's global bin folder and git. */
+  path: string;
+  /** Pretend `npm i -g skill-library@<version>` already ran. */
+  install(version: string): Promise<void>;
+  /** The `npm i` calls made, one per line. */
+  log(): Promise<string[]>;
+}
+
+/**
+ * A fake npm whose global installs copy the built CLI into a folder inside the sandbox. The fake
+ * package.json says `"type": "module"` like the real one: Node before 22.12 doesn't detect that the
+ * extensionless bundle is ESM.
+ */
+export async function fakeNpm(sb: Sandbox): Promise<FakeNpm> {
+  const prefix = path.join(sb.root, "npm-prefix");
+  const root = path.join(prefix, "lib", "node_modules");
+  const bin = path.join(prefix, "bin");
+  const fakebin = path.join(sb.root, "fakebin");
+  const log = path.join(sb.root, "npm.log");
+  await fsp.mkdir(root, { recursive: true });
+  await fsp.mkdir(fakebin, { recursive: true });
+  const pkg = path.join(root, "skill-library");
+  await fsp.writeFile(
+    path.join(fakebin, "npm"),
+    `#!/bin/sh
+case "$1" in
+  --version) echo 10.0.0 ;;
+  root) echo "${root}" ;;
+  i)
+    v="\${3#skill-library@}"
+    mkdir -p "${pkg}/dist" "${bin}"
+    cp "${BIN}" "${pkg}/dist/skill-library"
+    printf '{"version":"%s","type":"module"}' "$v" > "${pkg}/package.json"
+    ln -sf "${pkg}/dist/skill-library" "${bin}/skill-library"
+    echo "$@" >> "${log}" ;;
+esac
+`,
+  );
+  await fsp.chmod(path.join(fakebin, "npm"), 0o755);
+  const gitDir = path.dirname(execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim());
+  return {
+    root,
+    path: [fakebin, bin, gitDir].join(path.delimiter),
+    async install(version) {
+      await fsp.mkdir(path.join(pkg, "dist"), { recursive: true });
+      await fsp.mkdir(bin, { recursive: true });
+      await fsp.copyFile(BIN, path.join(pkg, "dist", "skill-library"));
+      await fsp.writeFile(path.join(pkg, "package.json"), JSON.stringify({ version, type: "module" }));
+      await fsp.symlink(path.join(pkg, "dist", "skill-library"), path.join(bin, "skill-library")).catch(() => {});
+    },
+    async log() {
+      const text = await fsp.readFile(log, "utf8").catch(() => "");
+      return text.split("\n").filter(Boolean);
+    },
+  };
+}
+
+/** Run a copy of the CLI at `bin`. */
+export function runFile(sb: Sandbox, bin: string, args: string[], opts: { cwd?: string; env?: Record<string, string | undefined>; stdin?: string } = {}): Promise<RunResult> {
   const env = { ...sb.env };
   for (const [k, v] of Object.entries(opts.env ?? {})) {
     if (v === undefined) delete env[k];
     else env[k] = v;
   }
   return new Promise((resolve, reject) => {
-    const proc = spawn(process.execPath, [BIN, ...args], {
+    const proc = spawn(process.execPath, [bin, ...args], {
       cwd: opts.cwd ?? sb.root,
       env,
       stdio: [opts.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],

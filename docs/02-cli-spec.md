@@ -31,9 +31,11 @@ deleted by guessing. `-p -g` together is an error.
 | `find [query]` | `search`, `f`, `s` | `--owner <name>` | Search skills.sh (`SKILLS_API_URL`). With a query: print results. Without: interactive picker on a TTY. |
 | `init [name]` | | `--always` | Create `<name>/SKILL.md` or `./SKILL.md`. `--always` adds `metadata.always: true`. |
 | `use <source>[@skill]` | | `-s <skill>`, `-a <claude-code\|codex\|sarvam-code>`, `--full-depth` | Print a prompt for one skill (pipe it into an agent), or start the agent with `-a`. Writes nothing to the library. Unknown options are errors. |
-| `connect` | | `-a <agents…>`, `--json` | Add-on. Install (or refresh) the `skill-library` gateway skill in the global skills folder of every agent found on this machine, or only the `-a` agents. Writes nothing to the library. `add` does the same after adding skills; `connect` is the explicit way. `--json`: `{updated, current, errors}` (display names). Exit 1 when no agent is found or a folder can't be written. |
+| `self setup` | | `-a <agents…>` | Add-on; the one-step install. 1) Checks the machine: npm is on `PATH` and can write its global folder (`npm root -g`), `git`, `SKILL_LIBRARY_TYPESAFE_API_KEY`; on any failure prints the fixes and exits 1 with nothing installed. 2) Installs skill-library with `npm i -g` when it isn't installed globally or npm has a newer release (`latest`, plus `next` for prereleases; registry `SKILL_LIBRARY_NPM_REGISTRY`, default `https://registry.npmjs.org`). 3) Hands over to the globally installed copy (`SKILL_LIBRARY_SELF_HANDOFF=1`), which installs (or refreshes) the gateway skill in every detected agent, or only the `-a` agents, and runs the doctor; exit 1 when the doctor finds a problem. Re-running it updates everything. Typical first run: `npx skill-library self setup`. |
+| `self update` | | | Add-on. Update the global npm install to the newest release (`npm i -g`), then, run by the installed copy, refresh the gateway skill in every agent whose global skills folder already has it (agents without it are left alone). Exit 1 when skill-library isn't installed with `npm -g`; exit 2 when the registry can't be reached or npm fails. |
+| `self doctor` | | `-a <agents…>`, `--json` | Add-on. Read-only checks, each `ok`, `warn` or `fail`: `install` (global npm install and `skill-library` on `PATH`), `release` (newer release: warn), `gateway` (missing or outdated in detected or `-a` agents), `api-key` (with where to create one: https://console.typesafe.ai/keys), `git`. `--json`: `{checks: [{id, status, message, fix?}], ok}`. Exit 1 on any `fail`. |
 | `query "<task>" \| -` | | `-a <agent>`, `--threshold <0..1>`, `--top <n>`, `--json` | Add-on. See [04](04-typesafe-query.md). |
-| `sync [init <git-url> \| update <git-url> \| share <skill...> \| enable \| disable \| status]` | | `--json`, `--share <skills>` (init), `--no-readme` (init, update) | Add-on. Keep global skills in a git repository. See [09](09-global-sync-options.md). |
+| `sync [init <git-url> \| update <git-url> \| share <skill...> \| enable \| disable \| status]` | | `--share <skills>` (init), `--no-readme` (init, update) | Add-on. Keep global skills in a git repository. See [09](09-global-sync-options.md). |
 
 Scope rules for `update`/`check`: `-g -p` = both; no flag → project if
 `skill-library.json` has entries, else global; named skills → both **(differs**:
@@ -48,6 +50,9 @@ vercel's named-skill path is global-first).
 - Unknown options print one warning and are ignored **(differs**: vercel ignores
   them silently), except for `use`, which errors like vercel.
 - Invalid agents: `Invalid agents: x` / `Valid agents: …`, exit 1.
+- An option whose value is used fails without one, exit 1: `-a` at the end of the line,
+  `--threshold=` (empty), or `--top -1` (an option where the value should be). `-a` and
+  `--agent` (and every other short/long pair) behave identically.
 - Unknown command: `Unknown command: x` / `Run skill-library --help for usage.` on stdout, exit 1.
 - `--version`/`-v` prints the bare version. No arguments prints the banner, exit 0.
 - The logo shows only for `add`, `install`, `find`, `init` on a TTY outside agents.

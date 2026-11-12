@@ -1,13 +1,13 @@
 import { CliError, formatError } from "../lib/cli.ts";
 import { runAdd } from "./add.ts";
 import { parseFlags } from "./args.ts";
-import { runConnect } from "./connect.ts";
 import { runFind } from "./find.ts";
 import { runInit } from "./init.ts";
 import { runInstall } from "./install.ts";
 import { runList } from "./list.ts";
 import { runQuery } from "./query.ts";
 import { runRemove } from "./remove.ts";
+import { runSelf, showSelfHelp } from "./self.ts";
 import { runSyncCommand } from "./sync.ts";
 import { VERSION, showBanner, showHelp, showLogo, showRemoveHelp } from "./ui.ts";
 import { runUpdate } from "./update.ts";
@@ -64,6 +64,7 @@ export async function main(argv: string[]): Promise<number> {
   if (command !== "--help" && command !== "-h" && command !== "--version" && command !== "-v" && (args.includes("--help") || args.includes("-h"))) {
     if (command === "remove" || command === "rm" || command === "r") showRemoveHelp();
     else if (command === "use") return runUse(["--help"], g);
+    else if (command === "self") showSelfHelp();
     else showHelp();
     return 0;
   }
@@ -103,8 +104,11 @@ export async function main(argv: string[]): Promise<number> {
         return await runUse(args, g);
       case "query":
         return await runQuery(args, g);
+      case "self":
+        return await runSelf(args, g);
       case "connect":
-        return await runConnect(args, g);
+        console.error("Error: connect was replaced by self setup\nRun skill-library self setup to install the gateway skill into your agents.");
+        return 1;
       case "sync":
         return await runSyncCommand(args, g);
       case "--help":
