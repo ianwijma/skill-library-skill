@@ -22,9 +22,7 @@ description: Use whenever a task might benefit from a skill — query often, err
 2. Read every `SKILL.md` listed (the `└ <path>` lines) **before** working on
    the task, and follow it. These paths are the only skills to use: don't look
    for skills anywhere else. `(always)` skills come back for every task; read
-   them too. A `└ run: <command>` line is a built-in skill with no file: run
-   that command and follow its output as the `SKILL.md`. `No matching skills.`
-   means continue on your own judgment.
+   them too. `No matching skills.` means continue on your own judgment.
 3. If the output ends with `Your skills changed — tell the user:`, or the query
    succeeds but prints a note on stderr, pass it on to the user briefly.
 4. A quick follow-up on the same task can reuse the skills already read; when in

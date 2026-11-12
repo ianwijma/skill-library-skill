@@ -82,8 +82,7 @@ export async function runQuery(args: string[], g: GlobalOpts): Promise<number> {
     const label = m.always ? "always" : `${Math.round(m.probability * 100)}%`;
     const scope = m.scope === "project" ? ", project" : m.scope === "builtin" ? ", built-in" : "";
     lines.push(`${sanitizeMetadata(m.name)} (${label}${scope})`);
-    // Built-ins aren't on disk: the agent runs the command and reads its output instead.
-    lines.push(m.command ? `└ run: ${m.command}` : `└ ${m.path}`);
+    lines.push(`└ ${m.path}`);
     lines.push("");
   }
   process.stdout.write(lines.join("\n") + tail);

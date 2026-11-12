@@ -7,7 +7,7 @@ import { buildRequest, callSystemOne } from "../lib/typesafe.ts";
 import { agentsArg, agentsMatch, ctxOf, globalKindOf, projectSkills, storeSkills, type BaseOptions, type GlobalKind, type ScopedSkill } from "./context.ts";
 import { readSyncConfig } from "./sync.ts";
 import { parseSkillFile } from "../lib/discover.ts";
-import { builtinCommand, builtinSkills } from "../lib/builtin.ts";
+import { builtinSkills } from "../lib/builtin.ts";
 
 export interface QueryOptions extends BaseOptions {
   /** Calling agent id; filters out skills meant only for other agents. */
@@ -16,23 +16,19 @@ export interface QueryOptions extends BaseOptions {
   top?: number;
   /** TypeSafe API key (default: $SKILL_LIBRARY_TYPESAFE_API_KEY). */
   apiKey?: string;
-  /** Score the bundled built-in skills (e.g. find-skills) too (default true). */
-  builtins?: boolean;
 }
 
 export interface QueryMatch {
   id: string;
   name: string;
   description: string;
-  /** Absolute path of the SKILL.md to read; `builtin://<name>` for a built-in skill (read it with `command`). */
+  /** Absolute path of the SKILL.md to read. */
   path: string;
   probability: number;
-  /** `builtin`: bundled with the CLI, not on disk. */
+  /** `builtin`: ships with skill-library itself. */
   scope: "project" | "global" | "builtin";
   /** Marked `metadata.always` in its SKILL.md: returned without scoring (probability 1). */
   always: boolean;
-  /** Built-in skills only: the command that prints its SKILL.md. */
-  command?: string;
 }
 
 export interface QueryResult {
@@ -102,7 +98,7 @@ export async function querySkills(task: string, opts: QueryOptions = {}): Promis
   const { candidates, notInstalled } = await gatherCandidates(opts);
   // Built-ins join the scoring unless a library skill already uses the name (it wins).
   const taken = new Set(candidates.map((s) => s.name));
-  const builtins = opts.builtins === false ? [] : builtinSkills().filter((b) => !taken.has(b.name));
+  const builtins = builtinSkills().filter((b) => !taken.has(b.name));
   if (candidates.length === 0 && builtins.length === 0) return { matches: [], notInstalled };
 
   // Always-on skills skip scoring; read the flag from the SKILL.md that will be printed.
@@ -139,14 +135,13 @@ export async function querySkills(task: string, opts: QueryOptions = {}): Promis
       name: b.name,
       description: b.description,
       match: (p: number): QueryMatch => ({
-        id: `builtin://${b.name}`,
+        id: b.id,
         name: b.name,
         description: b.description,
-        path: `builtin://${b.name}`,
+        path: path.join(b.dir, "SKILL.md"),
         probability: p,
         scope: "builtin",
         always: false,
-        command: builtinCommand(b.name),
       }),
     })),
   ];

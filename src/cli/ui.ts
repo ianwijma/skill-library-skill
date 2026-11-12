@@ -178,7 +178,6 @@ ${BOLD}Add-ons:${RESET}
     --threshold <0..1>   Minimum probability (default 0.7)
     --top <n>            Cap the number of matches
     --json               Output as JSON
-  show <name>            Print a built-in skill (bundled, not on disk; e.g. find-skills)
 
 ${BOLD}Options:${RESET}
   --help, -h        Show this help message

@@ -83,8 +83,7 @@ This deletes them from the library. Your agents keep the gateway skill.
 | `remove [skills]` | Delete from the library. `-p`: only drop the project's reference (the skill stays in the library). In a folder with a `skill-library.json` you're asked which you mean; scripts and agents pass `-p` or `-g`. |
 | `find [query]` | Search [skills.sh](https://skills.sh). |
 | `update` / `check` | Pull newer versions from each skill's source / report them. |
-| `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. Built-in skills (like `find-skills`, which searches skills.sh for new skills) ship with the CLI and come back as a `skill-library show <name>` command instead. |
-| `show <name>` | Print a built-in skill. |
+| `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. Built-in skills ship with skill-library and come back like any other; today that's `find-skills`, which searches skills.sh for new skills. They can't be removed or updated on their own. |
 | `install` | Restore a project's skills from `skill-library.json`, at the pinned versions. |
 | `connect` | Install the gateway skill into your agents, so they query the library. `-a <agents>` for only some agents. `add` also does this after adding skills. |
 | `use <source>@<skill>` | Print a prompt for one skill without adding it (`| claude`), or start an agent with `-a`. |

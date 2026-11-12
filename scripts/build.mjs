@@ -2,7 +2,7 @@
 // declarations (dist/api.d.ts) and ThirdPartyNotices.txt for everything bundled.
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -31,6 +31,8 @@ const cli = await build({
   banner: { js: `#!/usr/bin/env node\n${common.banner.js}` },
 });
 chmodSync(path.join(dist, "skill-library"), 0o755);
+// Built-in skills ship as files next to the bundles (see src/lib/builtin.ts).
+cpSync(path.join(root, "assets/builtin"), path.join(dist, "builtin"), { recursive: true });
 const api = await build({ ...common, entryPoints: [path.join(root, "src/api.ts")], outfile: path.join(dist, "index.js") });
 
 execFileSync(process.execPath, [path.join(root, "node_modules/typescript/bin/tsc"), "-p", path.join(root, "tsconfig.build.json")], { stdio: "inherit" });

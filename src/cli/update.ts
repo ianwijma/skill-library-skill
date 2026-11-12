@@ -1,6 +1,7 @@
 import pc from "picocolors";
 import { checkSkills, updateSkills, type UpdateRow } from "../core/update.ts";
-import { CliError, DIM, RESET, formatError, sanitizeMetadata } from "../lib/cli.ts";
+import { builtinNote, isBuiltinName } from "../lib/builtin.ts";
+import { CliError, DIM, RESET, formatError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { parseFlags } from "./args.ts";
 import { pickAmbiguous } from "./remove.ts";
 import { afterGlobalChange } from "./sync.ts";
@@ -20,6 +21,8 @@ export async function runUpdate(args: string[], g: GlobalOpts, mode: "update" | 
   };
   try {
     const res = mode === "check" ? await checkSkills(opts) : await updateSkills(opts);
+    // Built-in skills ship with skill-library; a library skill with the same name is updated as usual.
+    for (const name of f.positionals) if (isBuiltinName(name) && !res.skills.some((r) => r.name === name)) note(builtinNote(name));
     const label = res.scopes.map((s) => (s === "global" ? "global" : "project")).join(" and ");
     if (res.skills.length === 0) {
       console.log(`${DIM}No ${label} skills to ${mode === "check" ? "check" : "update"}.${RESET}`);

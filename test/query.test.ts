@@ -3,7 +3,7 @@ import { promises as fsp } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import { project, run, sandbox, skillMd, writeFiles, type Sandbox } from "./helpers.ts";
+import { BIN, project, run, sandbox, skillMd, writeFiles, type Sandbox } from "./helpers.ts";
 
 interface MockServer {
   url: string;
@@ -145,7 +145,7 @@ describe("query", () => {
     expect(res.stdout).toContain("house-rules (always)");
   });
 
-  test("built-in find-skills: scored, printed as a command, shown by show, shadowed by a library skill", async () => {
+  test("built-in find-skills: returned like any skill with its packaged path, can't be removed or updated, shadowed by a library skill", async () => {
     const sb = await sandbox();
     await seed(sb);
     const mock = await startMock(byName({ "find-skills": 0.82, "a-skill": 0.9 }));
@@ -154,28 +154,31 @@ describe("query", () => {
     const lines = res.stdout.split("\n");
     expect(lines[2]).toBe("a-skill (90%)");
     expect(lines[5]).toBe("find-skills (82%, built-in)");
-    expect(lines[6]).toBe("└ run: skill-library show find-skills");
+    const builtinPath = path.join(path.dirname(BIN), "builtin", "find-skills", "SKILL.md");
+    expect(lines[6]).toBe(`└ ${builtinPath}`);
+    const md = await fsp.readFile(builtinPath, "utf8");
+    expect(md).toMatch(/^---\nname: find-skills\n/);
+    expect(md).toContain("skill-library find <query>");
     const json = JSON.parse((await q(sb, ["task", "--json"], mock)).stdout);
     expect(json.matches[1]).toEqual({
       id: "builtin://find-skills",
       name: "find-skills",
       description: expect.stringContaining("skills.sh"),
-      path: "builtin://find-skills",
+      path: builtinPath,
       probability: 0.82,
       scope: "builtin",
       always: false,
-      command: "skill-library show find-skills",
     });
 
-    const shown = await run(sb, ["show", "find-skills"]);
-    expect(shown.code).toBe(0);
-    expect(shown.stdout).toMatch(/^---\nname: find-skills\n/);
-    expect(shown.stdout).toContain("skill-library find <query>");
-    const bad = await run(sb, ["show", "a-skill"]);
-    expect(bad.code).toBe(1);
-    expect(bad.stderr).toContain("Built-in skills: find-skills");
-    // Nothing is written to disk for built-ins.
+    // Part of skill-library itself: not in the library, not removable or updatable.
     expect((await run(sb, ["list", "-g", "--json"])).stdout).not.toContain("find-skills");
+    for (const cmd of [["remove", "find-skills", "-g", "-y"], ["update", "find-skills", "-g"]]) {
+      const r = await run(sb, cmd);
+      expect(r.code).toBe(0);
+      expect(r.stderr).toContain("find-skills is built into skill-library");
+      expect(r.stdout).not.toContain("No matching skills");
+    }
+    await fsp.access(builtinPath);
 
     // A library skill with the same name wins: the built-in is not sent.
     await writeFiles(path.join(sb.root, "src"), { "find-skills/SKILL.md": skillMd("find-skills", "My own finder") });
