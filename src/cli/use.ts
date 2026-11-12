@@ -44,8 +44,8 @@ Options:
   -h, --help            Show this help message
 
 Examples:
-  skill-library use vercel-labs/agent-skills@web-design-guidelines | claude
-  skill-library use vercel-labs/agent-skills --skill web-design-guidelines --agent claude-code`;
+  skill-library use anthropics/skills@frontend-design | claude
+  skill-library use anthropics/skills --skill frontend-design --agent claude-code`;
 }
 
 async function hasSupportingFiles(dir: string): Promise<boolean> {

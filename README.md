@@ -111,7 +111,7 @@ sync.
 ```ts
 import { add, list, query } from "skill-library";
 
-await add("vercel-labs/agent-skills", { skills: ["frontend-design"], global: true });
+await add("anthropics/skills", { skills: ["frontend-design"], global: true });
 const { matches } = await query("design a landing page", { agent: "claude-code" });
 ```
 

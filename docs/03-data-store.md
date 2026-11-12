@@ -7,7 +7,7 @@
   index.json
   index.lock                           # only while writing
   skills/
-    react-best-practices-3f9c1a2e/     # <safe-slug(name)>-<first 8 hex of sha256(id)>
+    frontend-design-3f9c1a2e/     # <safe-slug(name)>-<first 8 hex of sha256(id)>
       3f2a9c1d07e4/                    # git version: first 12 hex of the commit
       8e01b7a4c2f9/
     my-notes-a1b2c3d4/
@@ -38,13 +38,13 @@ For folder sources the id is the discovered skill folder, not the path given to
 {
   "version": 1,
   "skills": [{
-    "id": "repo://github.com/vercel-labs/agent-skills/react-best-practices",
-    "source": { "type": "git", "url": "https://github.com/vercel-labs/agent-skills.git",
-                "ref": null, "path": "skills/react-best-practices" },  // global follow target
-    "dir": "skills/react-best-practices-3f9c1a2e",
+    "id": "repo://github.com/anthropics/skills/frontend-design",
+    "source": { "type": "git", "url": "https://github.com/anthropics/skills.git",
+                "ref": null, "path": "skills/frontend-design" },  // global follow target
+    "dir": "skills/frontend-design-3f9c1a2e",
     "versions": {
       "3f2a9c1d07e4": { "commit": "3f2a…", "tree": "9b1c…", "hash": "sha256-…",
-                        "name": "react-best-practices", "description": "…", "addedAt": "…" }
+                        "name": "frontend-design", "description": "…", "addedAt": "…" }
     },
     "current": "3f2a9c1d07e4",
     "global": true,
@@ -63,9 +63,9 @@ scored on that version's description. `agents` here is global usage only.
 {
   "version": 1,
   "skills": {
-    "repo://github.com/vercel-labs/agent-skills/react-best-practices": {
-      "source": "https://github.com/vercel-labs/agent-skills.git",
-      "ref": null, "path": "skills/react-best-practices",
+    "repo://github.com/anthropics/skills/frontend-design": {
+      "source": "https://github.com/anthropics/skills.git",
+      "ref": null, "path": "skills/frontend-design",
       "commit": "3f2a…", "hash": "sha256-…", "agents": ["claude-code"]
     },
     "local://skills/foo": { "agents": "all" },

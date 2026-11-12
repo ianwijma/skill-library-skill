@@ -4,7 +4,7 @@
  *
  * @example
  *   import { add, query } from "skill-library";
- *   await add("vercel-labs/agent-skills", { skills: ["frontend-design"], global: true });
+ *   await add("anthropics/skills", { skills: ["frontend-design"], global: true });
  *   const { matches } = await query("design a landing page", { agent: "claude-code" });
  */
 import { withWarnSink } from "./lib/cli.ts";
