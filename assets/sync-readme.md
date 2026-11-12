@@ -3,11 +3,18 @@
 <!-- skill-library:start -->
 <a href="https://github.com/ianwijma/skill-library-skill"><img src="https://github.com/ianwijma/skill-library-skill/raw/develop/assets/icon.svg" alt="Skill Library" width="64" height="64" align="right"></a>
 
-### Use these skills on another machine
+### Setup
+
+Install Skill Library:
 
 ```sh
 npm i -g skill-library
 export SKILL_LIBRARY_TYPESAFE_API_KEY='<your TypeSafe API key>'
+```
+
+Sync these skills to your machine:
+
+```sh
 skill-library sync init {{url}}
 ```
 
