@@ -51,6 +51,10 @@ export function nextVersion(current, bump, releaseType, prereleaseIdentifier = D
   if (!/^[0-9A-Za-z-]+$/.test(identifier)) {
     throw new Error(`Prerelease identifier "${identifier}" may only contain letters, digits and hyphens.`);
   }
+  // SemVer also forbids leading zeros in a numeric identifier ("01").
+  if (!semver.valid(`0.0.0-${identifier}`)) {
+    throw new Error(`Prerelease identifier "${identifier}" is not valid in a semver version.`);
+  }
 
   // The stable version this run releases, or makes a candidate of.
   const target = semver.inc(current, /** @type {Bump} */ (bump));
@@ -60,12 +64,19 @@ export function nextVersion(current, bump, releaseType, prereleaseIdentifier = D
   // Already a candidate of the same version: the next candidate (a new identifier
   // starts again at .0, e.g. 1.3.0-beta.3 → 1.3.0-rc.0).
   const parsed = semver.parse(current);
-  if (parsed && parsed.prerelease.length > 0 && `${parsed.major}.${parsed.minor}.${parsed.patch}` === target) {
-    const next = semver.inc(current, "prerelease", identifier);
-    if (!next) throw new Error(`Cannot make the next prerelease of ${current}.`);
-    return next;
+  const next =
+    parsed && parsed.prerelease.length > 0 && `${parsed.major}.${parsed.minor}.${parsed.patch}` === target
+      ? semver.inc(current, "prerelease", identifier)
+      : `${target}-${identifier}.0`;
+  if (!next || !semver.valid(next)) throw new Error(`Cannot make the next prerelease of ${current}.`);
+  // A new identifier can sort before the current one (1.3.0-rc.2 → 1.3.0-beta.0):
+  // never go backwards.
+  if (!semver.gt(next, current)) {
+    throw new Error(
+      `The next prerelease ${next} is not newer than ${current}. Use a prerelease identifier that sorts after the current one, or a bigger version bump.`,
+    );
   }
-  return `${target}-${identifier}.0`;
+  return next;
 }
 
 // Run as a script (not when the tests import it).

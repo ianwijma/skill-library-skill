@@ -68,6 +68,14 @@ describe("nextVersion", () => {
     expect(() => nextVersion("1.2.3", "minor", "stable")).toThrow(/Unknown release type/);
     expect(() => nextVersion("not-a-version", "patch", "release")).toThrow(/not a valid semver/);
     expect(() => nextVersion("1.2.3", "minor", "prerelease", "rc 1")).toThrow(/letters, digits and hyphens/);
+    expect(() => nextVersion("0.1.0", "minor", "prerelease", "01")).toThrow(/not valid in a semver version/);
+  });
+
+  test("never goes backwards with a different prerelease identifier", () => {
+    expect(() => nextVersion("0.2.0-rc.2", "minor", "prerelease", "beta")).toThrow(/not newer than 0.2.0-rc.2/);
+    expect(() => nextVersion("0.2.0-rc.foo", "minor", "prerelease", "rc")).toThrow(/not newer than/);
+    // A bigger bump is fine: it starts a new version.
+    expect(nextVersion("0.2.0-rc.2", "major", "prerelease", "beta")).toBe("1.0.0-beta.0");
   });
 });
 
@@ -78,7 +86,7 @@ describe("next-version script", () => {
 
   test("prints the next version for package.json", () => {
     expect(run("minor", "release")).toBe(nextVersion(version, "minor", "release"));
-    expect(run("minor", "prerelease", "beta")).toBe(nextVersion(version, "minor", "prerelease", "beta"));
+    expect(run("major", "prerelease", "beta")).toBe(nextVersion(version, "major", "prerelease", "beta"));
   });
 
   test("fails on an unknown bump or release type", () => {
