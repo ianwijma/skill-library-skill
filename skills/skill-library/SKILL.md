@@ -1,6 +1,6 @@
 ---
 name: skill-library
-description: TRIGGER — run `skill-library query -a <your-agent-id> "<task in 1-3 sentences>"` at the start of every task, and again whenever the work moves to a new language, framework, tool, file type or kind of work (tests, CI, release, docs, deploy). Do it even when the task looks well defined, because you cannot know which skills the library holds without querying. Then read every SKILL.md path it prints before continuing. Agent ids look like claude-code, codex, opencode, cursor or gemini-cli; an unknown id prints the valid list. Skills are not loaded into context automatically, so this query is the only way to find them. Load this skill for how to read the output and what to do when the query fails.
+description: TRIGGER — run `skill-library query -a <your-agent-id> "<task in 1-3 sentences>"` at the start of every task (quote any skill name or trigger word the user said, e.g. "council"), and again whenever the work moves to a new language, framework, tool, file type or kind of work (tests, CI, release, docs, deploy). Do it even when the task looks well defined, because you cannot know which skills the library holds without querying. Then read every SKILL.md path it prints before continuing. Agent ids look like claude-code, codex, opencode, cursor or gemini-cli; an unknown id prints the valid list. Skills are not loaded into context automatically, so this query is the only way to find them. Load this skill for how to read the output and what to do when the query fails.
 ---
 
 # Skill Library
@@ -16,6 +16,13 @@ description: TRIGGER — run `skill-library query -a <your-agent-id> "<task in 1
    ```sh
    skill-library query -a <your-agent-id> "<task description>"
    ```
+
+   If the user names a skill or uses a short command-like word or phrase
+   ("council", "full send", "use the X skill"), keep it in the description,
+   quoted exactly as they wrote it: skills are often triggered by those words,
+   and a summary that drops them misses the skill. For example, for "council:
+   review my auth refactor", run
+   `skill-library query -a claude-code 'The user said "council": review the auth refactor in src/auth.'`
 
    Agent ids look like `claude-code`, `codex`, `opencode`, `cursor`,
    `gemini-cli`. An unknown id prints `Valid agents: …`; pick yours and run

@@ -86,7 +86,7 @@ describe("query", () => {
     for (const qn of Object.values<any>(req.body.questions)) {
       expect(qn.type).toBe("noul");
       expect(Object.keys(qn.instructions.skill).sort()).toEqual(["description", "name"]);
-      expect(qn.instructions.question).toBe("Would reading the skill `skill.name`, described below, improve how the assistant handles `state.task`?");
+      expect(qn.instructions.question).toBe("Should the assistant read the skill `skill.name`, described below, before working on `state.task`?");
       expect(Object.keys(qn.criteria).sort()).toEqual(["false", "true"]);
     }
     expect(ts.lastAsked()).toEqual(["docker", "find-skills", "frontend", "postgres"]);
