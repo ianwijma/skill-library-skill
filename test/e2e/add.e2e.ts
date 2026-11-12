@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { exists, readJson, skillMd, world, type World } from "./harness.ts";
+import { expectJsonOrNothing, expectUnknownOption, expectUsageError } from "./contract.ts";
 import { assertAddJson, assertListJson, validateAll, validateGateway, validateManifest, validateStore, type StoreRecord } from "./validate.ts";
 
 const GH = "repo://github.com";
@@ -350,10 +351,7 @@ describe("add: git sources", () => {
     const missingRepo = await w.run(["add", "acme/does-not-exist", "-g", "-y"]);
     expect(missingRepo.code).toBe(1);
     expect(missingRepo.stderr).toContain("Failed to clone https://github.com/acme/does-not-exist.git");
-    const noSource = await w.run(["add", "-g", "-y"]);
-    expect(noSource.code).toBe(1);
-    expect(noSource.stderr).toContain("Missing required argument: source");
-    expect(noSource.stderr).toContain("Usage: skill-library add <package> [options]");
+    expectUsageError(await w.run(["add", "-g", "-y"]), "source", "package");
     expect(await exists(path.join(w.store, "index.json"))).toBe(false);
   });
 });
@@ -383,19 +381,15 @@ describe("add: flags", () => {
     expect(bad.code).toBe(1);
     expect(bad.stderr).toContain("Invalid agents: nope");
     expect(bad.stderr).toMatch(/Valid agents: .*claude-code/);
-    const missing = await w.run(["add", a, "-g", "-y", "-a"]);
-    expect(missing.code).toBe(1);
-    expect(missing.stderr).toContain("-a requires a value");
+    expectUsageError(await w.run(["add", a, "-g", "-y", "-a"]), "-a", "--agent");
     const missingSkill = await w.run(["add", a, "-g", "-y", "--skill", "--json"]);
-    expect(missingSkill.code).toBe(1);
-    expect(missingSkill.stderr).toContain("--skill requires a value");
-    expect(missingSkill.stdout).toBe("[]\n");
+    expectUsageError(missingSkill, "-s", "--skill");
+    expectJsonOrNothing(missingSkill);
     // An empty inline value is a missing value, for every list flag of add.
     for (const flag of ["--agent=", "--skill="]) {
       const empty = await w.run(["add", a, "-g", "-y", flag, "--json"]);
-      expect(empty.code, flag).toBe(1);
-      expect(empty.stderr).toContain(`${flag.slice(0, -1)} requires a value`);
-      expect(empty.stdout).toBe("[]\n");
+      expectUsageError(empty, flag.slice(0, -1));
+      expectJsonOrNothing(empty);
     }
 
     // Detected (Claude Code, from ~/.claude) and requested (Codex and Cursor both read ~/.agents/skills).
@@ -432,9 +426,11 @@ describe("add: flags", () => {
     expect(noYes.stderr).toContain("--json requires -y (or --all)");
     expect(noYes.json()).toEqual([]);
     // A notice (extra positional, unknown option) still leaves stdout as one JSON value.
-    const r = await w.ok(["add", src, "extra-arg", "-g", "--all", "--json", "--bogus"]);
+    const unknown = await w.run(["add", src, "-g", "--all", "--json", "--bogus"]);
+    if (!expectUnknownOption(unknown, "--bogus")) expectUsageError(unknown, "--bogus");
+    expectJsonOrNothing(unknown);
+    const r = await w.ok(["add", src, "extra-arg", "-g", "--all", "--json"]);
     expect(r.stderr).toContain(`Only the first source is used: ${src}`);
-    expect(r.stderr).toContain("ignoring unknown option --bogus");
     const rows = r.json();
     assertAddJson(rows);
     expect(rows.map((x) => x.name).sort()).toEqual(["a", "b"]);

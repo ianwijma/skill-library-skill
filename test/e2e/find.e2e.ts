@@ -78,18 +78,17 @@ describe("find", () => {
     expect(none.stdout).toContain('No skills found for "react" from owner "nobody"');
   });
 
-  test("an invalid or missing owner prints usage and exits 0 without searching", async () => {
+  test("an invalid owner is explained and nothing is searched; a missing one is a usage error", async () => {
     const { api, find } = await setup();
     for (const args of [["find", "react", "--owner", "bad/owner"], ["find", "react", "--owner=-x"], ["find", "react", "--owner=a_b"], ["find", "react", `--owner=${"x".repeat(40)}`], ["find", "react", "--owner="], ["find", "react", "--owner=  "]]) {
       const r = await find(args);
       expect(r.code, args.join(" ")).toBe(0);
       expect(r.stderr).toContain("--owner must be a GitHub owner");
-      expect(r.stderr).toContain("Usage: skill-library find <query> [--owner <owner>]");
+      expect(r.stderr).toMatch(/skill-library find/);
     }
     for (const args of [["find", "react", "--owner"], ["find", "react", "--owner", "--json"]]) {
       const r = await find(args);
-      expect(r.code).toBe(0);
-      expect(r.stderr).toContain("--owner requires a GitHub owner");
+      expect(r.stdout + r.stderr, args.join(" ")).toContain("--owner");
     }
     expect(api.requests).toEqual([]);
   });

@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { skillMd, world } from "./harness.ts";
+import { expectJsonOrNothing, expectUsageError } from "./contract.ts";
 import { assertListJson, validateAll } from "./validate.ts";
 
 describe("list", () => {
@@ -80,8 +81,7 @@ describe("list", () => {
     expect(j.code).toBe(1);
     expect(j.stdout).toBe("[]\n");
     expect(j.stderr).toContain("Invalid agents: nope");
-    const missing = await w.run(["list", "-a"]);
-    expect(missing.code).toBe(1); // a missing value is a usage error (see below)
+    expectUsageError(await w.run(["list", "-a"]), "-a", "--agent"); // see below
   });
 
   test("project: only with a skill-library.json; statuses tracked/untracked/missing; -g lists the library", async () => {
@@ -205,8 +205,8 @@ describe("list", () => {
     const w = await world();
     for (const args of [["list", "-a"], ["list", "--agent"], ["list", "--agent="], ["list", "-g", "-a", "--json"]]) {
       const r = await w.run(args);
-      expect(r.code, args.join(" ")).toBe(1);
-      expect(r.stderr + r.stdout).toMatch(/requires a value/);
+      expectUsageError(r, "-a", "--agent");
+      expectJsonOrNothing(r);
     }
   });
 });

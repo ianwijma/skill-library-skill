@@ -4,6 +4,7 @@ import { describe, expect, onTestFinished, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { e2e, readJson, skillMd, world, type Result, type RunOpts, type World } from "./harness.ts";
+import { expectUsageError } from "./contract.ts";
 import { fakeTypeSafe, type FakeTypeSafe } from "./fakes.ts";
 import { assertQueryJson, validateAll, type StoreIndex } from "./validate.ts";
 
@@ -132,27 +133,24 @@ describe("query", () => {
       expect(r.code, bad).toBe(1);
       expect(r.stderr).toContain("--threshold must be a number between 0 and 1");
     }
-    const missing = await q(["task", "--threshold"]);
-    expect(missing.code).toBe(1);
-    expect(missing.stderr).toContain("--threshold requires a value");
-    // A value that looks like an option is a missing value.
-    expect((await q(["task", "--threshold", "-0.5"])).stderr).toContain("--threshold requires a value");
+    expectUsageError(await q(["task", "--threshold"]), "--threshold");
+    // -0.5 is rejected, whether it is read as an option (a missing value) or as a number (out of range).
+    expectUsageError(await q(["task", "--threshold", "-0.5"]), "--threshold");
   });
 
   test("empty or blank --threshold / --top values are usage errors, never read as 0", async () => {
     const { w, ts, q, src } = await setup();
     await addGlobal(w, src, CATALOG);
-    for (const [args, message] of [
-      [["--threshold="], "--threshold requires a value"],
-      [["--top="], "--top requires a value"],
-      [["--agent="], "--agent requires a value"],
-      [["--threshold", " "], "--threshold must be a number between 0 and 1"],
-      [["--threshold", ""], "--threshold must be a number between 0 and 1"],
-      [["--top", " "], "--top must be a positive integer"],
+    for (const [args, option] of [
+      [["--threshold="], "--threshold"],
+      [["--top="], "--top"],
+      [["--agent="], "--agent"],
+      [["--threshold", " "], "--threshold"],
+      [["--threshold", ""], "--threshold"],
+      [["--top", " "], "--top"],
     ] as const) {
       const r = await q(["task", ...args]);
-      expect(r.code, args.join(" ")).toBe(1);
-      expect(r.stderr).toContain(message);
+      expectUsageError(r, option);
       expect(r.stdout).toBe("");
     }
     expect(ts.requests).toHaveLength(0);
@@ -168,10 +166,10 @@ describe("query", () => {
     expect(await top("10")).toEqual(["postgres", "docker", "frontend"]);
     for (const bad of ["0", "1.5", "x", "-1"]) {
       const r = await q(["task", "--top", bad]);
-      expect(r.code, bad).toBe(1);
-      expect(r.stderr).toMatch(bad === "-1" ? /--top requires a value/ : /--top must be a positive integer/);
+      expectUsageError(r, "--top");
+      if (bad !== "-1") expect(r.stderr, bad).toContain("--top must be a positive integer");
     }
-    expect((await q(["task", "--top"])).stderr).toContain("--top requires a value");
+    expectUsageError(await q(["task", "--top"]), "--top");
   });
 
   test("-a / --agent: agent-specific skills only reach their agent (and the API); invalid agent exits 1", async () => {
@@ -201,7 +199,7 @@ describe("query", () => {
     expect(bad.stderr).toContain("Valid agents:");
     expect(bad.stderr).toContain("claude-code");
     expect(ts.requests.length).toBe(before);
-    expect((await q(["help me", "-a"])).stderr).toContain("-a requires a value");
+    expectUsageError(await q(["help me", "-a"]), "-a", "--agent");
   });
 
   test("task text: from stdin with -, never empty, one positional only", async () => {

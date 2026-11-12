@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { exists, skillMd, world, type World } from "./harness.ts";
+import { expectUsageError } from "./contract.ts";
 
 const HEAD = "You are being given a Skill to execute for the user's next request.\n\nUse the following SKILL.md as your instructions:\n\n";
 
@@ -175,37 +176,23 @@ describe("use", () => {
 
     // -a and --agent are the same option: same behaviour, same message.
     for (const flag of ["-a", "--agent"]) {
-      const missing = await w.run(["use", dir, flag]);
-      expect(missing.code, flag).toBe(1);
-      expect(missing.stderr).toContain(`${flag} requires an agent name`);
-      const empty = await w.run(["use", dir, `${flag}=`]);
-      expect(empty.code, `${flag}=`).toBe(1);
+      expectUsageError(await w.run(["use", dir, flag]), "-a", "--agent");
+      expectUsageError(await w.run(["use", dir, `${flag}=`]), "-a", "--agent");
     }
-    const missingSkill = await w.run(["use", dir, "-s"]);
-    expect(missingSkill.code).toBe(1);
-    expect(missingSkill.stderr).toContain("-s requires a value");
-    for (const flag of ["--skill", "--skill="]) {
-      const r = await w.run(["use", dir, flag]);
-      expect(r.code, flag).toBe(1);
-      expect(r.stderr).toContain("--skill requires a value");
-    }
+    for (const flag of ["-s", "--skill", "--skill="]) expectUsageError(await w.run(["use", dir, flag]), "-s", "--skill");
   });
 
-  test("argument errors: missing source shows help, two sources, unknown options are errors, missing path", async () => {
+  test("argument errors: missing source, two sources, unknown options are errors, missing path", async () => {
     const w = await world();
-    const none = await w.run(["use"]);
-    expect(none.code).toBe(1);
-    expect(none.stderr).toContain("Missing required argument: source");
-    expect(none.stderr).toContain("Usage: skill-library use <source>[@<skill>] [options]");
+    expectUsageError(await w.run(["use"]), "source");
 
     const two = await w.run(["use", "./a", "./b"]);
     expect(two.code).toBe(1);
     expect(two.stderr).toContain("Expected one source, received 2: ./a, ./b");
 
-    const unknown = await w.run(["use", "./a", "--bogus", "--yes"]);
-    expect(unknown.code).toBe(1);
-    expect(unknown.stderr).toContain("Unknown option: --bogus");
-    expect(unknown.stderr).toContain("Unknown option: --yes");
+    // use never warns-and-continues: it might launch an agent with options it didn't understand.
+    expectUsageError(await w.run(["use", "./a", "--bogus"]), "--bogus");
+    expectUsageError(await w.run(["use", "./a", "--yes"]), "--yes");
 
     const gone = await w.run(["use", "./does-not-exist"]);
     expect(gone.code).toBe(1);
@@ -215,11 +202,6 @@ describe("use", () => {
     expect(bad.code).toBe(1);
     expect(bad.stderr).toContain("not supported by skill-library yet");
 
-    for (const flag of ["--help", "-h"]) {
-      const r = await w.ok(["use", flag]);
-      expect(r.stdout).toContain("Usage: skill-library use <source>[@<skill>] [options]");
-      for (const opt of ["-s, --skill", "-a, --agent", "--full-depth"]) expect(r.stdout).toContain(opt);
-    }
     expect(await exists(w.store)).toBe(false);
   });
 });

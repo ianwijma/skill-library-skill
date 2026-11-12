@@ -6,6 +6,7 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { fakeTypeSafe } from "./fakes.ts";
 import { exists, readJson, skillMd, world, type World } from "./harness.ts";
+import { expectUnknownOption, expectUsageError } from "./contract.ts";
 import { remoteFiles, validateAll, validateSync } from "./validate.ts";
 
 /** Global (tracked) skills by name, from `list -g --json`. */
@@ -84,9 +85,7 @@ describe("sync init", () => {
     for (const n of ["one", "two", "three"]) await a.ok(["add", await folderSkill(a, n), "-g", "-y"]);
     const ids = Object.fromEntries(Object.entries(await globals(a)).map(([n, r]) => [n, r.id as string]));
 
-    const missing = await a.run(["sync", "init", await a.emptyRemote("x"), "--share"]);
-    expect(missing.code).toBe(1);
-    expect(missing.stderr).toContain("--share requires a value");
+    expectUsageError(await a.run(["sync", "init", await a.emptyRemote("x"), "--share"]), "--share");
     expect(await exists(path.join(a.store, "sync.json"))).toBe(false);
 
     const byName = await a.emptyRemote("by-name");
@@ -415,10 +414,7 @@ describe("regular commands while sync is enabled", () => {
     await settled(a);
 
     // No selectors and no TTY: nothing to pick from interactively.
-    const none = await a.run(["sync", "share"]);
-    expect(none.code).toBe(1);
-    expect(none.stderr).toContain("Missing required argument: skill");
-    expect(none.stderr).toContain("Usage: skill-library sync share <skill...>");
+    expectUsageError(await a.run(["sync", "share"]), "skill");
   });
 
   test("a skill whose name is taken replaces the old one (kept, not global); sync reports a shadowed machine-only skill", async () => {
@@ -800,9 +796,20 @@ test("before setup on a fresh machine (no library folder), enable/disable say ho
     await settled(a);
   });
 
-  test("--json is not a sync option: every subcommand warns once and behaves exactly as without it", async () => {
+  test("--json is not a sync option: every subcommand either rejects it, or warns once and behaves exactly as without it", async () => {
     const a = await world();
-    const unknown = (r: { stderr: string }) => r.stderr.split("\n").filter((l) => l.includes("ignoring unknown option --json"));
+    const probe = await a.run(["sync", "status", "--json"]);
+    if (!expectUnknownOption(probe, "--json")) {
+      // Rejected: a usage error on every subcommand, and nothing is set up.
+      const remote = await a.emptyRemote("my-skills");
+      for (const args of [["status"], ["init", remote], [], ["share", "x"], ["disable"], ["enable"], ["update", remote]]) {
+        expectUsageError(await a.run(["sync", ...args, "--json"]), "--json");
+      }
+      expect(await exists(path.join(a.store, "sync.json"))).toBe(false);
+      expect(await remoteFiles(a, remote).then((f) => f.files)).toEqual([]);
+      return;
+    }
+    const unknown = (r: { stdout: string; stderr: string }) => (r.stdout + r.stderr).split("\n").filter((l) => l.includes("--json"));
     const st = await a.ok(["sync", "status", "--json"]);
     expect(unknown(st)).toHaveLength(1);
     expect(st.stdout).toBe("Sync is not set up. Run skill-library sync init <git-url>\n");
@@ -844,15 +851,10 @@ test("before setup on a fresh machine (no library folder), enable/disable say ho
     await settled(a);
   });
 
-  test("unknown sync command prints usage; --share needs a value", async () => {
+  test("an unknown sync command and --share without a value are usage errors", async () => {
     const w = await world();
-    const r = await w.run(["sync", "frobnicate"]);
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain("Unknown sync command: frobnicate");
-    expect(r.stderr).toContain("Usage: skill-library sync [init <git-url>");
-    const share = await w.run(["sync", "--share"]);
-    expect(share.code).toBe(1);
-    expect(share.stderr).toContain("--share requires a value");
+    expectUsageError(await w.run(["sync", "frobnicate"]), "frobnicate");
+    expectUsageError(await w.run(["sync", "--share"]), "--share");
     expect(await exists(w.store)).toBe(false);
   });
 });

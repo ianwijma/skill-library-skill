@@ -44,6 +44,15 @@ Docker; the suite refuses to start anywhere else.
   matches the library, no lock or staging files remain, the gateway is the packaged
   one, and the sync clone matches its remote.
 
+The suite tests behaviour, not a particular argument parser. Usage errors (a missing
+value, an unknown command or option, a stray argument) are checked through
+`test/e2e/contract.ts`: a non-zero exit and a message that names the option, never
+the exact wording or output stream. `test/e2e/help.e2e.ts` describes the help we
+want: `<command> --help` shows only that command's usage and options. Commands that
+don't have their own help yet are marked `test.fails` there (an expected failure).
+When one gets it, vitest reports the unexpected pass; move the command into
+`HAS_OWN_HELP` then.
+
 Arguments go to vitest (`npm run test:e2e -- sync` runs `sync.e2e.ts`).
 `E2E_NODE_VERSION=24` picks the container's Node line (default 22). `E2E_LIVE=1`
 gives the container a network for `test/e2e/live.e2e.ts`, which reads from real

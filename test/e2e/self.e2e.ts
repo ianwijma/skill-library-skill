@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { e2e, exists, skillMd, world, type Result, type World } from "./harness.ts";
+import { expectUsageError } from "./contract.ts";
 import { fakeRegistry, type FakeRegistry } from "./fakes.ts";
 import { assertDoctorJson, validateGateway } from "./validate.ts";
 
@@ -69,21 +70,13 @@ async function listDir(dir: string): Promise<string[]> {
 describe("self: arguments", () => {
   test("help, unknown subcommands, stray positionals and bad agents", async () => {
     const w = await world();
-    for (const args of [["self"], ["self", "help"], ["self", "--help"], ["self", "setup", "-h"]]) {
+    for (const args of [["self"], ["self", "help"], ["self", "--help"]]) {
       const r = await w.ok(args);
       expect(r.stdout).toContain("skill-library self <command>");
       for (const sub of ["setup", "update", "doctor"]) expect(r.stdout).toContain(sub);
     }
-    const unknown = await w.run(["self", "frobnicate"]);
-    expect(unknown.code).toBe(1);
-    expect(unknown.stderr).toContain("Unknown self command: frobnicate");
-    expect(unknown.stderr).toContain("Run skill-library self for the list.");
-    for (const sub of ["setup", "doctor", "update"]) {
-      const r = await w.run(["self", sub, "extra"]);
-      expect(r.code, sub).toBe(1);
-      expect(r.stderr).toContain("Unexpected argument: extra");
-      expect(r.stderr).toContain(`Usage: skill-library self ${sub}`);
-    }
+    expectUsageError(await w.run(["self", "frobnicate"]), "frobnicate");
+    for (const sub of ["setup", "doctor", "update"]) expectUsageError(await w.run(["self", sub, "extra"]), "extra");
     for (const sub of ["setup", "doctor"]) {
       const invalid = await w.run(["self", sub, "-a", "nope"]);
       expect(invalid.code).toBe(1);
@@ -96,9 +89,7 @@ describe("self: arguments", () => {
       const noGlobal = await w.run(["self", sub, "--agent", "eve"]);
       expect(noGlobal.code).toBe(1);
       expect(noGlobal.stderr).toContain("has no global skills folder");
-      const missing = await w.run(["self", sub, "-a"]);
-      expect(missing.code).toBe(1);
-      expect(missing.stderr).toContain("-a requires a value");
+      expectUsageError(await w.run(["self", sub, "-a"]), "-a", "--agent");
     }
     // Nothing was written anywhere.
     expect(await listDir(w.home)).toEqual([]);
@@ -165,19 +156,17 @@ describe("self doctor", () => {
     expect(offline.ok).toBe(!offline.checks.some((c) => c.status === "fail"));
   });
 
-  test("--agent (long form) and --agent=; an unknown option warns and is ignored", async () => {
+  test("--agent (long form) and --agent=; an unknown option is named", async () => {
     const s = await selfWorld();
+    expect((await s.npx(["self", "doctor", "--bogus"])).stderr).toContain("--bogus");
     for (const args of [["--agent", "claude-code"], ["--agent=claude-code"]]) {
-      const r = await s.npx(["self", "doctor", ...args, "--json", "--bogus"]);
+      const r = await s.npx(["self", "doctor", ...args, "--json"]);
       expect(r.code, args.join(" ")).toBe(1);
-      expect(r.stderr).toContain("ignoring unknown option --bogus");
       const j = r.json();
       assertDoctorJson(j);
       expect(j.checks.find((c) => c.id === "gateway")!.message).toBe("The skill-library skill is missing for Claude Code");
     }
-    const empty = await s.npx(["self", "doctor", "--agent="]);
-    expect(empty.code).toBe(1);
-    expect(empty.stderr).toContain("--agent requires a value");
+    expectUsageError(await s.npx(["self", "doctor", "--agent="]), "--agent");
   });
 
   test("everything in place → exit 0; npm's bin folder off PATH → install fails with the folder to add", async () => {

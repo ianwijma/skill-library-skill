@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { exists, readJson, skillMd, world, type World } from "./harness.ts";
+import { expectUsageError } from "./contract.ts";
 import { validateAll, type Manifest, type StoreIndex } from "./validate.ts";
 
 async function index(w: World): Promise<StoreIndex> {
@@ -278,9 +279,7 @@ describe("remove", () => {
     const { w } = await seeded();
     const before = await fsp.readFile(path.join(w.store, "index.json"), "utf8");
     for (const args of [["remove", "beta", "-g", "-y", "-a"], ["remove", "beta", "-g", "-y", "--agent="]]) {
-      const r = await w.run(args);
-      expect(r.code, args.join(" ")).toBe(1);
-      expect(r.stderr).toMatch(/requires a value/);
+      expectUsageError(await w.run(args), "-a", "--agent");
     }
     expect(await fsp.readFile(path.join(w.store, "index.json"), "utf8")).toBe(before);
   });

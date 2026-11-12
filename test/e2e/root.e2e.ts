@@ -1,13 +1,12 @@
-// The top level: banner, --version, --help, global options, unknown commands and options.
+// The top level: banner, --version, global options, unknown commands and options (help: help.e2e.ts).
 import { describe, expect, onTestFinished, test } from "vitest";
 import { execFileSync } from "node:child_process";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { fakeTypeSafe } from "./fakes.ts";
 import { e2e, exists, plain, skillMd, world } from "./harness.ts";
+import { expectUnknownOption, expectUsageError } from "./contract.ts";
 import { validateAll, validateGateway, validateStore } from "./validate.ts";
-
-const COMMANDS = ["add", "a", "install", "i", "experimental_install", "list", "ls", "remove", "rm", "r", "update", "upgrade", "check", "find", "search", "f", "s", "init", "use", "query", "self", "sync"];
 
 describe("sandbox guarantees", () => {
   test("runs in the e2e container, as a regular user", () => {
@@ -56,34 +55,10 @@ describe("root", () => {
     expect(out).not.toContain("┌─┐");
   });
 
-  test("--help / -h, and --help after any command, print help and exit 0", async () => {
+  test("unknown command: a usage error naming it, nothing written; the old connect points at self setup", async () => {
     const w = await world();
-    const main = plain((await w.ok(["--help"])).stdout);
-    expect(plain((await w.ok(["-h"])).stdout)).toBe(main);
-    for (const cmd of ["add", "install", "list", "remove", "update", "check", "find", "init", "query", "sync", "self", "use"]) expect(main).toContain(cmd);
-    expect(main).toContain("--store <dir>");
-    for (const cmd of COMMANDS) {
-      for (const flag of ["--help", "-h"]) {
-        const r = await w.run([cmd, flag]);
-        expect(r.code, `${cmd} ${flag}`).toBe(0);
-        const out = plain(r.stdout);
-        if (["remove", "rm", "r"].includes(cmd)) expect(out).toContain("remove");
-        else if (cmd === "use") expect(out).toContain("Usage: skill-library use <source>[@<skill>]");
-        else if (cmd === "self") expect(out).toContain("skill-library self <command>");
-        else expect(out).toBe(main);
-      }
-    }
-    // --help never runs the command: nothing was written.
+    for (const cmd of ["frobnicate", "lsit", "--frob", "-x"]) expectUsageError(await w.run([cmd]), cmd);
     expect(await exists(w.store)).toBe(false);
-  });
-
-  test("unknown command: message on stdout, exit 1; the old connect points at self setup", async () => {
-    const w = await world();
-    for (const cmd of ["frobnicate", "lsit", "--frob", "-x"]) {
-      const r = await w.run([cmd]);
-      expect(r.code, cmd).toBe(1);
-      expect(r.stdout).toBe(`Unknown command: ${cmd}\nRun skill-library --help for usage.\n`);
-    }
     const old = await w.run(["connect"]);
     expect(old.code).toBe(1);
     expect(old.stderr).toContain("connect was replaced by self setup");
@@ -107,16 +82,14 @@ describe("root", () => {
     const both = (await w.ok(["list", "-g", "--json", "--store", path.join(w.root, "empty")], { env: { SKILL_LIBRARY_DIR: viaEnv } })).json();
     expect(both).toEqual([]);
     expect(await exists(w.store)).toBe(false);
-    const missing = await w.run(["list", "--store"]);
-    expect(missing.code).toBe(1);
-    expect(missing.stderr).toContain("--store requires a directory");
+    expectUsageError(await w.run(["list", "--store"]), "--store");
   });
 
-  test("unknown options warn once each and are ignored; arguments after -- are positionals", async () => {
+  test("unknown options are named (warned about or rejected); arguments after -- are positionals", async () => {
     const w = await world();
-    const r = await w.ok(["list", "-g", "--frobnicate", "--json"]);
-    expect(r.stderr).toContain("ignoring unknown option --frobnicate");
-    expect(r.json()).toEqual([]);
+    const r = await w.run(["list", "-g", "--frobnicate", "--json"]);
+    if (expectUnknownOption(r, "--frobnicate")) expect(r.json()).toEqual([]);
+    else expectUsageError(r, "--frobnicate");
     const init = await w.ok(["init", "--", "--weird"], { cwd: await w.dir("p") });
     expect(init.stdout).toContain("Initialized skill: --weird");
     expect(await exists(path.join(w.root, "p", "--weird", "SKILL.md"))).toBe(true);
@@ -167,7 +140,7 @@ describe("root", () => {
     await w.ok(["remove", "solo", "-p", "-y", ...s], { cwd: proj });
     await w.ok(["use", path.join(src, "a"), ...s, "--verbose"]);
     expect((await w.ok(["init", "made", ...s, "--verbose"], { cwd: proj })).stdout).toContain("Initialized skill: made");
-    expect((await w.ok(["find", ...s, "--verbose"])).stdout).toContain("Usage: skill-library find");
+    expect((await w.ok(["find", ...s, "--verbose"])).stdout).toMatch(/skill-library find/);
 
     expect(await exists(w.store), "the default library").toBe(false);
     const idx = JSON.parse(await fsp.readFile(path.join(store, "index.json"), "utf8"));
