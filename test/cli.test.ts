@@ -59,8 +59,8 @@ describe("local sources", () => {
     const dir = await project(sb);
     await writeFiles(dir, { "skills/foo/SKILL.md": skillMd("foo", "Foo") });
     await writeFiles(path.join(sb.home, "my-skills"), { "bar/SKILL.md": skillMd("bar", "Bar"), "baz/SKILL.md": skillMd("baz", "Baz") });
-    expect((await run(sb, ["add", "./skills/foo", "-y"], { cwd: dir })).code).toBe(0);
-    const r = await run(sb, ["add", path.join(sb.home, "my-skills"), "-y", "-a", "claude-code"], { cwd: dir });
+    expect((await run(sb, ["add", "-p", "./skills/foo", "-y"], { cwd: dir })).code).toBe(0);
+    const r = await run(sb, ["add", "-p", path.join(sb.home, "my-skills"), "-y", "-a", "claude-code"], { cwd: dir });
     expect(r.code).toBe(0);
     const m = await readJson(path.join(dir, "skill-library.json"));
     expect(Object.keys(m.skills)).toEqual(["home://my-skills/bar", "home://my-skills/baz", "local://skills/foo"]);
@@ -78,7 +78,7 @@ describe("local sources", () => {
     const sb = await sandbox();
     const dir = await project(sb);
     await writeFiles(path.join(sb.home, "s"), { "bar/SKILL.md": skillMd("bar", "Bar") });
-    await run(sb, ["add", "~/s/bar".replace("~", sb.home), "-y", "-a", "codex"], { cwd: dir });
+    await run(sb, ["add", "-p", "~/s/bar".replace("~", sb.home), "-y", "-a", "codex"], { cwd: dir });
     let rows = JSON.parse((await run(sb, ["list", "-g", "--json"], { cwd: dir })).stdout);
     expect(rows[0]).toMatchObject({ name: "bar", scope: "global", status: "untracked", agents: [] });
     await run(sb, ["add", path.join(sb.home, "s", "bar"), "-g", "-y", "-a", "codex"], { cwd: dir });
@@ -95,24 +95,24 @@ describe("local sources", () => {
     const sb = await sandbox();
     const dir = await project(sb);
     await writeFiles(path.join(sb.root, "src"), { "bar/SKILL.md": skillMd("bar", "Bar"), "qux/SKILL.md": skillMd("qux", "Qux") });
-    await run(sb, ["add", path.join(sb.root, "src"), "-y", "-a", "codex", "claude-code"], { cwd: dir });
-    let r = await run(sb, ["remove", "bar", "-a", "codex", "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", path.join(sb.root, "src"), "-y", "-a", "codex", "claude-code"], { cwd: dir });
+    let r = await run(sb, ["remove", "-p", "bar", "-a", "codex", "-y"], { cwd: dir });
     expect(r.code).toBe(0);
     let m = await readJson(path.join(dir, "skill-library.json"));
     expect(Object.values(m.skills).map((e: any) => e.agents)).toEqual([["claude-code"], ["codex", "claude-code"]]);
-    r = await run(sb, ["remove", "bar", "-y"], { cwd: dir });
+    r = await run(sb, ["remove", "-p", "bar", "-y"], { cwd: dir });
     expect(r.stdout).toContain("Successfully removed 1 skill(s)");
     m = await readJson(path.join(dir, "skill-library.json"));
     expect(Object.keys(m.skills)).toHaveLength(1);
     const listed = JSON.parse((await run(sb, ["ls", "-g", "--json"], { cwd: dir })).stdout);
     expect(listed.find((x: any) => x.name === "bar").status).toBe("untracked");
-    const none = await run(sb, ["remove", "nope", "-y"], { cwd: dir });
+    const none = await run(sb, ["remove", "-p", "nope", "-y"], { cwd: dir });
     expect(none.code).toBe(0);
     expect(none.stdout).toContain("No matching skills found for: nope");
     const g = await run(sb, ["remove", "-g", "qux", "-y"], { cwd: dir });
     expect(g.stderr).toContain("still referenced by");
     expect((await readJson(path.join(sb.store, "index.json"))).skills.map((s: any) => s.id)).not.toContainEqual(expect.stringContaining("qux"));
-    const all = await run(sb, ["remove", "--all", "bar"], { cwd: dir });
+    const all = await run(sb, ["remove", "-p", "--all", "bar"], { cwd: dir });
     expect(all.code).toBe(1);
     expect(all.stderr).toContain("Cannot combine --all with specific skill names.");
   });
@@ -121,30 +121,66 @@ describe("local sources", () => {
     const sb = await sandbox();
     const dir = await project(sb);
     await writeFiles(path.join(sb.root, "src"), { "bar/SKILL.md": skillMd("bar", "Bar") });
-    await run(sb, ["add", path.join(sb.root, "src", "bar"), "-y"], { cwd: dir });
-    const r = await run(sb, ["remove", "bar", "-a", "codex", "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", path.join(sb.root, "src", "bar"), "-y"], { cwd: dir });
+    const r = await run(sb, ["remove", "-p", "bar", "-a", "codex", "-y"], { cwd: dir });
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("bar is available to all agents; remove it without -a");
     expect((await readJson(path.join(dir, "skill-library.json"))).skills).not.toEqual({});
   });
 
-  test("$HOME without a manifest behaves as -g", async () => {
+  test("without a skill-library.json everything is global: no manifest is created, list and remove use the library", async () => {
     const sb = await sandbox();
-    await writeFiles(path.join(sb.home, "s"), { "bar/SKILL.md": skillMd("bar", "Bar") });
-    const r = await run(sb, ["add", "./s/bar", "-y"], { cwd: sb.home });
+    const dir = await project(sb);
+    await writeFiles(path.join(sb.root, "s"), { "bar/SKILL.md": skillMd("bar", "Bar") });
+    const r = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-y"], { cwd: dir });
     expect(r.code).toBe(0);
-    expect(r.stderr).toContain("No project here; using global scope.");
+    expect(r.stderr).not.toContain("-p");
+    await expect(fsp.access(path.join(dir, "skill-library.json"))).rejects.toThrow();
     expect((await readJson(path.join(sb.store, "index.json"))).skills[0].global).toBe(true);
+    const ls = JSON.parse((await run(sb, ["list", "--json"], { cwd: dir })).stdout);
+    expect(ls).toMatchObject([{ name: "bar", scope: "global" }]);
+    expect((await run(sb, ["remove", "bar", "-y"], { cwd: dir })).code).toBe(0);
+    expect((await readJson(path.join(sb.store, "index.json"))).skills).toEqual([]);
+    // -p creates the manifest; in $HOME it refuses.
+    expect((await run(sb, ["add", "-p", path.join(sb.root, "s", "bar"), "-y"], { cwd: dir })).code).toBe(0);
+    expect(Object.keys((await readJson(path.join(dir, "skill-library.json"))).skills)).toHaveLength(1);
+    const home = await run(sb, ["add", "-p", path.join(sb.root, "s", "bar"), "-y"], { cwd: sb.home });
+    expect(home.code).toBe(1);
+    expect(home.stderr).toContain("home directory");
+  });
+
+  test("with a skill-library.json: add stays global without a prompt, remove needs -p or -g", async () => {
+    const sb = await sandbox();
+    const dir = await project(sb);
+    await fsp.writeFile(path.join(dir, "skill-library.json"), '{"version":1,"skills":{}}');
+    await writeFiles(path.join(sb.root, "s"), { "bar/SKILL.md": skillMd("bar", "Bar"), "baz/SKILL.md": skillMd("baz", "Baz") });
+    const g = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-y"], { cwd: dir });
+    expect(g.code).toBe(0);
+    expect(g.stderr).toContain("use -p to add to");
+    expect((await readJson(path.join(dir, "skill-library.json"))).skills).toEqual({});
+    expect((await run(sb, ["add", "-p", path.join(sb.root, "s", "baz"), "-y"], { cwd: dir })).code).toBe(0);
+    expect(Object.keys((await readJson(path.join(dir, "skill-library.json"))).skills)).toHaveLength(1);
+    expect((await run(sb, ["add", "-p", "-g", path.join(sb.root, "s", "baz"), "-y"], { cwd: dir })).code).toBe(1);
+
+    const unsure = await run(sb, ["remove", "bar", "-y"], { cwd: dir });
+    expect(unsure.code).toBe(1);
+    expect(unsure.stderr).toContain("-p");
+    expect((await readJson(path.join(sb.store, "index.json"))).skills).toHaveLength(2);
+    expect((await run(sb, ["remove", "-p", "baz", "-y"], { cwd: dir })).code).toBe(0);
+    expect((await readJson(path.join(dir, "skill-library.json"))).skills).toEqual({});
+    expect((await run(sb, ["remove", "-g", "bar", "-y"], { cwd: dir })).code).toBe(0);
+    expect((await readJson(path.join(sb.store, "index.json"))).skills).toHaveLength(1);
+    expect((await run(sb, ["remove", "-p", "-g", "baz", "-y"], { cwd: dir })).code).toBe(1);
   });
 
   test("non-TTY without -y and several skills fails; inside an agent -y is implied", async () => {
     const sb = await sandbox();
     const dir = await project(sb);
     await writeFiles(path.join(sb.root, "src"), { "a/SKILL.md": skillMd("a", "A"), "b/SKILL.md": skillMd("b", "B") });
-    const r = await run(sb, ["add", path.join(sb.root, "src")], { cwd: dir });
+    const r = await run(sb, ["add", "-p", path.join(sb.root, "src")], { cwd: dir });
     expect(r.code).toBe(1);
     expect(r.stderr).toContain("not a TTY");
-    const inAgent = await run(sb, ["add", path.join(sb.root, "src")], { cwd: dir, env: { CLAUDECODE: "1" } });
+    const inAgent = await run(sb, ["add", "-p", path.join(sb.root, "src")], { cwd: dir, env: { CLAUDECODE: "1" } });
     expect(inAgent.code).toBe(0);
     const m = await readJson(path.join(dir, "skill-library.json"));
     expect(Object.values(m.skills).every((e: any) => e.agents === "all")).toBe(true);
@@ -153,11 +189,13 @@ describe("local sources", () => {
   test("add --json: one JSON value on stdout even with notices; needs -y; rejects -l", async () => {
     const sb = await sandbox();
     await writeFiles(path.join(sb.home, "s"), { "bar/SKILL.md": skillMd("bar", "Bar") });
-    const r = await run(sb, ["add", "./s/bar", "--json", "-y"], { cwd: sb.home, env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
+    const dir = await project(sb);
+    await fsp.writeFile(path.join(dir, "skill-library.json"), '{"version":1,"skills":{}}');
+    const r = await run(sb, ["add", path.join(sb.home, "s", "bar"), "--json", "-y"], { cwd: dir, env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
     expect(r.code).toBe(0);
     const rows = JSON.parse(r.stdout);
     expect(rows[0]).toMatchObject({ name: "bar", status: "installed", scope: "global" });
-    expect(r.stderr).toContain("No project here");
+    expect(r.stderr).toContain("use -p to add to");
     const noYes = await run(sb, ["add", "./s/bar", "--json"], { cwd: sb.home });
     expect(noYes.code).toBe(1);
     expect(noYes.stdout).toBe("[]\n");
@@ -178,7 +216,7 @@ describe("git sources", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "skills", { "skills/react/SKILL.md": skillMd("react", "React rules"), "skills/vue/SKILL.md": skillMd("vue", "Vue rules") });
     const dir = await project(sb);
-    const r = await run(sb, ["add", repo.url, "-s", "react", "-y"], { cwd: dir });
+    const r = await run(sb, ["add", "-p", repo.url, "-s", "react", "-y"], { cwd: dir });
     expect(r.code).toBe(0);
     const id = `repo://localhost${repo.bare.replace(/\.git$/, "")}/react`;
     const m = await readJson(path.join(dir, "skill-library.json"));
@@ -201,7 +239,7 @@ describe("git sources", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "Solo") });
     const dir = await project(sb);
-    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     const file = path.join(dir, "skill-library.json");
     const m = await readJson(file);
     const id = Object.keys(m.skills)[0]!;
@@ -218,7 +256,7 @@ describe("git sources", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "nosha", { "SKILL.md": skillMd("solo", "Solo") }, { allowSha: false });
     const dir = await project(sb);
-    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     const fresh = { ...sb, env: { ...sb.env, SKILL_LIBRARY_DIR: path.join(sb.root, "store2") } };
     expect((await run(fresh, ["install"], { cwd: dir })).code).toBe(0);
   });
@@ -227,7 +265,7 @@ describe("git sources", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "Solo") });
     const dir = await project(sb);
-    await run(sb, ["add", repo.url, "-y"], { cwd: dir });
+    await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     const before = await fsp.readFile(path.join(dir, "skill-library.json"), "utf8");
     const rows = JSON.parse((await run(sb, ["ls", "--json"], { cwd: dir })).stdout);
     await fsp.writeFile(path.join(rows[0].path, "SKILL.md"), "tampered");
@@ -245,14 +283,14 @@ describe("git sources", () => {
     const repo = await gitRepo(sb, "r", { "skills/a/SKILL.md": skillMd("a", "A v1"), "skills/b/SKILL.md": skillMd("b", "B v1") });
     const p1 = await project(sb, "p1");
     const p2 = await project(sb, "p2");
-    await run(sb, ["add", repo.url, "-s", "a", "-y"], { cwd: p1 });
+    await run(sb, ["add", "-p", repo.url, "-s", "a", "-y"], { cwd: p1 });
     // A commit that only touches another skill is not an update for `a`.
     await repo.commit({ "skills/b/SKILL.md": skillMd("b", "B v2") });
     const chk = await run(sb, ["check"], { cwd: p1 });
     expect(chk.code).toBe(0);
     expect(chk.stdout).toContain("a is up to date");
     const v2 = await repo.commit({ "skills/a/SKILL.md": skillMd("a", "A v2") });
-    await run(sb, ["add", repo.url, "-s", "a", "-y"], { cwd: p2 });
+    await run(sb, ["add", "-p", repo.url, "-s", "a", "-y"], { cwd: p2 });
     const pin = async (p: string) => Object.values((await readJson(path.join(p, "skill-library.json"))).skills)[0] as any;
     expect((await pin(p1)).commit).toBe(repo.head);
     expect((await pin(p2)).commit).toBe(v2);
@@ -271,7 +309,7 @@ describe("git sources", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "Old description") });
     const p1 = await project(sb, "p1");
-    await run(sb, ["add", repo.url, "-y"], { cwd: p1 });
+    await run(sb, ["add", "-p", repo.url, "-y"], { cwd: p1 });
     await repo.commit({ "SKILL.md": skillMd("solo", "New description") });
     await run(sb, ["add", repo.url, "-g", "-y"], { cwd: p1 });
     const proj = JSON.parse((await run(sb, ["ls", "--json"], { cwd: p1 })).stdout);

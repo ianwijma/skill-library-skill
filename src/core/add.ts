@@ -1,6 +1,6 @@
 import { promises as fsp } from "node:fs";
 import path from "node:path";
-import { CliError, msgOf, note } from "../lib/cli.ts";
+import { CliError, msgOf } from "../lib/cli.ts";
 import { discoverSkills, filterSkills, parseSkillFile, requireStagedSkill, type DiscoveredSkill } from "../lib/discover.ts";
 import { cleanup, cloneRepo, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
@@ -25,7 +25,12 @@ import {
 import { agentsArg, ctxOf, mergeAgents, mutateIndex, type BaseOptions } from "./context.ts";
 
 export interface AddOptions extends BaseOptions {
-  /** Add to the global scope instead of the current project. */
+  /**
+   * Pin the skills into the project's skill-library.json (created in `cwd` when there is none)
+   * instead of the global library, which is the default.
+   */
+  project?: boolean;
+  /** Add to the global library (the default; kept so `-g` stays explicit). Cannot be combined with `project`. */
   global?: boolean;
   /** Agents the skill is for (default: all; `['*']` = all). */
   agents?: string[];
@@ -108,13 +113,13 @@ export async function addSkills(source: string, opts: AddOptions = {}): Promise<
   const parsed = parseSource(source, ctx.cwd);
   const requested = agentsArg(opts.agents);
 
+  if (opts.global && opts.project) throw new CliError(1, "--global cannot be combined with --project");
   let project: Project | null = null;
-  let scope: "project" | "global" = opts.global ? "global" : "project";
+  const scope: "project" | "global" = opts.project ? "project" : "global";
   if (scope === "project") {
     project = await loadProject(ctx.cwd);
     if (!project) {
-      scope = "global";
-      if (!opts.list) note("No project here; using global scope.");
+      throw new CliError(1, "No project here: skill-library.json is not created in your home directory.", "Run it in a project folder, or drop -p to add to the global library.");
     }
   }
   const projectRoot = scope === "project" ? project!.root : null;

@@ -3,6 +3,7 @@ import pc from "picocolors";
 import { removableSkills, removeSkills } from "../core/remove.ts";
 import { CliError, DIM, RESET, formatError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { isRunningInAgent } from "../lib/detect-agent.ts";
+import { loadProject } from "../lib/manifest.ts";
 import { parseFlags } from "./args.ts";
 import { afterGlobalChange } from "./sync.ts";
 import type { GlobalOpts } from "./index.ts";
@@ -15,14 +16,42 @@ export async function pickAmbiguous(selector: string, ids: string[]): Promise<st
 
 export async function runRemove(args: string[], g: GlobalOpts): Promise<number> {
   const f = parseFlags(args, {
-    booleans: { global: ["-g", "--global"], yes: ["-y", "--yes"], all: ["--all"] },
+    booleans: { global: ["-g", "--global"], project: ["-p", "--project"], yes: ["-y", "--yes"], all: ["--all"] },
     lists: { agent: ["-a", "--agent"], skill: ["-s", "--skill"] },
   });
-  const base = { cwd: g.cwd, ...(g.store ? { store: g.store } : {}), global: f.booleans.has("global") };
   const all = f.booleans.has("all");
   const yes = f.booleans.has("yes") || all || isRunningInAgent();
   let selectors = [...f.positionals, ...(f.lists.get("skill") ?? [])];
   try {
+    if (f.booleans.has("global") && f.booleans.has("project")) throw new CliError(1, "--global cannot be combined with --project");
+    // Global by default. With a skill-library.json here, ask (or take -p / -g). Without a prompt
+    // the scope must be explicit: guessing wrong would delete a skill from the whole library.
+    let projectScope = f.booleans.has("project");
+    if (!projectScope && !f.booleans.has("global")) {
+      const project = await loadProject(g.cwd);
+      if (project?.exists) {
+        if (yes || !process.stdin.isTTY) {
+          throw new CliError(
+            1,
+            `This folder has a project (${project.file}); say where to remove from.`,
+            "Use -p to drop the project's reference, or -g to delete from the global library.",
+          );
+        }
+        const choice = await p.select({
+          message: "Remove from",
+          options: [
+            { value: "global", label: "Global", hint: "delete from the library, every project" },
+            { value: "project", label: "Project", hint: `only ${project.file}` },
+          ],
+        });
+        if (p.isCancel(choice)) {
+          p.cancel("Removal cancelled");
+          return 0;
+        }
+        projectScope = choice === "project";
+      }
+    }
+    const base = { cwd: g.cwd, ...(g.store ? { store: g.store } : {}), project: projectScope };
     if (all && f.positionals.length > 0) {
       throw new CliError(1, "Cannot combine --all with specific skill names.", `Use \`skill-library remove --all\` to remove every skill, or omit --all to remove only the named skills.\n   Example: skill-library remove ${f.positionals[0]} -y`);
     }
@@ -51,7 +80,7 @@ export async function runRemove(args: string[], g: GlobalOpts): Promise<number> 
     }
     if (!yes) {
       const what = all ? "every skill in scope" : selectors.join(", ");
-      const ok = await p.confirm({ message: `Remove ${what}${base.global ? " from the library" : " from this project"}?` });
+      const ok = await p.confirm({ message: `Remove ${what}${base.project ? " from this project" : " from the library"}?` });
       if (p.isCancel(ok) || !ok) {
         p.cancel("Removal cancelled");
         return 0;

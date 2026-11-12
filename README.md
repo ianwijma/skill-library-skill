@@ -46,7 +46,7 @@ Add three of Anthropic's skills to your global library: `pdf`, `xlsx` and
 `frontend-design`.
 
 ```sh
-skill-library add anthropics/skills -s pdf xlsx frontend-design -g
+skill-library add anthropics/skills -s pdf xlsx frontend-design
 ```
 
 They go into the library (`~/.local/share/skill-library`), not into your
@@ -71,18 +71,18 @@ remote sources).
 ## Remove the examples
 
 ```sh
-skill-library remove pdf xlsx frontend-design -g
+skill-library remove pdf xlsx frontend-design
 ```
 
-`-g` deletes them from the library. Your agents keep the gateway skill.
+This deletes them from the library. Your agents keep the gateway skill.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `add <source>` | Add skills from GitHub (`owner/repo`, `owner/repo@skill`), a git URL or a local folder. Project scope by default; `-g` for the whole library. `-a <agents>` records which agents a skill is for. |
-| `list` / `ls` | List the project's skills; `-g` for the whole library; `--json` for scripts. |
-| `remove [skills]` | In a project: drop the reference (the skill stays in the library). `-g`: delete it. |
+| `add <source>` | Add skills from GitHub (`owner/repo`, `owner/repo@skill`), a git URL or a local folder. Global by default; `-p` pins them in the project's `skill-library.json`. In a folder that has one, you're asked which you mean. `-a <agents>` records which agents a skill is for. |
+| `list` / `ls` | List the project's skills (the whole library when there's no `skill-library.json`); `-g` for the whole library; `--json` for scripts. |
+| `remove [skills]` | Delete from the library. `-p`: only drop the project's reference (the skill stays in the library). In a folder with a `skill-library.json` you're asked which you mean; scripts and agents pass `-p` or `-g`. |
 | `find [query]` | Search [skills.sh](https://skills.sh). |
 | `update` / `check` | Pull newer versions from each skill's source / report them. |
 | `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. |
@@ -101,7 +101,7 @@ skill-library sync init git@github.com:me/my-skills.git
 ```
 
 Run this once on each machine, with any git repository you can push to. From
-then on, adding, removing or updating a global skill (`-g`) pushes the change,
+then on, adding, removing or updating a global skill pushes the change,
 and every machine pulls new and updated skills by itself, at most once an hour
 when your agent queries the library. `skill-library sync status` shows the last
 sync.

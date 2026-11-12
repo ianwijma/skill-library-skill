@@ -61,8 +61,8 @@ export function showHelp(): void {
   const examples: Array<[string, string?]> = [
     ["skill-library connect", "install the gateway skill into your agents"],
     ["skill-library connect -a claude-code codex", "only these agents"],
-    ["skill-library add anthropics/skills"],
-    ["skill-library add anthropics/skills -g", "add to the global library"],
+    ["skill-library add anthropics/skills", "add to the global library"],
+    ["skill-library add anthropics/skills -p", "pin in this project's skill-library.json"],
     ["skill-library add anthropics/skills --agent claude-code", "only for Claude Code"],
     ["skill-library add anthropics/skills --skill pdf docx"],
     ["skill-library add anthropics/skills --json -y", "JSON output"],
@@ -70,7 +70,8 @@ export function showHelp(): void {
     ["skill-library use vercel-labs/skills@frontend-design | claude"],
     ["skill-library remove web-design", "remove by name"],
     ["skill-library rm --global frontend-design"],
-    ["skill-library list", "list project skills"],
+    ["skill-library remove -p frontend-design", "drop it from this project only"],
+    ["skill-library list", "project skills (global without skill-library.json)"],
     ["skill-library ls -g", "list the whole library"],
     ["skill-library ls --json", "JSON output"],
     ["skill-library find typescript", "search by keyword"],
@@ -133,7 +134,8 @@ ${BOLD}Install Options:${RESET}
   --no-frozen-lockfile   Allow an empty skill-library.json in CI
 
 ${BOLD}Add Options:${RESET}
-  -g, --global           Add to the global library instead of the current project
+  -p, --project          Pin in this project's skill-library.json (created if missing)
+  -g, --global           Add to the global library (the default; skips the scope prompt)
   -a, --agent <agents>   Agents the skills are for (use '*' for all agents; default: all)
   -s, --skill <skills>   Skill names to add (use '*' for all skills)
   -l, --list             List available skills in the source without adding them
@@ -152,14 +154,15 @@ ${BOLD}Use Options:${RESET}
   --full-depth           Search all subdirectories even when a root SKILL.md exists
 
 ${BOLD}Remove Options:${RESET}
-  -g, --global           Remove from the library itself (default: only this project's reference)
+  -p, --project          Only drop this project's reference (the skill stays in the library)
+  -g, --global           Delete from the library itself (the default; skips the scope prompt)
   -a, --agent <agents>   Remove only these agents from the skill's agent list
   -s, --skill <skills>   Specify skills to remove (use '*' for all skills)
   -y, --yes              Skip confirmation prompts
   --all                  Remove every skill in scope (-y implied). Do not combine with named skills.
 
 ${BOLD}List Options:${RESET}
-  -g, --global           List the whole library (default: project)
+  -g, --global           List the whole library (default: the project, if it has a skill-library.json)
   -a, --agent <agents>   Filter by specific agents
   --json                 Output as JSON (machine-readable, no ANSI codes)
 
@@ -191,15 +194,17 @@ export function showRemoveHelp(): void {
 ${BOLD}Usage:${RESET} skill-library remove [skills...] [options]
 
 ${BOLD}Description:${RESET}
-  Remove skills. In a project this drops the project's reference (the skill stays in
-  the library). With -g it deletes the skill from the library. If no skill names are
-  provided, an interactive selection menu will be shown.
+  Remove skills from the global library. With -p it only drops this project's reference
+  (the skill stays in the library). In a folder with a skill-library.json you are asked
+  which one you mean; without a prompt (-y, no TTY, inside an agent) pass -p or -g.
+  If no skill names are provided, an interactive selection menu will be shown.
 
 ${BOLD}Arguments:${RESET}
   skills            Optional skill names or ids to remove (space-separated)
 
 ${BOLD}Options:${RESET}
-  -g, --global       Remove from the library itself instead of the project
+  -p, --project      Only drop this project's reference
+  -g, --global       Delete from the library itself (the default)
   -a, --agent        Remove only these agents from the skill's agent list
   -s, --skill        Specify skills to remove (use '*' for all skills)
   -y, --yes          Skip confirmation prompts
@@ -209,7 +214,7 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} skill-library remove                           ${DIM}# interactive selection${RESET}
   ${DIM}$${RESET} skill-library remove my-skill                   ${DIM}# remove specific skill${RESET}
   ${DIM}$${RESET} skill-library remove skill1 skill2 -y           ${DIM}# remove multiple skills${RESET}
-  ${DIM}$${RESET} skill-library remove --global my-skill          ${DIM}# delete from the library${RESET}
+  ${DIM}$${RESET} skill-library remove -p my-skill               ${DIM}# drop it from this project only${RESET}
   ${DIM}$${RESET} skill-library rm --agent claude-code my-skill   ${DIM}# stop offering it to Claude Code${RESET}
   ${DIM}$${RESET} skill-library remove --all                      ${DIM}# remove all skills${RESET}
 

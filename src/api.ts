@@ -4,7 +4,7 @@
  *
  * @example
  *   import { add, query } from "skill-library";
- *   await add("anthropics/skills", { skills: ["frontend-design"], global: true });
+ *   await add("anthropics/skills", { skills: ["frontend-design"] });
  *   const { matches } = await query("design a landing page", { agent: "claude-code" });
  */
 import { withWarnSink } from "./lib/cli.ts";
@@ -35,7 +35,7 @@ export interface ApiOptions {
   warnings?: string[];
 }
 
-/** Add skills from a source. Without `skills`, every discovered skill is added. */
+/** Add skills from a source to the global library (`project: true` pins them in skill-library.json). Without `skills`, every discovered skill is added. */
 export function add(source: string, opts: AddOptions & ApiOptions = {}): Promise<AddResult> {
   return quiet(opts.warnings, () => addSkills(source, opts));
 }
@@ -49,7 +49,7 @@ export function list(opts: ListOptions & ApiOptions = {}): Promise<ListResult> {
   return quiet(opts.warnings, () => listSkills(opts));
 }
 
-/** Remove skills by name or id. In a project only the reference goes; `global: true` deletes. */
+/** Remove skills by name or id: deletes them from the global library; `project: true` only drops the project's reference. */
 export function remove(skills: string[], opts: RemoveOptions & ApiOptions = {}): Promise<RemoveResult> {
   return quiet(opts.warnings, () => removeSkills(skills, opts));
 }

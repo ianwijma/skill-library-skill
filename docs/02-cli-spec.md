@@ -6,19 +6,26 @@ are marked **(differs)**. Global options anywhere on the line: `--store <dir>`
 
 ## Scope
 
-- **Project** (default): the nearest ancestor of the working directory with a
-  `skill-library.json`, else the working directory itself. In `$HOME` without a
-  manifest, project commands act as `-g` and print `No project here; using global scope.`
-- **Global** (`-g`): the whole library.
+- **Global** (default): the whole library.
+- **Project** (`-p`): the nearest ancestor of the working directory with a
+  `skill-library.json`. There is no project without that file: every command
+  then works on the global library, and nothing creates the file except
+  `add -p` (in the working directory; never in `$HOME`).
+
+`add` and `remove` **(differs)**: global by default. In a folder with a
+`skill-library.json` and no `-p`/`-g`, they ask which scope to use. Without a
+prompt (`-y`, no TTY, inside an agent) `add` stays global and prints a note,
+while `remove` fails until `-p` or `-g` is given, so it never deletes from the
+library by guessing. `-p -g` together is an error.
 
 ## Commands
 
 | Command | Aliases | Flags | Behaviour |
 |---|---|---|---|
-| `add <source>` | `a`, `install <source>`, `i <source>` | `-g/--global`, `-a/--agent <agents…>`, `-s/--skill <skills…>`, `-l/--list`, `-y/--yes`, `--all`, `--full-depth`, `--json`, `--copy`, `--share`, `--no-share` | Fetch, discover skills, write them to the library and (project scope) to `skill-library.json`; then place the gateway. `--all` = `-s '*' -a '*' -y`. `--copy` has no effect. **(differs)** no agent prompt: only `-a` records agents (default: all). Global: a skill whose name another global skill already uses offers to replace it (`-y` replaces; the old one is kept, not global). `--share`/`--no-share`: see [09](09-global-sync-options.md). |
+| `add <source>` | `a`, `install <source>`, `i <source>` | `-p/--project`, `-g/--global`, `-a/--agent <agents…>`, `-s/--skill <skills…>`, `-l/--list`, `-y/--yes`, `--all`, `--full-depth`, `--json`, `--copy`, `--share`, `--no-share` | Fetch, discover skills, write them to the library and (project scope) to `skill-library.json`; then place the gateway. `--all` = `-s '*' -a '*' -y`. `--copy` has no effect. **(differs)** no agent prompt: only `-a` records agents (default: all). Global: a skill whose name another global skill already uses offers to replace it (`-y` replaces; the old one is kept, not global). `--share`/`--no-share`: see [09](09-global-sync-options.md). |
 | `install` | `i`, `experimental_install` | `--dry-run`, `--force`, `--frozen-lockfile`, `--no-frozen-lockfile`, `-a` | Restore the project's skills at their pinned versions, verifying content hashes. `--force` repairs versions whose content no longer matches. `-a` is accepted and ignored. |
-| `list` | `ls` | `-g`, `-a <agents…>`, `--json` | Project: its skills (`installed` / `missing`). `-g`: the whole library; skills only a project used are tagged `(not global)`. |
-| `remove [skills…]` | `rm`, `r` | `-g`, `-a <agents…>`, `-s <skills…>`, `-y`, `--all` | Project: drop the reference (the skill stays in the library, unusable). `-g`: delete from the library. `-a` removes agents from the skill's list. No match exits 0. |
+| `list` | `ls` | `-g`, `-a <agents…>`, `--json` | Project (with a `skill-library.json`): its skills (`installed` / `missing`). `-g`, or no `skill-library.json`: the whole library; skills only a project used are tagged `(not global)`. |
+| `remove [skills…]` | `rm`, `r` | `-p`, `-g`, `-a <agents…>`, `-s <skills…>`, `-y`, `--all` | Global: delete from the library. `-p`: drop the project's reference (the skill stays in the library, unusable). `-a` removes agents from the skill's list. No match exits 0. |
 | `update [skills…]` | `upgrade` | `-g`, `-p/--project`, `-y` | Pull the newest content from each skill's source. Project: moves this project's pin. `-g`: moves `current`. Local sources are skipped. |
 | `check [skills…]` | | `-g`, `-p`, `-y` | Report updates (compares the skill folder's git tree, so commits to other skills in a monorepo don't count). Writes nothing; exit 1 if any update or failure. |
 | `find [query]` | `search`, `f`, `s` | `--owner <name>` | Search skills.sh (`SKILLS_API_URL`). With a query: print results. Without: interactive picker on a TTY. |
