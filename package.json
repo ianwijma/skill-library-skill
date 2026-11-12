@@ -1,6 +1,6 @@
 {
   "name": "skill-library",
-  "version": "0.4.0-rc.0",
+  "version": "0.4.0",
   "description": "A skill library for AI agents: skills load on demand through one query (vercel-labs/skills-compatible CLI)",
   "keywords": [
     "skills",
