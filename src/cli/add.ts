@@ -1,4 +1,5 @@
 import * as p from "@clack/prompts";
+import { Option, type Command, type OptionValues } from "@commander-js/extra-typings";
 import pc from "picocolors";
 import { addSkills, type AddedSkill, type NameClash } from "../core/add.ts";
 import { agentsArg, globalKindOf, type GlobalKind } from "../core/context.ts";
@@ -14,7 +15,6 @@ import { parseSource } from "../lib/source.ts";
 import type { AgentsValue } from "../lib/store.ts";
 import { afterGlobalChange } from "./sync/shared.ts";
 import { showLogo } from "./ui.ts";
-import { Option, type Command, type OptionValues } from "@commander-js/extra-typings";
 import { type Ctx, examples, given, jsonOnError, list, newCommand, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 

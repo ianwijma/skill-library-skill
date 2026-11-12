@@ -23,7 +23,9 @@ export function buildProgram(argv: string[], done: (code: number) => void): Comm
   const program = newCommand("skill-library")
     .usage("<command> [options]")
     .description("A skill library for agents: skills load on demand through one query.")
-    .version(VERSION, "-v, --version", "Show the version number")
+    // Only --version: as a short flag, commander would also read -verbose or "-vague task" anywhere
+    // on the line as -v. A bare -v before the command is handled below.
+    .version(VERSION, "--version", "Show the version number (also -v)")
     .helpCommand("help [command]", "Show help for a command")
     .option("--store <dir>", "Library directory (default ~/.local/share/skill-library; env SKILL_LIBRARY_DIR)")
     .option("--verbose", "Extra diagnostics on stderr")
@@ -51,14 +53,20 @@ export function buildProgram(argv: string[], done: (code: number) => void): Comm
     },
   };
 
-  // No command: the banner. Anything that isn't a command lands here too.
-  program.action(() => {
-    const [unknown] = program.args;
-    if (unknown === undefined) {
+  // No command: the banner. Anything that isn't a command lands here too, unknown options included,
+  // so `frobnicate --bogus` and `--frob` say "Unknown command" (unknown options after a real command
+  // are passed on to it).
+  program.allowUnknownOption().action(() => {
+    const [first] = program.args;
+    if (first === undefined) {
       showBanner();
       return done(0);
     }
-    console.log(`Unknown command: ${unknown}\nRun skill-library --help for usage.`);
+    if (first === "-v") {
+      console.log(VERSION);
+      return done(0);
+    }
+    console.log(`Unknown command: ${first}\nRun skill-library --help for usage.`);
     done(1);
   });
 

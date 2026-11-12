@@ -1,6 +1,6 @@
 import pc from "picocolors";
 import { installProject } from "../core/install.ts";
-import { CliError, formatError } from "../lib/cli.ts";
+import { CliError, formatError, warn } from "../lib/cli.ts";
 import { showLogo } from "./ui.ts";
 import { runAdd, withAddOptions } from "./add.ts";
 import { type Ctx, examples, given, jsonOnError, newCommand, warnUnknownOptions } from "./command.ts";
@@ -75,8 +75,17 @@ export function installCommand(ctx: Ctx) {
   ).addHelpText("after", examples([["skill-library install", "restore from skill-library.json"], ["skill-library install --dry-run"], ["skill-library install anthropics/skills", "same as add"]]));
   const share = given(install, "share", "no-share");
   const frozen = given(install, "frozen-lockfile", "no-frozen-lockfile");
+  // Each mode's options are ignored, with a warning, in the other mode (-y and -a are accepted by both).
+  const restoreOnly = given(install, "dry-run", "force", "frozen-lockfile", "no-frozen-lockfile");
+  const addOnly = given(install, "project", "global", "skill", "list", "all", "full-depth", "json", "copy", "share", "no-share");
   return warnUnknownOptions(jsonOnError(install, ctx)).action(async (_pkg, opts, cmd) => {
-    if (cmd.args.length > 0) return ctx.done(await runAdd(cmd.args, { ...opts, shareConflict: share.size === 2 }, ctx.globals()));
+    // `experimental_install` (vercel's name for restoring) only ever restores, as before.
+    const restoring = cmd.args.length === 0 || cmd.parent?.args[0] === "experimental_install";
+    if (!restoring) {
+      for (const flag of restoreOnly) warn(`ignoring --${flag}: it only applies to install without a <package>`);
+      return ctx.done(await runAdd(cmd.args, { ...opts, shareConflict: share.size === 2 }, ctx.globals()));
+    }
+    for (const flag of addOnly) warn(`ignoring --${flag}: it only applies to install <package>`);
     // --no-frozen-lockfile wins over --frozen-lockfile, whatever the order.
     const frozenOpt = frozen.has("no-frozen-lockfile") ? false : frozen.has("frozen-lockfile") ? true : undefined;
     ctx.done(await runInstall({ ...(opts.dryRun ? { dryRun: true } : {}), ...(opts.force ? { force: true } : {}), ...(frozenOpt !== undefined ? { frozen: frozenOpt } : {}) }, ctx.globals()));

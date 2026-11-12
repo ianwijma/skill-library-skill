@@ -1,10 +1,9 @@
 // `sync`: keep global skills in a git repository. Each subcommand has its own file and options;
 // plain `sync` (sync now) only has the internal --background, which query uses for a quiet sync.
 import { Option } from "@commander-js/extra-typings";
-import pc from "picocolors";
 import { runSync } from "../../core/sync.ts";
 import { CliError } from "../../lib/cli.ts";
-import { type Ctx, examples, newCommand, withSubcommands } from "../command.ts";
+import { type Ctx, examples, newCommand, subcommandOptions, withSubcommands } from "../command.ts";
 import type { GlobalOpts } from "../index.ts";
 import { disableCommand } from "./disable.ts";
 import { enableCommand } from "./enable.ts";
@@ -19,20 +18,15 @@ export function syncCommand(ctx: Ctx) {
     .summary("Sync global skills through a git repository")
     .description("Keep your global skills in a git repository (any host, HTTPS or SSH). Without a command: pull, install, update and push now (this also runs on its own from query).")
     .addOption(new Option("--background").hideHelp())
-    .addHelpText(
-      "after",
-      `\n${pc.bold("Command options:")}\n` +
-        "  init    --share <skills...>  Folder skills to sync when seeding an empty repository ('*' = all)\n" +
-        "          --no-readme          Leave the repository's README alone\n" +
-        "  update  --no-readme          Leave the repository's README alone\n" +
-        examples([["skill-library sync init git@bitbucket.org:me/my-skills.git", "start syncing"], ["skill-library sync", "sync now"], ["skill-library sync status"]]),
-    )
     .addCommand(initCommand(ctx))
     .addCommand(updateCommand(ctx))
     .addCommand(shareCommand(ctx))
     .addCommand(enableCommand(ctx))
     .addCommand(disableCommand(ctx))
     .addCommand(statusCommand(ctx));
+  sync
+    .addHelpText("after", subcommandOptions(sync))
+    .addHelpText("after", examples([["skill-library sync init git@bitbucket.org:me/my-skills.git", "start syncing"], ["skill-library sync", "sync now"], ["skill-library sync status"]]));
   withSubcommands(sync, ctx, (rest) => {
     if (rest[0] === "help") {
       sync.outputHelp();

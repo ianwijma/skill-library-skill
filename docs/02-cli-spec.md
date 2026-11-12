@@ -51,8 +51,11 @@ vercel's named-skill path is global-first).
   them silently), except for `use`, which errors like vercel.
 - Invalid agents: `Invalid agents: x` / `Valid agents: …`, exit 1.
 - An option whose value is used fails without one, exit 1: `-a` at the end of the line,
-  `--threshold=` (empty), or `--top -1` (an option where the value should be). `-a` and
+  `--threshold=` (empty), or `--skill --json` (an option where the value should be). A negative
+  number for `--threshold` / `--top` is a value, rejected by their range checks (exit 1). `-a` and
   `--agent` (and every other short/long pair) behave identically.
+- `--list=a,b` / `--list=a b` (a list option written with `=`) keeps collecting values, like
+  `--list a b`; an on/off flag ignores a value (`--json=true` is `--json`).
 - Unknown command: `Unknown command: x` / `Run skill-library --help for usage.` on stdout, exit 1.
 - `--version`/`-v` prints the bare version. No arguments prints the banner, exit 0.
 - `--help`/`-h` lists every command; `<command> --help`, `<command> <subcommand> --help` and
