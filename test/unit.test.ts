@@ -186,6 +186,12 @@ describe("gateway", () => {
     expect(md).toContain("skill-library query -a <your-agent-id>");
     expect(md).toBe(await fsp.readFile(path.join(import.meta.dirname, "..", "skills", "skill-library", "SKILL.md"), "utf8"));
   });
+  test("gateway names only the query command and nothing about sync or the store", () => {
+    const md = gatewaySkillMd();
+    const commands = [...md.matchAll(/skill-library ([a-z-]+)/g)].map((m) => m[1]);
+    expect(new Set(commands)).toEqual(new Set(["query"]));
+    expect(md).not.toMatch(/\bsync|\bgit\b|\brepo(sitory)?\b|\.local\/share|SKILL_LIBRARY_DIR|--store|list --json|list -g/i);
+  });
 });
 
 describe("time formatting", () => {

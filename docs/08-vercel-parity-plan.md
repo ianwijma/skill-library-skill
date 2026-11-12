@@ -317,11 +317,11 @@ Exit codes: 0 / 1 (usage, incl. invalid agent) / 2 (runtime: API key, network, l
 - **One byte-identical gateway everywhere** (no per-agent templates): it tells the agent to run
   `skill-library query -a <your agent id> "<task>"` and says an invalid id prints the valid list.
 - Source: `skills/skill-library/SKILL.md`, embedded at build time (`--loader:.md=text`, typed by
-  `src/md.d.ts`). Content: when to query (today's text), the query command and its output, failures
-  (missing key, network), offline fallback, `skill-library --help` for managing skills.
-- **Offline fallback** in the gateway: run `skill-library list --json -a <id>` and
-  `skill-library list -g --json -a <id>`; ignore rows with status `untracked` or `missing`; apply the
-  §5.1 name priority; read the matching `path`s.
+  `src/md.d.ts`). Content: when to query, the query command and its output, and failures (missing
+  key, network). **`query` is the only command the gateway names**: no `list`, no management
+  commands, no sync, no store layout. The agent reads only the paths `query` prints and is told not
+  to look for skills anywhere else, so it never browses the library folder, the sync clone or its
+  git history. When `query` fails, the agent reports the cause and continues without skills.
 - **Placement only during `add`** (after a successful add, not with `-l`; also when the source held only
   the gateway): for each installed agent with a global skills dir (plus agents named with `-a`), grouped
   by resolved physical dir, if `<dir>/skill-library/SKILL.md` is missing or differs, write it and print
