@@ -14,9 +14,9 @@ are marked **(differs)**. Global options anywhere on the line: `--store <dir>`
 
 `add` and `remove` **(differs)**: global by default. In a folder with a
 `skill-library.json` and no `-p`/`-g`, they ask which scope to use. Without a
-prompt (`-y`, no TTY, inside an agent) `add` stays global and prints a note,
-while `remove` fails until `-p` or `-g` is given, so it never deletes from the
-library by guessing. `-p -g` together is an error.
+prompt (`-y`, no TTY, inside an agent) both fail until `-p` or `-g` is given:
+`-y` skips confirmations but never picks the scope, so nothing is pinned or
+deleted by guessing. `-p -g` together is an error.
 
 ## Commands
 

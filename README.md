@@ -80,7 +80,7 @@ This deletes them from the library. Your agents keep the gateway skill.
 
 | Command | What it does |
 |---|---|
-| `add <source>` | Add skills from GitHub (`owner/repo`, `owner/repo@skill`), a git URL or a local folder. Global by default; `-p` pins them in the project's `skill-library.json`. In a folder that has one, you're asked which you mean. `-a <agents>` records which agents a skill is for. |
+| `add <source>` | Add skills from GitHub (`owner/repo`, `owner/repo@skill`), a git URL or a local folder. Global by default; `-p` pins them in the project's `skill-library.json`. In a folder that has one, you're asked which you mean; scripts and agents pass `-p` or `-g`. `-a <agents>` records which agents a skill is for. |
 | `list` / `ls` | List the project's skills (the whole library when there's no `skill-library.json`); `-g` for the whole library; `--json` for scripts. |
 | `remove [skills]` | Delete from the library. `-p`: only drop the project's reference (the skill stays in the library). In a folder with a `skill-library.json` you're asked which you mean; scripts and agents pass `-p` or `-g`. |
 | `find [query]` | Search [skills.sh](https://skills.sh). |

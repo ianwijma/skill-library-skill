@@ -91,7 +91,8 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   }
 
   if (!json) showLogo();
-  // Global by default. With a skill-library.json here, ask (or take -p / -g); without a TTY, stay global.
+  // Global by default. With a skill-library.json here, ask; without a prompt (-y, no TTY, inside an
+  // agent) the scope must be explicit (-p / -g), as for remove. -y never picks the scope.
   let projectScope = f.booleans.has("project");
   if (!projectScope && !f.booleans.has("global") && !f.booleans.has("list")) {
     const project = await loadProject(g.cwd);
@@ -110,7 +111,13 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
         }
         projectScope = choice === "project";
       } else {
-        note(`Adding to the global library; use -p to add to ${project.file}`);
+        return fail(
+          new CliError(
+            1,
+            `This folder has a project (${project.file}); say where to add to.`,
+            "Use -p to pin in the project's skill-library.json, or -g to add to the global library.",
+          ),
+        );
       }
     }
   }

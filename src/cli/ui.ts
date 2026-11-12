@@ -136,6 +136,7 @@ ${BOLD}Install Options:${RESET}
 ${BOLD}Add Options:${RESET}
   -p, --project          Pin in this project's skill-library.json (created if missing)
   -g, --global           Add to the global library (the default; skips the scope prompt)
+                         With a skill-library.json and no prompt (-y, no TTY, agent): pass -p or -g
   -a, --agent <agents>   Agents the skills are for (use '*' for all agents; default: all)
   -s, --skill <skills>   Skill names to add (use '*' for all skills)
   -l, --list             List available skills in the source without adding them

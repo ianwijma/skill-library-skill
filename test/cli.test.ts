@@ -149,14 +149,16 @@ describe("local sources", () => {
     expect(home.stderr).toContain("home directory");
   });
 
-  test("with a skill-library.json: add stays global without a prompt, remove needs -p or -g", async () => {
+  test("with a skill-library.json and no prompt, add and remove need -p or -g", async () => {
     const sb = await sandbox();
     const dir = await project(sb);
     await fsp.writeFile(path.join(dir, "skill-library.json"), '{"version":1,"skills":{}}');
     await writeFiles(path.join(sb.root, "s"), { "bar/SKILL.md": skillMd("bar", "Bar"), "baz/SKILL.md": skillMd("baz", "Baz") });
-    const g = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-y"], { cwd: dir });
-    expect(g.code).toBe(0);
-    expect(g.stderr).toContain("use -p to add to");
+    const unsureAdd = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-y"], { cwd: dir });
+    expect(unsureAdd.code).toBe(1);
+    expect(unsureAdd.stderr).toContain("-p");
+    await expect(fsp.access(path.join(sb.store, "index.json"))).rejects.toThrow();
+    expect((await run(sb, ["add", "-g", path.join(sb.root, "s", "bar"), "-y"], { cwd: dir })).code).toBe(0);
     expect((await readJson(path.join(dir, "skill-library.json"))).skills).toEqual({});
     expect((await run(sb, ["add", "-p", path.join(sb.root, "s", "baz"), "-y"], { cwd: dir })).code).toBe(0);
     expect(Object.keys((await readJson(path.join(dir, "skill-library.json"))).skills)).toHaveLength(1);
@@ -191,11 +193,14 @@ describe("local sources", () => {
     await writeFiles(path.join(sb.home, "s"), { "bar/SKILL.md": skillMd("bar", "Bar") });
     const dir = await project(sb);
     await fsp.writeFile(path.join(dir, "skill-library.json"), '{"version":1,"skills":{}}');
-    const r = await run(sb, ["add", path.join(sb.home, "s", "bar"), "--json", "-y"], { cwd: dir, env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
+    const r = await run(sb, ["add", path.join(sb.home, "s", "bar"), "extra", "-g", "--json", "-y"], { cwd: dir, env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
     expect(r.code).toBe(0);
     const rows = JSON.parse(r.stdout);
     expect(rows[0]).toMatchObject({ name: "bar", status: "installed", scope: "global" });
-    expect(r.stderr).toContain("use -p to add to");
+    expect(r.stderr).toContain("Only the first source is used");
+    const unsure = await run(sb, ["add", path.join(sb.home, "s", "bar"), "--json", "-y"], { cwd: dir });
+    expect(unsure.code).toBe(1);
+    expect(unsure.stdout).toBe("[]\n");
     const noYes = await run(sb, ["add", "./s/bar", "--json"], { cwd: sb.home });
     expect(noYes.code).toBe(1);
     expect(noYes.stdout).toBe("[]\n");
