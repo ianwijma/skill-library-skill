@@ -19,6 +19,10 @@ export interface E2EInfo {
   /** The same package repacked as a newer prerelease (stable installs must never move to it). */
   rcTarball: string;
   rcVersion: string;
+  /** An older prerelease, installed on its own (preBin), whatever this checkout's version is. */
+  preTarball: string;
+  preVersion: string;
+  preBin: string;
   /** npm prefix the package was installed into; `<prefix>/bin` holds `skill-library`. */
   prefix: string;
   binDir: string;
@@ -32,6 +36,7 @@ declare module "vitest" {
 
 export const NEXT_VERSION = "99.0.0";
 export const RC_VERSION = "99.1.0-rc.0";
+export const PRE_VERSION = "98.0.0-rc.0";
 
 // prepublishOnly runs tests inside `npm publish --dry-run`; inherited, npm_config_dry_run makes the
 // child npm commands skip writing/installing.
@@ -77,14 +82,18 @@ export default async function setup(project: TestProject): Promise<() => Promise
   };
   const nextTarball = await repack(NEXT_VERSION);
   const rcTarball = await repack(RC_VERSION);
+  const preTarball = await repack(PRE_VERSION);
 
   const prefix = path.join(cacheRoot, "prefix");
   npm(["install", "-g", "--offline", "--prefix", prefix, tarball], cacheRoot, { npm_config_cache: npmCache });
   const binDir = path.join(prefix, "bin");
   const out = execFileSync(path.join(binDir, "skill-library"), ["--version"], { encoding: "utf8" }).trim();
   if (out !== version) throw new Error(`installed skill-library prints ${out}, expected ${version}`);
+  const prePrefix = path.join(cacheRoot, "prefix-pre");
+  npm(["install", "-g", "--offline", "--prefix", prePrefix, preTarball], cacheRoot, { npm_config_cache: npmCache });
+  const preBin = path.join(prePrefix, "bin", "skill-library");
 
-  project.provide("e2e", { repoRoot, cacheRoot, tarball, version, nextTarball, nextVersion: NEXT_VERSION, rcTarball, rcVersion: RC_VERSION, prefix, binDir });
+  project.provide("e2e", { repoRoot, cacheRoot, tarball, version, nextTarball, nextVersion: NEXT_VERSION, rcTarball, rcVersion: RC_VERSION, preTarball, preVersion: PRE_VERSION, preBin, prefix, binDir });
   return async () => {
     if (cacheRoot && !process.env.E2E_KEEP) await fsp.rm(cacheRoot, { recursive: true, force: true });
   };

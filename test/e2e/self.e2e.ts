@@ -28,9 +28,10 @@ interface SelfWorld {
   agentsDir: string;
 }
 
-async function selfWorld(opts: { key?: boolean; latest?: string; tags?: Record<string, string> } = {}): Promise<SelfWorld> {
+/** `pre`: npx runs an older prerelease copy instead of this checkout. */
+async function selfWorld(opts: { key?: boolean; latest?: string; tags?: Record<string, string>; pre?: boolean } = {}): Promise<SelfWorld> {
   const w = await world();
-  const reg = await fakeRegistry([e2e().tarball, e2e().nextTarball, e2e().rcTarball], opts.tags ?? { latest: opts.latest ?? e2e().version });
+  const reg = await fakeRegistry([e2e().tarball, e2e().nextTarball, e2e().rcTarball, e2e().preTarball], opts.tags ?? { latest: opts.latest ?? e2e().version });
   onTestFinished(() => reg.close());
   const prefix = w.env.npm_config_prefix!;
   const prefixBin = path.join(prefix, "bin");
@@ -46,7 +47,7 @@ async function selfWorld(opts: { key?: boolean; latest?: string; tags?: Record<s
     prefix,
     prefixBin,
     installed,
-    npx: (args, env) => w.run(args, { env: env ?? {} }),
+    npx: (args, env) => w.run(args, { env: env ?? {}, ...(opts.pre ? { bin: e2e().preBin } : {}) }),
     global: (args, env) => w.run(args, { bin: installed, env: env ?? {} }),
     claudeDir: path.join(w.home, ".claude", "skills"),
     agentsDir: path.join(w.home, ".agents", "skills"),
@@ -403,12 +404,13 @@ describe("self update", () => {
 });
 
 // A stable install never moves to a prerelease, whatever the dist-tags say; a prerelease install
-// (this checkout is one) also follows `next` and takes whichever release is newest.
+// also follows `next` and takes whichever release is newest. The prerelease side starts from a
+// repacked 98.0.0-rc.0, so these tests don't depend on this checkout's own version.
 describe("self: stable and prerelease releases", () => {
-  const { version, nextVersion: stable, rcVersion: rc } = e2e();
+  const { preVersion: version, nextVersion: stable, rcVersion: rc } = e2e();
 
   test("a prerelease install follows next: doctor warns, self update moves to the release candidate", async () => {
-    const s = await selfWorld();
+    const s = await selfWorld({ pre: true, latest: version });
     await fsp.mkdir(path.join(s.w.home, ".claude"), { recursive: true });
     expect((await s.npx(["self", "setup"])).code).toBe(0);
     expect((await s.global(["--version"])).stdout).toBe(`${version}\n`);
@@ -432,7 +434,7 @@ describe("self: stable and prerelease releases", () => {
   });
 
   test("first install from a prerelease copy takes the newest of latest and next", async () => {
-    const s = await selfWorld({ tags: { latest: stable, next: rc } });
+    const s = await selfWorld({ pre: true, tags: { latest: stable, next: rc } });
     await fsp.mkdir(path.join(s.w.home, ".claude"), { recursive: true });
     const r = await s.npx(["self", "setup"]);
     expect(r.code, r.stdout + r.stderr).toBe(0);
@@ -441,7 +443,7 @@ describe("self: stable and prerelease releases", () => {
     expect((await s.global(["--version"])).stdout).toBe(`${rc}\n`);
 
     // A prerelease current also accepts a release candidate published under latest.
-    const t = await selfWorld({ tags: { latest: rc } });
+    const t = await selfWorld({ pre: true, tags: { latest: rc } });
     await fsp.mkdir(path.join(t.w.home, ".claude"), { recursive: true });
     expect((await t.npx(["self", "setup"])).stdout).toContain(`Installing ${rc}`);
     expect(t.reg.downloads()).toEqual([rc]);

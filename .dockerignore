@@ -4,3 +4,16 @@ dist
 ThirdPartyNotices.txt
 *.tmp
 *.tgz
+# Never bake local credentials into the image (live runs have a network).
+.env
+.env.*
+.npmrc
+.netrc
+.git-credentials
+.ssh
+.aws
+.config
+*.pem
+*.key
+id_rsa*
+id_ed25519*

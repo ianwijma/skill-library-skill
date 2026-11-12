@@ -7,6 +7,7 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { expect } from "vitest";
 import { parse as parseYaml } from "yaml";
+import { agentIds } from "../../src/lib/agents.ts";
 import { e2e, exists, readJson, type World } from "./harness.ts";
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -58,15 +59,10 @@ function fail(problems: string[], what: string): void {
   expect(problems, `${what} is inconsistent`).toEqual([]);
 }
 
-let agentIdsCache: string[] | null = null;
-/** Valid agent ids, from the CLI's own diagnostic (so the list never goes stale). */
-async function validAgents(w: World): Promise<string[]> {
-  if (agentIdsCache) return agentIdsCache;
-  const r = await w.run(["list", "-a", "definitely-not-an-agent"]);
-  const line = r.stdout.split("\n").find((l) => l.startsWith("Valid agents:"));
-  if (!line) throw new Error(`no "Valid agents:" line in:\n${r.stdout}${r.stderr}`);
-  agentIdsCache = line.slice("Valid agents:".length).split(",").map((s) => s.trim()).filter(Boolean);
-  return agentIdsCache;
+/** Valid agent ids, from the agent registry the CLI is built from (static data, so it never goes
+ *  stale and doesn't depend on how any diagnostic is worded). */
+async function validAgents(_w: World): Promise<string[]> {
+  return agentIds();
 }
 
 // --- store ---------------------------------------------------------------------------------------
@@ -118,7 +114,7 @@ export async function validateStore(w: World, store = w.store): Promise<StoreInd
     if (!/^(repo|home|path|local):\/\//.test(r.id)) at("unknown id prefix");
     if (!["git", "folder", "file"].includes(r.source?.type)) at(`source.type ${r.source?.type}`);
     if (r.source.type === "git" && !r.id.startsWith("repo://")) at("git source without a repo:// id");
-    if (r.source.type !== "git" && r.id.startsWith("repo://") && !r.id.startsWith("repo://")) at("folder source with a repo:// id");
+    if (r.source.type !== "git" && r.id.startsWith("repo://")) at(`${r.source.type} source with a repo:// id`);
     const m = r.dir.match(/^skills\/[a-z0-9._-]+-([0-9a-f]{8})$/);
     if (!m) at(`dir ${r.dir} is not skills/<slug>-<8 hex>`);
     else if (m[1] !== sha256(r.id).slice(0, 8)) at(`dir suffix ${m[1]} is not sha256(id)[:8]`);

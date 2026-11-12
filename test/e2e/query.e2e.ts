@@ -219,9 +219,7 @@ describe("query", () => {
       expect(r.code, JSON.stringify(args)).toBe(1);
       expect(r.stderr).toContain("task text is empty");
     }
-    const two = await q(["build", "react"]);
-    expect(two.code).toBe(1);
-    expect(two.stderr).toContain("unexpected argument 'react' (quote the task text)");
+    expectUsageError(await q(["build", "react"]), "react");
     expect(ts.requests.length).toBe(n);
   });
 

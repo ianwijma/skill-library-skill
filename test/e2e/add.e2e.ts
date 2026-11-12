@@ -444,22 +444,17 @@ describe("add: flags", () => {
     expect(idx.skills.every((s) => s.agents === "all" && s.global)).toBe(true);
   });
 
-  test("--json reports a failed skill with exit 1 and keeps the others", async () => {
+  test("a skill that can't be stored (a symlinked SKILL.md) fails the whole add: exit 1, named, nothing written", async () => {
     const w = await world();
-    // A SKILL.md that is a symlink is never stored (the copier skips links); its sibling is.
     const src = await w.write(await w.dir("src"), { "skills/good/SKILL.md": skillMd("good", "Good"), "target.md": skillMd("linked", "Linked") });
     await fsp.mkdir(path.join(src, "skills", "linked"), { recursive: true });
     await fsp.symlink(path.join(src, "target.md"), path.join(src, "skills", "linked", "SKILL.md"));
     const r = await w.run(["add", path.join(src, "skills"), "-g", "-y", "--json"]);
-    const rows = r.json();
-    assertAddJson(rows);
-    if (rows.some((x) => x.status === "failed")) {
-      expect(r.code).toBe(1);
-      expect(rows.find((x) => x.status === "failed")!.error).toBeTruthy();
-    } else {
-      // The link was rejected before the store write: exit 1 with an error.
-      expect(r.code).toBe(1);
-    }
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain(path.join(src, "skills", "linked"));
+    expect(r.json()).toEqual([]);
+    // All or nothing: the sibling isn't added either, and no half-written state is left.
+    expect((await w.ok(["list", "-g", "--json"])).json()).toEqual([]);
     await validateAll(w);
   });
 

@@ -158,9 +158,7 @@ describe("sync init", () => {
 
   test("errors: missing URL, a different URL, an unreachable URL (nothing left behind)", async () => {
     const a = await world();
-    const none = await a.run(["sync", "init"]);
-    expect(none.code).toBe(1);
-    expect(none.stderr).toContain("Missing required argument: git-url");
+    expectUsageError(await a.run(["sync", "init"]), "git-url", "url");
 
     const bad = await a.run(["sync", "init", "file:///nonexistent/repo.git"]);
     expect(bad.code).toBe(2);
@@ -582,9 +580,7 @@ describe("sync update", () => {
     const notSetUp = await a.run(["sync", "update", "file:///nowhere.git"]);
     expect(notSetUp.code).toBe(1);
     expect(notSetUp.stderr).toContain("sync init");
-    const noUrl = await a.run(["sync", "update"]);
-    expect(noUrl.code).toBe(1);
-    expect(noUrl.stderr).toContain("Missing required argument: git-url");
+    expectUsageError(await a.run(["sync", "update"]), "git-url", "url");
 
     await a.ok(["add", await folderSkill(a, "mine"), "-g", "-y"]);
     const first = await a.emptyRemote("first");
