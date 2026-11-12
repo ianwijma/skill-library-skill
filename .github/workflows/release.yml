@@ -1,5 +1,10 @@
 name: Release
 
+# The run's title in the Actions list, e.g. "Release minor prerelease (rc) · dry run".
+# GitHub sets it at dispatch, before any job runs, so it can only use the inputs: the
+# exact versions are in the job names and the plan summary.
+run-name: Release ${{ inputs.version_bump }} ${{ inputs.release_type }}${{ inputs.release_type == 'prerelease' && format(' ({0})', inputs.prerelease_identifier) || '' }}${{ inputs.dry_run && ' · dry run' || '' }}
+
 # Run from the GitHub UI: Actions → Release → "Run workflow", pick a version bump
 # and a release type.
 #
