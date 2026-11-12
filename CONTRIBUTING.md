@@ -55,9 +55,11 @@ When one gets it, vitest reports the unexpected pass; move the command into
 
 Arguments go to vitest (`npm run test:e2e -- sync` runs `sync.e2e.ts`).
 `E2E_NODE_VERSION=24` picks the container's Node line (default 22). `E2E_LIVE=1`
-gives the container a network for `test/e2e/live.e2e.ts`, which reads from real
-GitHub and, when `SKILL_LIBRARY_TYPESAFE_API_KEY` is set, scores against the real
-TypeSafe API. It only reads; never run in CI.
+gives the container a network for `test/e2e/live.e2e.ts`. It adds skills from
+real GitHub and searches the real skills.sh. When `SKILL_LIBRARY_TYPESAFE_API_KEY`
+is set, it also checks that the real TypeSafe API ranks the right skill first for a
+few tasks. It only reads. CI runs it in the `e2e-live` job with the repository
+secret `SKILL_LIBRARY_TYPESAFE_API_KEY`.
 
 ## Pull requests
 

@@ -25,11 +25,14 @@ function docker(args, opts = {}) {
   return r.status ?? 1;
 }
 
-const build = ["build", "--file", "test/e2e/Dockerfile", "--tag", image];
-if (process.env.E2E_NODE_VERSION) build.push("--build-arg", `NODE_VERSION=${process.env.E2E_NODE_VERSION}`);
-build.push(".");
-const built = docker(build);
-if (built !== 0) process.exit(built);
+// CI builds the image itself (with a layer cache) and sets E2E_IMAGE_BUILT=1.
+if (process.env.E2E_IMAGE_BUILT !== "1") {
+  const build = ["build", "--file", "test/e2e/Dockerfile", "--tag", image];
+  if (process.env.E2E_NODE_VERSION) build.push("--build-arg", `NODE_VERSION=${process.env.E2E_NODE_VERSION}`);
+  build.push(".");
+  const built = docker(build);
+  if (built !== 0) process.exit(built);
+}
 
 const run = ["run", "--rm", "--init"];
 if (!live) run.push("--network", "none");
