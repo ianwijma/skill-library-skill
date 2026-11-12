@@ -26,17 +26,15 @@ Built for people and companies with a lot of skills:
 ## Quick start
 
 Requires [Node.js](https://nodejs.org) >= 22 and `git`. Get a TypeSafe API key
-from [TypeSafe](https://docs.typesafe.ai), then:
+from the [TypeSafe console](https://console.typesafe.ai/keys), then:
 
 ```sh
-npm i -g skill-library
 export SKILL_LIBRARY_TYPESAFE_API_KEY='<your TypeSafe API key>'   # also add it to your shell profile
-skill-library connect
+npx skill-library self setup
 ```
 
-`connect` installs the gateway skill into every agent on your machine (Claude
-Code, Codex, OpenCode, Cursor, …), so they know to query the library. Restart
-your agent so it loads it.
+Restart your agent afterwards. Run `skill-library self setup` again any time to
+update.
 
 ## Try it
 
@@ -85,7 +83,9 @@ This deletes them from the library. Your agents keep the gateway skill.
 | `update` / `check` | Pull newer versions from each skill's source / report them. |
 | `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. Built-in skills ship with skill-library and come back like any other; today that's `find-skills`, which searches skills.sh for new skills. They can't be removed or updated on their own. |
 | `install` | Restore a project's skills from `skill-library.json`, at the pinned versions. |
-| `connect` | Install the gateway skill into your agents, so they query the library. `-a <agents>` for only some agents. `add` also does this after adding skills. |
+| `self setup` | Install or update skill-library (`npm i -g`) and install the gateway skill into your agents, after checking the machine first. Re-run it any time. `-a <agents>` for only some agents. |
+| `self update` | Update skill-library (`npm i -g`) and refresh the gateway skill in the agents that already have it. |
+| `self doctor` | Check that everything skill-library needs is in place (installed and on `PATH`, newest release, gateway skill, API key, `git`). Changes nothing; exit 1 when something needs fixing. `--json` for scripts. |
 | `use <source>@<skill>` | Print a prompt for one skill without adding it (`| claude`), or start an agent with `-a`. |
 | `init [name]` | Create a new `SKILL.md`. `--always` makes every query return it, without scoring. |
 | `sync init <git-url>` | Keep your global skills in a git repository (any host) and sync them across machines automatically. `sync update` / `sync disable` / `sync enable` / `sync status`. |
@@ -119,18 +119,19 @@ The API never prints, prompts, or touches agent folders.
 
 ### My agent doesn't use the library
 
-Run `skill-library connect`, then restart the agent. Check that
+Run `skill-library self doctor`, fix anything it reports, then restart the agent. Check that
 `skill-library` is on the `PATH` of the environment that starts the agent.
 
 ### `skill-library: command not found`
 
-Install it with `npm i -g skill-library` and make sure npm's global bin
+Install it with `npx skill-library self setup` and make sure npm's global bin
 directory is on the agent's `PATH`.
 
 ### `Missing SKILL_LIBRARY_TYPESAFE_API_KEY` or HTTP 401
 
 `query` needs a valid TypeSafe key in the environment that starts the agent,
-not only in your terminal. Add the `export` to your shell profile.
+not only in your terminal. Create one in the [TypeSafe console](https://console.typesafe.ai/keys) and add the `export` to your shell profile.
+`skill-library self doctor` tells you whether the key is set.
 
 ### Connection error or timeout
 

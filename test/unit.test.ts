@@ -11,6 +11,7 @@ import { findProjectRoot } from "../src/lib/manifest.ts";
 import { parseSource } from "../src/lib/source.ts";
 import { versionKeyFor, type StoreRecord } from "../src/lib/store.ts";
 import { gatewaySkillMd } from "../src/lib/gateway.ts";
+import { newerRelease } from "../src/lib/release.ts";
 import { parseFrontmatter } from "../src/lib/frontmatter.ts";
 import { formatTimestamp, relativeTime } from "../src/lib/time.ts";
 import { newReadme, readmeTitle, repoOwner, shareableUrl } from "../src/lib/sync-readme.ts";
@@ -246,4 +247,15 @@ describe("sync README", () => {
     expect(readmeTitle("https://git.example.com/skills.git")).toBe("My Skills");
   });
 
+});
+
+describe("newerRelease", () => {
+  test("stable installs only move to latest; prereleases also consider next", () => {
+    expect(newerRelease("0.2.0", { latest: "0.3.0", next: "0.4.0-rc.0" })).toBe("0.3.0");
+    expect(newerRelease("0.3.0", { latest: "0.3.0", next: "0.4.0-rc.0" })).toBeNull();
+    expect(newerRelease("0.2.0-rc.0", { latest: "0.1.0", next: "0.2.0-rc.1" })).toBe("0.2.0-rc.1");
+    expect(newerRelease("0.2.0-rc.0", { latest: "0.2.0", next: "0.2.0-rc.1" })).toBe("0.2.0");
+    expect(newerRelease("0.2.0-rc.1", { latest: "0.1.0", next: "0.2.0-rc.1" })).toBeNull();
+    expect(newerRelease("0.2.0", { latest: 42, next: "garbage" })).toBeNull();
+  });
 });

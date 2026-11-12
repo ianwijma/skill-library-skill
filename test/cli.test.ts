@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { VERSION } from "../src/cli/ui.ts";
-import { git, gitRepo, project, readJson, run, sandbox, skillMd, writeFiles } from "./helpers.ts";
+import { BIN, fakeNpm, git, gitRepo, project, readJson, registry, run, runFile, sandbox, skillMd, writeFiles } from "./helpers.ts";
 
 describe("root commands", () => {
   test("--version is bare; no args prints the banner and exits 0", async () => {
@@ -378,33 +378,6 @@ describe("gateway placement", () => {
     expect(again.stderr).not.toContain("Updated skill-library gateway");
   });
 
-  test("connect installs the gateway into detected agents, or only the -a agents", async () => {
-    const sb = await sandbox();
-    const none = await run(sb, ["connect"]);
-    expect(none.code).toBe(1);
-    expect(none.stderr).toContain("No agents found");
-
-    await fsp.mkdir(path.join(sb.home, ".claude"), { recursive: true });
-    const r = await run(sb, ["connect"]);
-    expect(r.code).toBe(0);
-    expect(r.stdout).toContain("Installed the skill-library skill for Claude Code");
-    const placed = await fsp.readFile(path.join(sb.home, ".claude", "skills", "skill-library", "SKILL.md"), "utf8");
-    expect(placed).toContain("skill-library query -a <your-agent-id>");
-    await expect(fsp.access(path.join(sb.store, "index.json"))).rejects.toThrow();
-
-    const again = await run(sb, ["connect", "--json"]);
-    expect(again.code).toBe(0);
-    expect(JSON.parse(again.stdout)).toEqual({ updated: [], current: ["Claude Code"], errors: [] });
-
-    const only = await run(sb, ["connect", "-a", "codex", "--json"]);
-    expect(JSON.parse(only.stdout).updated).toEqual(["Codex"]);
-    await fsp.access(path.join(sb.home, ".agents", "skills", "skill-library", "SKILL.md"));
-
-    const bad = await run(sb, ["connect", "-a", "nope"]);
-    expect(bad.code).toBe(1);
-    expect(bad.stderr).toContain("Invalid agents: nope");
-  });
-
   test("a read-only agent dir never fails the add", async () => {
     const sb = await sandbox();
     await fsp.mkdir(path.join(sb.home, ".claude", "skills"), { recursive: true });
@@ -413,6 +386,122 @@ describe("gateway placement", () => {
     const r = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-g", "-y"], { env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
     await fsp.chmod(path.join(sb.home, ".claude", "skills"), 0o700);
     expect(r.code).toBe(0);
+  });
+});
+
+describe("self", () => {
+  const KEY = { SKILL_LIBRARY_TYPESAFE_API_KEY: "k" };
+  const gatewayFile = (home: string) => path.join(home, ".claude", "skills", "skill-library", "SKILL.md");
+
+  test("help, unknown subcommands, bad agents, and the old connect", async () => {
+    const sb = await sandbox();
+    expect((await run(sb, ["self"])).stdout).toContain("self <command>");
+    const unknown = await run(sb, ["self", "frobnicate"]);
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("Unknown self command: frobnicate");
+    const bad = await run(sb, ["self", "setup", "-a", "nope"]);
+    expect(bad.code).toBe(1);
+    expect(bad.stderr).toContain("Invalid agents: nope");
+    const old = await run(sb, ["connect"]);
+    expect(old.code).toBe(1);
+    expect(old.stderr).toContain("connect was replaced by self setup");
+  });
+
+  test("doctor reports what is missing and where to fix it, changing nothing", async () => {
+    const sb = await sandbox();
+    const npm = await fakeNpm(sb);
+    const r = await run(sb, ["self", "doctor"], { env: { PATH: npm.path } });
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain("skill-library isn't installed");
+    expect(r.stdout).toContain("No agents found");
+    expect(r.stdout).toContain("SKILL_LIBRARY_TYPESAFE_API_KEY is not set");
+    expect(r.stdout).toContain("https://console.typesafe.ai/keys");
+    expect(r.stdout).toContain("export SKILL_LIBRARY_TYPESAFE_API_KEY=");
+    const j = JSON.parse((await run(sb, ["self", "doctor", "--json"], { env: { PATH: npm.path } })).stdout);
+    const status = Object.fromEntries(j.checks.map((c: { id: string; status: string }) => [c.id, c.status]));
+    expect(status).toEqual({ install: "fail", release: "warn", gateway: "fail", "api-key": "fail", git: "ok" });
+    expect(j.ok).toBe(false);
+    expect(await npm.log()).toEqual([]);
+    await expect(fsp.access(path.join(sb.home, ".claude"))).rejects.toThrow();
+  });
+
+  test("setup checks the machine first and installs nothing when a check fails", async () => {
+    const sb = await sandbox();
+    const npm = await fakeNpm(sb);
+    const noKey = await run(sb, ["self", "setup"], { env: { PATH: npm.path } });
+    expect(noKey.code).toBe(1);
+    expect(noKey.stdout).toContain("SKILL_LIBRARY_TYPESAFE_API_KEY is not set");
+    expect(noKey.stdout).toContain("Nothing was installed");
+    if (process.getuid?.() !== 0) {
+      await fsp.chmod(npm.root, 0o500);
+      const locked = await run(sb, ["self", "setup"], { env: { ...KEY, PATH: npm.path } });
+      await fsp.chmod(npm.root, 0o700);
+      expect(locked.code).toBe(1);
+      expect(locked.stdout).toContain("isn't writable by you");
+      expect(locked.stdout).toContain("resolving-eacces-permissions-errors");
+    }
+    expect(await npm.log()).toEqual([]);
+  });
+
+  test("setup installs with npm, hands over, installs the gateway, and re-running it updates", async () => {
+    const sb = await sandbox();
+    const npm = await fakeNpm(sb);
+    await fsp.mkdir(path.join(sb.home, ".claude"), { recursive: true });
+    const reg = await registry({ latest: "99.0.0" });
+    const env = { ...KEY, PATH: npm.path, SKILL_LIBRARY_NPM_REGISTRY: reg.url };
+
+    const first = await run(sb, ["self", "setup"], { env });
+    expect(first.code).toBe(0);
+    expect(await npm.log()).toEqual(["i -g skill-library@99.0.0"]);
+    expect(first.stdout).toContain("Installing 99.0.0");
+    expect(first.stdout).toContain("Installed the skill-library skill for Claude Code");
+    expect(first.stdout).toContain("skill-library 99.0.0 is installed and on PATH");
+    expect(first.stdout).toContain("All good.");
+    await fsp.access(gatewayFile(sb.home));
+
+    const again = await run(sb, ["self", "setup"], { env });
+    expect(again.code).toBe(0);
+    expect(again.stdout).toContain("99.0.0 is installed and the newest release");
+    expect(again.stdout).toContain("Already up to date for Claude Code");
+    expect(await npm.log()).toHaveLength(1);
+
+    reg.close();
+    const newer = await registry({ latest: "99.1.0" });
+    const update = await run(sb, ["self", "setup"], { env: { ...env, SKILL_LIBRARY_NPM_REGISTRY: newer.url } });
+    newer.close();
+    expect(update.code).toBe(0);
+    expect(update.stdout).toContain("Updating 99.0.0 → 99.1.0");
+    expect(await npm.log()).toEqual(["i -g skill-library@99.0.0", "i -g skill-library@99.1.0"]);
+  });
+
+  test("update installs with npm and refreshes the gateway only where it is installed", async () => {
+    const sb = await sandbox();
+    const npm = await fakeNpm(sb);
+    const reg = await registry({ latest: "99.1.0" });
+    const env = { ...KEY, PATH: npm.path, SKILL_LIBRARY_NPM_REGISTRY: reg.url };
+
+    const none = await run(sb, ["self", "update"], { env });
+    expect(none.code).toBe(1);
+    expect(none.stderr).toContain("isn't installed with npm -g");
+
+    await npm.install("99.0.0");
+    // An older gateway in Claude Code; Codex is on the machine but never had one.
+    await writeFiles(path.join(sb.home, ".claude", "skills", "skill-library"), { "SKILL.md": skillMd("skill-library", "old gateway") });
+    await fsp.mkdir(path.join(sb.home, ".codex"), { recursive: true });
+    expect((await run(sb, ["self", "doctor"], { env })).stdout).toContain("outdated for Claude Code");
+
+    const r = await run(sb, ["self", "update"], { env });
+    reg.close();
+    expect(r.code).toBe(0);
+    expect(await npm.log()).toEqual(["i -g skill-library@99.1.0"]);
+    expect(r.stdout).toContain("Updating skill-library 99.0.0 → 99.1.0");
+    expect(r.stdout).toContain("Installed the skill-library skill for Claude Code");
+    expect(await fsp.readFile(gatewayFile(sb.home), "utf8")).toContain("skill-library query -a <your-agent-id>");
+    await expect(fsp.access(path.join(sb.home, ".agents", "skills", "skill-library"))).rejects.toThrow();
+
+    const offline = await run(sb, ["self", "update"], { env: { ...env, SKILL_LIBRARY_NPM_REGISTRY: "http://127.0.0.1:1" } });
+    expect(offline.code).toBe(2);
+    expect(offline.stderr).toContain("Couldn't check for a newer release");
   });
 });
 
