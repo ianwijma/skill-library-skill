@@ -1,15 +1,17 @@
 ---
 name: skill-library
-description: Use whenever a task might benefit from a skill — query often, erring on the side of querying. Skills are not loaded into context automatically; this skill queries the skill library (skill-library CLI) to discover and read the skills relevant to the current task.
+description: TRIGGER — run `skill-library query -a <your-agent-id> "<task in 1-3 sentences>"` at the start of every task, and again whenever the work moves to a new language, framework, tool, file type or kind of work (tests, CI, release, docs, deploy). Do it even when the task looks well defined, because you cannot know which skills the library holds without querying. Then read every SKILL.md path it prints before continuing. Agent ids look like claude-code, codex, opencode, cursor or gemini-cli; an unknown id prints the valid list. Skills are not loaded into context automatically, so this query is the only way to find them. Load this skill for how to read the output and what to do when the query fails.
 ---
 
 # Skill Library
 
 ## Workflow
 
-1. Whenever a skill might help (before starting a task, when the work shifts
-   into new territory, or when unsure), summarize the task in 1–3 sentences
-   (key technologies, file types, and the goal) and run:
+1. Query at the start of every task, and again whenever the work moves to a
+   new language, framework, tool, file type or kind of work (tests, CI,
+   release, docs, deploy). Do it even when the task looks well defined: you
+   can't know which skills the library holds without querying. Summarize the
+   task in 1–3 sentences (key technologies, file types, and the goal) and run:
 
    ```sh
    skill-library query -a <your-agent-id> "<task description>"

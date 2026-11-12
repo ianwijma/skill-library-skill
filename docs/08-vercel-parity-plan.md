@@ -317,7 +317,9 @@ Exit codes: 0 / 1 (usage, incl. invalid agent) / 2 (runtime: API key, network, l
 - **One byte-identical gateway everywhere** (no per-agent templates): it tells the agent to run
   `skill-library query -a <your agent id> "<task>"` and says an invalid id prints the valid list.
 - Source: `skills/skill-library/SKILL.md`, embedded at build time (`--loader:.md=text`, typed by
-  `src/md.d.ts`). Content: when to query, the query command and its output, and failures (missing
+  `src/md.d.ts`). Its description names the triggers (start of every task, every shift to a new
+  language, framework, tool or file type) and carries the query command itself, so an agent can
+  query without loading the skill. Content: when to query, the query command and its output, and failures (missing
   key, network). **`query` is the only command the gateway names**: no `list`, no management
   commands, no sync, no store layout. It doesn't
   mention `--json` or the tuning flags (`--threshold`, `--top`, stdin `-`): only `-a`. The agent reads only the paths `query` prints and is told not
