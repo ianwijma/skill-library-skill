@@ -8,6 +8,7 @@ import { runInstall } from "./install.ts";
 import { runList } from "./list.ts";
 import { runQuery } from "./query.ts";
 import { runRemove } from "./remove.ts";
+import { runShow } from "./show.ts";
 import { runSyncCommand } from "./sync.ts";
 import { VERSION, showBanner, showHelp, showLogo, showRemoveHelp } from "./ui.ts";
 import { runUpdate } from "./update.ts";
@@ -103,6 +104,8 @@ export async function main(argv: string[]): Promise<number> {
         return await runUse(args, g);
       case "query":
         return await runQuery(args, g);
+      case "show":
+        return await runShow(args, g);
       case "connect":
         return await runConnect(args, g);
       case "sync":

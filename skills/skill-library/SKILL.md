@@ -30,7 +30,9 @@ and must be loaded on demand, per task.
 2. The output lists matching skills, each followed by a `└ <path>` line. Read
    every listed `SKILL.md` path **before** working on the task and follow it.
    Skills marked `(always)` are the user's always-on skills: they are returned
-   for every task, so read them too.
+   for every task, so read them too. Skills marked `built-in` ship with the CLI
+   and have no file: their line reads `└ run: skill-library show <name>` — run
+   that command and follow its output as the SKILL.md.
 3. `No matching skills. Continue without one.` → proceed on your own judgment.
 4. If the output ends with `Sync changed your global skills — tell the user:`
    (`syncChanges` with `--json`), tell the user which skills were added,
@@ -48,6 +50,8 @@ and must be loaded on demand, per task.
   stricter, `0.5` to recover misses.
 - `--top <n>` — cap the number of matches.
 - `--json` — `{"matches":[{id,name,description,path,probability,scope,always}]}`.
+  Built-in matches have `scope: "builtin"` and a `command` to run instead of a
+  readable `path`.
 - A stderr line `N project skills are not installed — run skill-library install`
   means the project's `skill-library.json` references skills this machine
   doesn't have yet; run that command when you are allowed to.

@@ -104,6 +104,14 @@ and `"always": true`, before the scored matches, regardless of `--threshold` and
 `--top`. When every candidate is always-on, no request is made and no API key is
 needed.
 
+**Built-in skills.** The CLI bundles a few skills (today: `find-skills`, adapted
+from vercel-labs/skills) that are never written to disk. Each is scored like any
+other candidate, unless a library skill with the same name is a candidate (the
+library's wins). Built-ins never make a key required: when nothing else needs
+scoring and no key is set, they are skipped silently. They are printed with a
+command instead of a path, and `skill-library show <name>` prints their
+`SKILL.md`. API callers can pass `builtins: false` to leave them out.
+
 ## Output
 
 ```
@@ -111,6 +119,9 @@ Read these skill files before continuing with the task:
 
 frontend-design (91%)
 └ /home/ian/.local/share/skill-library/skills/frontend-design-3f9c1a2e/8e01b7a4c2f9/SKILL.md
+
+find-skills (82%, built-in)
+└ run: skill-library show find-skills
 ```
 
 When a background sync (see [09](09-global-sync-options.md)) changed the global
@@ -124,7 +135,8 @@ Sync changed your global skills — tell the user:
   updated: frontend-design
 ```
 
-`--json` prints `{"matches":[{id,name,description,path,probability,scope,always}]}`,
+`--json` prints `{"matches":[{id,name,description,path,probability,scope,always}]}`
+(built-ins: `scope: "builtin"`, `path: "builtin://<name>"` and a `command` field),
 plus `"syncChanges":{"added":[…],"removed":[…],"updated":[…]}` in the same case.
 Exit codes: 0 ok · 1 usage (incl. invalid agent) · 2 runtime (key, network, lock).
 
