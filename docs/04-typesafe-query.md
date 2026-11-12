@@ -118,7 +118,7 @@ skills since the last successful query, the output ends with a block the agent
 relays to the user. It is shown once and then cleared:
 
 ```
-Sync changed your global skills — tell the user:
+Your skills changed — tell the user:
   added: zeta
   removed: old-one
   updated: frontend-design

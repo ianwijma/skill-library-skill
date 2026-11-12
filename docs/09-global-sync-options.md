@@ -195,10 +195,11 @@ never waits for the sync and never fails because of it.
 - A background run that finds another sync running exits quietly.
 - Results and errors go to `<library>/sync-status.json`, and
   `skill-library sync status` shows them. When the previous background sync
-  failed, the next `query` that starts one prints one line on stderr.
+  failed, the next `query` that starts one prints one line on stderr. It names
+  no error text, path or URL: the gateway agent never learns how sync works.
 - Nobody sees a background run's output, so its added, removed and updated
   skills are kept in `sync-status.json` (`unreported`). The next successful
-  `query` prints them under `Sync changed your global skills — tell the user:`
+  `query` prints them under `Your skills changed — tell the user:`
   (`syncChanges` with `--json`) and clears them. The gateway tells the agent to
   pass this on to the user.
 

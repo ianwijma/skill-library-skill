@@ -144,6 +144,7 @@ Run `skill-library install` in the project.
 
 ### Does it work offline?
 
-Only `query` needs the network. Without it, `skill-library list --json` and
-`skill-library list -g --json` show every skill and its path, and the gateway
-skill tells the agent to fall back to them.
+Only `query` needs the network. Without it, `skill-library list` and
+`skill-library list -g` show every skill and its path. The gateway skill
+only knows `query`: when that fails, the agent tells you why and carries on
+without skills.
