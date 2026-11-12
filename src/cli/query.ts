@@ -23,15 +23,15 @@ function parseTop(raw: string): number {
   return n;
 }
 
-/** Lines telling the agent what a background sync changed, so it can pass it on to the user. */
+/** Lines telling the agent what a background sync changed (worded without sync internals), so it can pass it on to the user. */
 function syncChangeLines(c: SyncChanges): string[] {
   const list = (names: string[]) => names.map(sanitizeMetadata).join(", ");
-  const lines = ["Sync changed your global skills — tell the user:"];
+  const lines = ["Your skills changed — tell the user:"];
   if (c.added.length > 0) lines.push(`  added: ${list(c.added)}`);
   if (c.removed.length > 0) lines.push(`  removed: ${list(c.removed)}`);
   if (c.updated.length > 0) lines.push(`  updated: ${list(c.updated)}`);
   if (c.shadowed && c.shadowed.length > 0) {
-    lines.push(`  now shadowing a skill with the same name: ${list(c.shadowed)} (the user can pick one; see skill-library list -g)`);
+    lines.push(`  now shadowing a skill with the same name: ${list(c.shadowed)} (the user can choose which one to keep)`);
   }
   return lines;
 }
