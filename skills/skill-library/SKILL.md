@@ -5,10 +5,6 @@ description: Use whenever a task might benefit from a skill — query often, err
 
 # Skill Library
 
-Skills are NOT loaded into context automatically. Load them on demand, per task,
-with `skill-library query`. It is the only way to find skills: read only the
-`SKILL.md` paths it prints, and don't look for skills anywhere else.
-
 ## Workflow
 
 1. Whenever a skill might help (before starting a task, when the work shifts
@@ -24,7 +20,8 @@ with `skill-library query`. It is the only way to find skills: read only the
    again. Query often: a query is cheap, a missed skill is not.
 
 2. Read every `SKILL.md` listed (the `└ <path>` lines) **before** working on
-   the task, and follow it. `(always)` skills come back for every task; read
+   the task, and follow it. These paths are the only skills to use: don't look
+   for skills anywhere else. `(always)` skills come back for every task; read
    them too. `No matching skills.` means continue on your own judgment.
 3. If the output ends with `Your skills changed — tell the user:`, or the query
    succeeds but prints a note on stderr, pass it on to the user briefly.
