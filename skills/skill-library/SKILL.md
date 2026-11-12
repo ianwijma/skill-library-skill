@@ -5,94 +5,39 @@ description: Use whenever a task might benefit from a skill — query often, err
 
 # Skill Library
 
-Skills are NOT loaded into context automatically. They live in a managed library
-and must be loaded on demand, per task.
+## Workflow
 
-## Workflow — query whenever a skill might help
-
-1. Whenever you think a skill might be needed — before starting a task, when the
-   work shifts into new territory, or when unsure — summarize the task into a
-   1–3 sentence description (include key technologies, file types, and the goal),
-   then run, passing your own agent id:
+1. Whenever a skill might help (before starting a task, when the work shifts
+   into new territory, or when unsure), summarize the task in 1–3 sentences
+   (key technologies, file types, and the goal) and run:
 
    ```sh
    skill-library query -a <your-agent-id> "<task description>"
    ```
 
    Agent ids look like `claude-code`, `codex`, `opencode`, `cursor`,
-   `gemini-cli`. If you pass an id the CLI doesn't know, it prints
-   `Invalid agents: …` followed by `Valid agents: …` — pick yours from that list
-   and run the query again.
+   `gemini-cli`. An unknown id prints `Valid agents: …`; pick yours and run
+   again. Query often: a query is cheap, a missed skill is not.
 
-   This fires very often, and that is fine: a query is cheap; a missed skill is
-   not.
-
-2. The output lists matching skills, each followed by a `└ <path>` line. Read
-   every listed `SKILL.md` path **before** working on the task and follow it.
-   Skills marked `(always)` are the user's always-on skills: they are returned
-   for every task, so read them too.
-3. `No matching skills. Continue without one.` → proceed on your own judgment.
-4. If the output ends with `Sync changed your global skills — tell the user:`
-   (`syncChanges` with `--json`), tell the user which skills were added,
-   removed or updated, briefly, alongside your answer. These changes came
-   from their skills repo (see below) and are only shown once.
-5. For a rapid follow-up that trivially continues the same task with the same
-   context, reusing the skills already read is acceptable; when in doubt,
-   re-query.
-
-## Query options
-
-- Long or multiline task text: `skill-library query -a <id> - <<'EOF' … EOF`
-  (`-` reads the task from stdin).
-- `--threshold <0..1>` — minimum probability (default 0.7). Use `0.8` to be
-  stricter, `0.5` to recover misses.
-- `--top <n>` — cap the number of matches.
-- `--json` — `{"matches":[{id,name,description,path,probability,scope,always}]}`.
-- A stderr line `N project skills are not installed — run skill-library install`
-  means the project's `skill-library.json` references skills this machine
-  doesn't have yet; run that command when you are allowed to.
-
-## Managing skills
-
-`skill-library` follows the vercel-labs/skills command contract: `add`, `list`,
-`remove`, `update`, `check`, `install`, `find`, `init`, `use`. Skills you add are
-stored in the library, never in agent skill folders. Run
-`skill-library --help` for the commands and flags.
-
-Global skills can be synced with a git repo (`skill-library sync`). When it is
-set up, `sync`, `sync init`, `sync update`, `sync enable` and the global `add -g`, `remove -g`
-and `update` commands can pull in skills from other machines. When their output
-lists skills as added (`+`), removed (`-`) or updated (`↑`), tell the user
-which ones changed.
+2. Read every `SKILL.md` listed (the `└ <path>` lines) **before** working on
+   the task, and follow it. These paths are the only skills to use: don't look
+   for skills anywhere else. `(always)` skills come back for every task; read
+   them too. `No matching skills.` means continue on your own judgment.
+3. If the output ends with `Your skills changed — tell the user:`, or the query
+   succeeds but prints a note on stderr, pass it on to the user briefly.
+4. A quick follow-up on the same task can reuse the skills already read; when in
+   doubt, query again.
 
 ## When the query fails
 
-Run the command before declaring a failure. If it fails, use its stderr and exit
-code to explain the specific cause briefly:
+If the query exits non-zero, tell the user the cause in a sentence and continue
+the task without skills. Don't retry a query that keeps failing the same way.
 
-- CLI missing: check `command -v skill-library` and `PATH`; install it with
-  `npx skill-library self setup`.
-- Missing `SKILL_LIBRARY_TYPESAFE_API_KEY` or HTTP 401: query needs a valid
-  TypeSafe key in the agent's environment. Never print the key. Suggest the
-  user run `skill-library self doctor`, which checks the setup and says what's missing.
-- Connection error or timeout: online scoring could not reach TypeSafe. Check
-  network/DNS, proxy settings, and agent sandbox restrictions. This does not
-  establish that the service is down. If the environment reports restricted
-  networking, retry through its supported network-permission mechanism when
-  allowed. Respect denials and use the offline fallback below.
-- Other exit-2 errors: report the actual diagnostic (for example, an unreadable
-  store), rather than labeling every runtime failure a service outage.
-
-**Offline fallback** (needs neither network nor an API key): run
-
-```sh
-skill-library list --json -a <your-agent-id>
-skill-library list -g --json -a <your-agent-id>
-```
-
-Ignore rows whose `status` is `untracked` or `missing`. When a project row and a
-global row share a `name`, use the project row. Pick the relevant skills from the
-names, then read `<path>/SKILL.md` for each before continuing. If the local
-catalog also fails or has nothing relevant, continue with available guidance.
-Never block the user's task on the library, and avoid repeating a known failing
-query during the same task unless conditions change.
+- CLI missing (`command not found`): the user can set it up by following
+  https://github.com/ianwijma/skill-library-skill#quick-start.
+- Missing `SKILL_LIBRARY_TYPESAFE_API_KEY` or HTTP 401: the agent's environment
+  needs a valid TypeSafe key (same setup link). Never print the key.
+- Connection error or timeout: TypeSafe was unreachable (network, proxy or
+  sandbox restrictions, not necessarily an outage). If your environment offers
+  a way to request network access, use it, and respect a denial.
+- Anything else: report the actual error message.

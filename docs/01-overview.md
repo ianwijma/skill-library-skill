@@ -48,7 +48,7 @@ is the add-on that makes the library usable.
 | Component | Responsibility |
 |---|---|
 | `skill-library` CLI | vercel-compatible commands over the library + `query` (Jev scoring). Places the gateway during `add`. |
-| Gateway skill (`skills/skill-library/SKILL.md`) | The query workflow and offline fallback. Embedded in the CLI and written to each installed agent's global skills folder by `add`. |
+| Gateway skill (`skills/skill-library/SKILL.md`) | The query workflow; `query` is the only command it names. Embedded in the CLI and written to each installed agent's global skills folder by `add`. |
 | Library (store) | `~/.local/share/skill-library/`: `index.json` + one folder per skill with one immutable sub-folder per version. See [03](03-data-store.md). |
 | `skill-library.json` | Per project, committed. References skills by id with a pinned version and content hash, so the project works on another machine (`skill-library install`). |
 | Programmatic API | `import { add, query, … } from "skill-library"` — the same operations without printing or prompts. |
