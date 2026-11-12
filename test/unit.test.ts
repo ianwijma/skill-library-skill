@@ -226,7 +226,7 @@ describe("sync README", () => {
     const url = "git@github.com:me/skills.git";
     const created = planReadme(null, url);
     expect(created.action).toBe("create");
-    expect(created.action !== "none" && created.text).toMatch(/^# me's Skills\n/);
+    expect(created.action !== "none" && created.text).toMatch(/^# <a .*<\/a> me's Skills\n/);
     const added = planReadme("# Mine\n\nNotes.\n", url);
     expect(added.action).toBe("add");
     if (added.action === "none") throw new Error("unreachable");
