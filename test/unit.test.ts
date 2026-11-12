@@ -212,6 +212,9 @@ describe("sync README", () => {
     expect(repoOwner("ssh://git@gitlab.example.com:2222/team/skills.git")).toBe("team");
     expect(repoOwner("https://git.example.com/skills.git")).toBeNull();
     expect(repoOwner("file:///home/me/skills.git")).toBeNull();
+    expect(repoOwner("/home/me/skills.git")).toBeNull();
+    expect(repoOwner("C:\\Users\\me\\skills.git")).toBeNull();
+    expect(repoOwner("git@github.com:IanWijma/skills.git")).toBe("IanWijma");
   });
 
   test("the README never carries credentials from the clone URL", () => {

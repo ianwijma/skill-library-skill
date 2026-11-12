@@ -3,27 +3,26 @@
 // `{{title}}` and `{{url}}` are filled in here.
 import template from "../../assets/sync-readme.md";
 
-/** Host and path segments (without `.git`) of a clone URL; null for local paths and junk. */
-function parseRemote(url: string): { host: string; parts: string[] } | null {
-  let host: string;
-  let pathname: string;
-  const scp = /^[^/@\s]+@([^:/\s]+):(.+)$/.exec(url); // git@github.com:me/skills.git
-  if (scp) {
-    host = scp[1]!;
-    pathname = scp[2]!;
-  } else {
-    let u: URL;
+/** A clone URL as a URL: `user@host:path` (scp-style, which URL() rejects) reads as `ssh://user@host/path`. */
+function toUrl(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    if (!url.includes(":")) return null;
     try {
-      u = new URL(url);
+      return new URL(`ssh://${url.replace(":", "/")}`);
     } catch {
       return null;
     }
-    if (u.protocol === "file:" || u.hostname === "") return null;
-    host = u.hostname;
-    pathname = u.pathname;
   }
-  const parts = pathname.replace(/\.git\/?$/, "").split("/").filter(Boolean);
-  return parts.length === 0 ? null : { host: host.toLowerCase(), parts };
+}
+
+/** Host and path segments (without `.git`) of a clone URL; null for local paths and junk. */
+function parseRemote(url: string): { host: string; parts: string[] } | null {
+  const u = toUrl(url);
+  if (!u || u.protocol === "file:" || u.hostname === "") return null;
+  const parts = decodeURIComponent(u.pathname).replace(/\.git\/?$/, "").split("/").filter(Boolean);
+  return parts.length === 0 ? null : { host: u.hostname.toLowerCase(), parts };
 }
 
 /** The user or organization a clone URL belongs to (`me` of `git@github.com:me/skills.git`), or null. */
