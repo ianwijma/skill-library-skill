@@ -340,8 +340,9 @@ async function distTags(): Promise<Record<string, unknown>> {
 /** With nothing installed yet: this copy's version (it's what `npx` fetched), or newer. */
 function firstInstallVersion(tags: Record<string, unknown>): string {
   if (semver.valid(VERSION)) return newerRelease(VERSION, tags) ?? VERSION;
-  if (typeof tags.latest === "string" && semver.valid(tags.latest)) return tags.latest;
-  throw new CliError(2, "The npm registry has no latest release of skill-library");
+  // A copy without a release version (a dev build) is never a prerelease, so only a stable `latest` will do.
+  if (typeof tags.latest === "string" && semver.valid(tags.latest) && !semver.prerelease(tags.latest)) return tags.latest;
+  throw new CliError(2, "The npm registry has no stable latest release of skill-library");
 }
 
 async function installRelease(root: string, version: string): Promise<void> {

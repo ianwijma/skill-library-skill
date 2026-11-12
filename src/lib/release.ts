@@ -23,14 +23,19 @@ export interface ReleaseCheck {
 /**
  * Pick the release to offer: `latest`, or for a prerelease install also `next`, whichever is
  * newer. Returns null when nothing beats `current`.
+ *
+ * A stable install never moves to a prerelease, whatever the dist-tags point at (a release
+ * candidate mistakenly published under `latest` included). Only a prerelease install can.
  */
 export function newerRelease(current: string, tags: Record<string, unknown>): string | null {
   if (!semver.valid(current)) return null;
+  const onPrerelease = semver.prerelease(current) !== null;
   const candidates = [tags.latest];
-  if (semver.prerelease(current)) candidates.push(tags.next);
+  if (onPrerelease) candidates.push(tags.next);
   let best: string | null = null;
   for (const c of candidates) {
     if (typeof c !== "string" || !semver.valid(c)) continue;
+    if (!onPrerelease && semver.prerelease(c)) continue;
     if (semver.gt(c, current) && (best === null || semver.gt(c, best))) best = c;
   }
   return best;

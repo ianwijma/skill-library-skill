@@ -258,4 +258,11 @@ describe("newerRelease", () => {
     expect(newerRelease("0.2.0-rc.1", { latest: "0.1.0", next: "0.2.0-rc.1" })).toBeNull();
     expect(newerRelease("0.2.0", { latest: 42, next: "garbage" })).toBeNull();
   });
+
+  test("a stable install never moves to a prerelease, even one tagged latest", () => {
+    expect(newerRelease("0.2.0", { latest: "0.3.0-rc.0" })).toBeNull();
+    expect(newerRelease("0.2.0", { latest: "0.3.0-rc.0", next: "0.3.0-rc.1" })).toBeNull();
+    expect(newerRelease("0.2.0", { latest: "1.0.0-beta.1", next: "0.2.1" })).toBeNull();
+    expect(newerRelease("0.2.0-rc.0", { latest: "0.3.0-rc.0" })).toBe("0.3.0-rc.0");
+  });
 });
