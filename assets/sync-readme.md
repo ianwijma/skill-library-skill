@@ -1,7 +1,7 @@
 # {{title}}
 
 <!-- skill-library:start -->
-<a href="{{link}}"><img src="https://raw.githubusercontent.com/ianwijma/skill-library-skill/main/assets/icon.svg" alt="Skill Library" width="64" height="64" align="right"></a>
+<a href="{{link}}"><img src="https://github.com/ianwijma/skill-library-skill/raw/develop/assets/icon.svg" alt="Skill Library" width="64" height="64" align="right"></a>
 
 These agent skills sync across machines with [Skill Library]({{link}}).
 
