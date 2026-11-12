@@ -55,6 +55,8 @@ vercel's named-skill path is global-first).
   `--agent` (and every other short/long pair) behave identically.
 - Unknown command: `Unknown command: x` / `Run skill-library --help for usage.` on stdout, exit 1.
 - `--version`/`-v` prints the bare version. No arguments prints the banner, exit 0.
+- `--help`/`-h` lists every command; `<command> --help`, `<command> <subcommand> --help` and
+  `help <command>` show that command's own usage, options and examples, exit 0. Help never runs the command.
 - The logo shows only for `add`, `install`, `find`, `init` on a TTY outside agents.
 - `--json` modes print exactly one JSON value on stdout; every notice goes to stderr.
 

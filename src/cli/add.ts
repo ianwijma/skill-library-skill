@@ -4,7 +4,7 @@ import { addSkills, type AddedSkill, type NameClash } from "../core/add.ts";
 import { agentsArg, globalKindOf, type GlobalKind } from "../core/context.ts";
 import { readSyncConfig } from "../core/sync.ts";
 import { agentIds, displayName } from "../lib/agents.ts";
-import { CliError, DIM, RESET, TEXT, formatError, note, sanitizeMetadata } from "../lib/cli.ts";
+import { CliError, formatError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { isRunningInAgent } from "../lib/detect-agent.ts";
 import { placeGateway } from "../lib/gateway.ts";
 import { gitSkillId } from "../lib/ids.ts";
@@ -12,7 +12,6 @@ import { loadProject } from "../lib/manifest.ts";
 import { resolveStore } from "../lib/paths.ts";
 import { parseSource } from "../lib/source.ts";
 import type { AgentsValue } from "../lib/store.ts";
-import { parseFlags } from "./args.ts";
 import { afterGlobalChange } from "./sync.ts";
 import { showLogo } from "./ui.ts";
 import type { GlobalOpts } from "./index.ts";
@@ -49,41 +48,42 @@ function clashMessage(c: NameClash, e: NameClash["existing"][number], kind: Glob
   return `A global ${c.name} already exists (${KIND_LABEL[kind]}: ${e.source}; ${files}). Replace it with this one?`;
 }
 
-export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
-  const f = parseFlags(args, {
-    booleans: {
-      global: ["-g", "--global"],
-      project: ["-p", "--project"],
-      list: ["-l", "--list"],
-      yes: ["-y", "--yes"],
-      all: ["--all"],
-      fullDepth: ["--full-depth"],
-      copy: ["--copy"],
-      json: ["--json"],
-      share: ["--share"],
-      noShare: ["--no-share"],
-    },
-    lists: { agent: ["-a", "--agent"], skill: ["-s", "--skill"] },
-  });
-  const json = f.booleans.has("json");
+export interface AddOptions {
+  global?: boolean;
+  project?: boolean;
+  list?: boolean;
+  yes?: boolean;
+  all?: boolean;
+  fullDepth?: boolean;
+  json?: boolean;
+  /** true for --share, false for --no-share. */
+  share?: boolean;
+  /** Both --share and --no-share were given. */
+  shareConflict?: boolean;
+  agent?: string[];
+  skill?: string[];
+}
+
+/** `add <package>`: `sources` are the positionals (only the first is used). */
+export async function runAdd(sources: string[], opts: AddOptions, g: GlobalOpts): Promise<number> {
+  const json = !!opts.json;
   const inAgent = isRunningInAgent();
-  const yes = f.booleans.has("yes") || f.booleans.has("all") || inAgent;
+  const yes = !!opts.yes || !!opts.all || inAgent;
   const fail = (err: CliError): number => {
     console.error(`Error: ${formatError(err)}`);
     if (json) console.log("[]");
     return 1;
   };
-  if (f.missing.length > 0) return fail(new CliError(1, `${f.missing[0]} requires a value`));
-  if (json && f.booleans.has("list")) return fail(new CliError(1, "--json cannot be combined with --list"));
+  if (json && opts.list) return fail(new CliError(1, "--json cannot be combined with --list"));
   if (json && !yes) return fail(new CliError(1, "--json requires -y (or --all) so no prompt is needed"));
-  if (f.booleans.has("global") && f.booleans.has("project")) return fail(new CliError(1, "--global cannot be combined with --project"));
-  if (f.booleans.has("share") && f.booleans.has("noShare")) return fail(new CliError(1, "--share cannot be combined with --no-share"));
-  const source = f.positionals[0];
+  if (opts.global && opts.project) return fail(new CliError(1, "--global cannot be combined with --project"));
+  if (opts.shareConflict) return fail(new CliError(1, "--share cannot be combined with --no-share"));
+  const source = sources[0];
   if (!source) return fail(new CliError(1, "Missing required argument: source", "Usage: skill-library add <package> [options]"));
-  if (f.positionals.length > 1) note(`Only the first source is used: ${source}`);
+  if (sources.length > 1) note(`Only the first source is used: ${source}`);
 
-  const agents = f.booleans.has("all") ? ["*"] : f.lists.get("agent");
-  const skills = f.booleans.has("all") ? ["*"] : f.lists.get("skill");
+  const agents = opts.all ? ["*"] : opts.agent;
+  const skills = opts.all ? ["*"] : opts.skill;
   try {
     if (agents) agentsArg(agents);
   } catch (err) {
@@ -93,8 +93,8 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   if (!json) showLogo();
   // Global by default. With a skill-library.json here, ask; without a prompt (-y, no TTY, inside an
   // agent) the scope must be explicit (-p / -g), as for remove. -y never picks the scope.
-  let projectScope = f.booleans.has("project");
-  if (!projectScope && !f.booleans.has("global") && !f.booleans.has("list")) {
+  let projectScope = !!opts.project;
+  if (!projectScope && !opts.global && !opts.list) {
     const project = await loadProject(g.cwd);
     if (project?.exists) {
       if (!yes && process.stdin.isTTY) {
@@ -133,7 +133,7 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   } catch {
     // addSkills reports a bad source.
   }
-  let share: boolean | undefined = f.booleans.has("share") ? true : f.booleans.has("noShare") ? false : undefined;
+  let share: boolean | undefined = opts.share;
   if (share !== undefined && !(global && syncUrl)) note("--share/--no-share only apply to global adds while sync is enabled");
 
   const spinner = !json && process.stderr.isTTY ? p.spinner({ output: process.stderr }) : null;
@@ -146,8 +146,8 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
       project: projectScope,
       ...(agents ? { agents } : {}),
       ...(skills ? { skills } : {}),
-      fullDepth: f.booleans.has("fullDepth"),
-      list: f.booleans.has("list"),
+      fullDepth: !!opts.fullDepth,
+      list: !!opts.list,
       confirm: async (picked, scope, kind) => {
         if (yes) return true;
         if (!process.stdin.isTTY) {
@@ -206,16 +206,16 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
     throw err;
   }
 
-  if (f.booleans.has("list")) {
+  if (opts.list) {
     console.log(`${pc.bold("Available Skills")}`);
     console.log();
     for (const s of result.discovered) {
       console.log(`  ${pc.cyan(sanitizeMetadata(s.name))}`);
-      console.log(`    ${DIM}${sanitizeMetadata(s.description)}${RESET}`);
+      console.log(`    ${pc.gray(sanitizeMetadata(s.description))}`);
     }
-    if (result.gatewayOnly) console.log(`  ${DIM}(only the skill-library gateway — it is placed by add, never stored)${RESET}`);
+    if (result.gatewayOnly) console.log(`  ${pc.gray("(only the skill-library gateway — it is placed by add, never stored)")}`);
     console.log();
-    console.log(`${DIM}Use --skill <name> to add specific skills${RESET}`);
+    console.log(pc.gray("Use --skill <name> to add specific skills"));
     return 0;
   }
 
@@ -247,7 +247,7 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
     return 0;
   }
   if (result.gatewayOnly) {
-    console.log(`${TEXT}This source only contains the skill-library gateway; nothing was added to the library.${RESET}`);
+    console.log("This source only contains the skill-library gateway; nothing was added to the library.");
     return 0;
   }
   if (result.cancelled || result.skills.length === 0) {
@@ -256,21 +256,21 @@ export async function runAdd(args: string[], g: GlobalOpts): Promise<number> {
   }
   const where = result.scope === "project" ? `project (${result.projectRoot}/skill-library.json)` : "global library";
   console.log();
-  console.log(`${pc.bold("Installation Summary")} ${DIM}→ ${where}${RESET}`);
+  console.log(`${pc.bold("Installation Summary")} ${pc.gray(`→ ${where}`)}`);
   for (const r of result.skills) {
     if (r.status === "failed") {
-      console.log(`  ${pc.red("✗")} ${sanitizeMetadata(r.name)} ${DIM}→ library: ${r.error}${RESET}`);
+      console.log(`  ${pc.red("✗")} ${sanitizeMetadata(r.name)} ${pc.gray(`→ library: ${r.error}`)}`);
       continue;
     }
     const verb = r.id.startsWith("local://") ? "Added" : "Stored";
-    console.log(`  ${pc.green("✓")} ${verb} ${pc.cyan(sanitizeMetadata(r.name))} ${DIM}(${r.id})${RESET}`);
-    console.log(`    ${DIM}path:${RESET} ${r.path}`);
-    console.log(`    ${DIM}agents:${RESET} ${agentsLabel(r.agents)}`);
+    console.log(`  ${pc.green("✓")} ${verb} ${pc.cyan(sanitizeMetadata(r.name))} ${pc.gray(`(${r.id})`)}`);
+    console.log(`    ${pc.gray("path:")} ${r.path}`);
+    console.log(`    ${pc.gray("agents:")} ${agentsLabel(r.agents)}`);
   }
   for (const r of result.replaced) {
-    console.log(`  ${pc.yellow("↺")} Replaced ${pc.cyan(sanitizeMetadata(r.name))} ${DIM}(${r.id}; kept in the store, not global)${RESET}`);
+    console.log(`  ${pc.yellow("↺")} Replaced ${pc.cyan(sanitizeMetadata(r.name))} ${pc.gray(`(${r.id}; kept in the store, not global)`)}`);
   }
   console.log();
-  console.log(`${DIM}Agents find these skills with${RESET} skill-library query "<task>"`);
+  console.log(`${pc.gray("Agents find these skills with")} skill-library query "<task>"`);
   return ok ? 0 : 1;
 }

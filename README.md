@@ -90,7 +90,7 @@ This deletes them from the library. Your agents keep the gateway skill.
 | `init [name]` | Create a new `SKILL.md`. `--always` makes every query return it, without scoring. |
 | `sync init <git-url>` | Keep your global skills in a git repository (any host) and sync them across machines automatically. `sync update` / `sync disable` / `sync enable` / `sync status`. |
 
-`skill-library --help` lists every flag. Details: [CLI spec](docs/02-cli-spec.md).
+`skill-library --help` lists every command; `skill-library <command> --help` (or `skill-library help <command>`) shows that command's options. Details: [CLI spec](docs/02-cli-spec.md).
 
 ## Sync across machines
 

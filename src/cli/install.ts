@@ -1,7 +1,6 @@
 import pc from "picocolors";
 import { installProject } from "../core/install.ts";
-import { CliError, DIM, RESET, formatError } from "../lib/cli.ts";
-import { parseFlags } from "./args.ts";
+import { CliError, formatError } from "../lib/cli.ts";
 import { showLogo } from "./ui.ts";
 import type { GlobalOpts } from "./index.ts";
 
@@ -12,37 +11,35 @@ function inCI(): boolean {
   });
 }
 
-export async function runInstall(args: string[], g: GlobalOpts): Promise<number> {
-  const f = parseFlags(args, {
-    booleans: {
-      dryRun: ["--dry-run"],
-      force: ["--force"],
-      frozen: ["--frozen-lockfile"],
-      noFrozen: ["--no-frozen-lockfile"],
-      yes: ["-y", "--yes"],
-    },
-    lists: { agent: ["-a", "--agent"] },
-  });
+export interface InstallOptions {
+  dryRun?: boolean;
+  force?: boolean;
+  /** --frozen-lockfile (true) or --no-frozen-lockfile (false); unset: frozen in CI. */
+  frozen?: boolean;
+}
+
+/** Source-less `install`: restore skill-library.json into the library. */
+export async function runInstall(opts: InstallOptions, g: GlobalOpts): Promise<number> {
   showLogo();
-  const frozen = f.booleans.has("noFrozen") ? false : f.booleans.has("frozen") || inCI();
+  const frozen = opts.frozen ?? inCI();
   try {
     const res = await installProject({
       cwd: g.cwd,
       ...(g.store ? { store: g.store } : {}),
-      dryRun: f.booleans.has("dryRun"),
-      force: f.booleans.has("force"),
+      dryRun: !!opts.dryRun,
+      force: !!opts.force,
       frozen,
     });
     const todo = res.skills.filter((r) => r.status !== "present" && r.status !== "local");
     if (res.skills.length === 0) {
-      console.log(`${DIM}No skills in skill-library.json.${RESET}`);
+      console.log(pc.gray("No skills in skill-library.json."));
       return 0;
     }
-    console.log(`${DIM}Restoring ${res.skills.length} skill(s) from skill-library.json into the library${RESET}`);
+    console.log(pc.gray(`Restoring ${res.skills.length} skill(s) from skill-library.json into the library`));
     for (const r of res.skills) {
       const label =
         r.status === "present" || r.status === "local"
-          ? `${pc.dim("•")} ${r.id} ${DIM}(${r.status === "local" ? "in this repository" : "already installed"})${RESET}`
+          ? `${pc.dim("•")} ${r.id} ${pc.gray(`(${r.status === "local" ? "in this repository" : "already installed"})`)}`
           : r.status === "would-install"
             ? `${pc.cyan("→")} Would restore ${r.id}`
             : r.status === "installed" || r.status === "repaired"
@@ -50,7 +47,7 @@ export async function runInstall(args: string[], g: GlobalOpts): Promise<number>
               : `${pc.red("✗")} ${r.id}: ${r.message}`;
       console.log(`  ${label}`);
     }
-    if (todo.length === 0) console.log(`${DIM}Everything is already installed.${RESET}`);
+    if (todo.length === 0) console.log(pc.gray("Everything is already installed."));
     return res.ok ? 0 : 1;
   } catch (err) {
     if (err instanceof CliError) {

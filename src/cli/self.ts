@@ -9,7 +9,7 @@ import path from "node:path";
 import pc from "picocolors";
 import semver from "semver";
 import { agentIds, detectInstalledAgents, displayName, globalReadDir } from "../lib/agents.ts";
-import { BOLD, CliError, DIM, RESET, TEXT, msgOf } from "../lib/cli.ts";
+import { CliError, msgOf } from "../lib/cli.ts";
 import { GATEWAY_NAME, agentsWithGateway, gatewayState, writeGateway, type GatewayResult } from "../lib/gateway.ts";
 import {
   PACKAGE_NAME,
@@ -25,7 +25,6 @@ import {
   type GlobalInstall,
 } from "../lib/release.ts";
 import { validateAgents } from "../core/context.ts";
-import { parseFlags } from "./args.ts";
 import { VERSION } from "./ui.ts";
 import type { GlobalOpts } from "./index.ts";
 
@@ -44,54 +43,15 @@ export interface Check {
   fix?: string;
 }
 
-export function showSelfHelp(): void {
-  console.log(`
-${BOLD}Usage:${RESET} skill-library self <command> [options]
-
-Commands that look after skill-library itself, rather than your skills.
-
-${BOLD}Commands:${RESET}
-  setup                  Check this machine, install or update skill-library (npm -g), install the
-                         gateway skill into your agents, then run the doctor. Run it again any time:
-                         it updates everything. Start here: npx skill-library self setup
-    -a, --agent <agents> Only these agents (default: every agent found on this machine)
-  update                 Update skill-library (npm -g) and refresh the gateway skill in the agents
-                         that already have it
-  doctor                 Check that everything skill-library needs is in place; changes nothing.
-                         Exit 1 when something needs fixing
-    -a, --agent <agents> Check only these agents' gateway skill
-    --json               Output as JSON
-`);
-}
-
-export async function runSelf(args: string[], g: GlobalOpts): Promise<number> {
-  const [sub, ...rest] = args;
-  switch (sub) {
-    case undefined:
-    case "help":
-      showSelfHelp();
-      return 0;
-    case "setup":
-      return runSelfSetup(rest, g);
-    case "update":
-      return runSelfUpdate(rest);
-    case "doctor":
-      return runSelfDoctor(rest, g);
-    default:
-      throw new CliError(1, `Unknown self command: ${sub}`, "Run skill-library self for the list.");
-  }
-}
-
 // --- doctor ------------------------------------------------------------------------------------
 
-async function runSelfDoctor(args: string[], g: GlobalOpts): Promise<number> {
-  const f = parseFlags(args, { booleans: { json: ["--json"] }, lists: { agent: ["-a", "--agent"] } });
-  if (f.missing.length > 0) throw new CliError(1, `${f.missing[0]} requires a value`);
-  if (f.positionals.length > 0) throw new CliError(1, `Unexpected argument: ${f.positionals[0]}`, "Usage: skill-library self doctor [-a <agents>] [--json]");
-  const agents = requestedAgents(f.lists.get("agent"));
+/** `self doctor`; `extra` are positionals, which it doesn't take. */
+export async function runSelfDoctor(extra: string[], opts: { agent?: string[]; json?: boolean }, g: GlobalOpts): Promise<number> {
+  if (extra.length > 0) throw new CliError(1, `Unexpected argument: ${extra[0]}`, "Usage: skill-library self doctor [-a <agents>] [--json]");
+  const agents = requestedAgents(opts.agent);
   const checks = await doctorChecks(g.cwd, agents);
   const ok = !checks.some((c) => c.status === "fail");
-  if (f.booleans.has("json")) {
+  if (opts.json) {
     console.log(JSON.stringify({ checks, ok }, null, 2));
     return ok ? 0 : 1;
   }
@@ -212,9 +172,9 @@ function findOnPath(name: string): string | null {
 
 // --- update ------------------------------------------------------------------------------------
 
-async function runSelfUpdate(args: string[]): Promise<number> {
-  const f = parseFlags(args, {});
-  if (f.positionals.length > 0) throw new CliError(1, `Unexpected argument: ${f.positionals[0]}`, "Usage: skill-library self update");
+/** `self update`; `extra` are positionals, which it doesn't take. */
+export async function runSelfUpdate(extra: string[]): Promise<number> {
+  if (extra.length > 0) throw new CliError(1, `Unexpected argument: ${extra[0]}`, "Usage: skill-library self update");
 
   if (process.env[HANDOFF_ENV] !== "1") {
     const root = await npmGlobalRoot();
@@ -246,15 +206,14 @@ async function runSelfUpdate(args: string[]): Promise<number> {
 
 // --- setup -------------------------------------------------------------------------------------
 
-async function runSelfSetup(args: string[], g: GlobalOpts): Promise<number> {
-  const f = parseFlags(args, { lists: { agent: ["-a", "--agent"] } });
-  if (f.missing.length > 0) throw new CliError(1, `${f.missing[0]} requires a value`);
-  if (f.positionals.length > 0) throw new CliError(1, `Unexpected argument: ${f.positionals[0]}`, "Usage: skill-library self setup [-a <agents>]");
-  const agents = requestedAgents(f.lists.get("agent"));
+/** `self setup`; `extra` are positionals, which it doesn't take. */
+export async function runSelfSetup(extra: string[], opts: { agent?: string[] }, g: GlobalOpts): Promise<number> {
+  if (extra.length > 0) throw new CliError(1, `Unexpected argument: ${extra[0]}`, "Usage: skill-library self setup [-a <agents>]");
+  const agents = requestedAgents(opts.agent);
 
   if (process.env[HANDOFF_ENV] !== "1") {
     // 1. Check everything the install needs before touching anything.
-    console.log(`${TEXT}Checking this machine${RESET}`);
+    console.log("Checking this machine");
     const root = await npmGlobalRoot();
     const pre = await preflight(root);
     printChecks(pre);
@@ -265,7 +224,7 @@ async function runSelfSetup(args: string[], g: GlobalOpts): Promise<number> {
     }
     // 2. Install or update skill-library itself.
     console.log();
-    console.log(`${TEXT}skill-library${RESET}`);
+    console.log("skill-library");
     const installed = await globalInstall(root);
     const tags = await distTags();
     const target = installed ? newerRelease(installed.version, tags) : firstInstallVersion(tags);
@@ -278,17 +237,17 @@ async function runSelfSetup(args: string[], g: GlobalOpts): Promise<number> {
     // The installed copy does the rest, so the gateway skill it writes is its own.
     if (target || !installed || !isRunning(installed.script)) {
       console.log();
-      return handOff(root, ["self", "setup", ...args]);
+      return handOff(root, ["self", "setup", ...(opts.agent ? ["--agent", ...opts.agent] : [])]);
     }
     console.log();
   }
 
   // 3. The gateway skill, in every agent (or the -a ones).
-  console.log(`${TEXT}Gateway skill${RESET}`);
+  console.log("Gateway skill");
   printGateway(await placeGateway(agents, g.cwd));
   // 4. Is everything in place?
   console.log();
-  console.log(`${TEXT}Health check${RESET}`);
+  console.log("Health check");
   const checks = await doctorChecks(g.cwd, agents);
   printChecks(checks);
   printVerdict(checks, "skill-library self setup");
@@ -349,7 +308,7 @@ async function installRelease(root: string, version: string): Promise<void> {
   if (!(await globalRootWritable(root))) {
     throw new CliError(1, `npm can't install globally: ${root} isn't writable by you`, `Point npm at a folder you own, as described in ${EACCES_URL}`);
   }
-  console.log(`  ${DIM}$ npm i -g ${PACKAGE_NAME}@${version}${RESET}`);
+  console.log(`  ${pc.gray(`$ npm i -g ${PACKAGE_NAME}@${version}`)}`);
   const code = await npmInstallGlobal(version);
   if (code !== 0) throw new CliError(2, `npm i -g ${PACKAGE_NAME}@${version} failed (exit ${code})`, "Its output above says why.");
 }
@@ -394,5 +353,5 @@ function printGateway(r: GatewayResult): void {
   if (r.updated.length > 0) console.log(`  ${pc.green("✓")} Installed the ${GATEWAY_NAME} skill for ${r.updated.join(", ")}`);
   if (r.current.length > 0) console.log(`  ${pc.dim("•")} Already up to date for ${r.current.join(", ")}`);
   for (const e of r.errors) console.log(`  ${pc.red("✗")} ${e}`);
-  if (r.updated.length > 0) console.log(`  ${DIM}Restart your agent so it loads the skill.${RESET}`);
+  if (r.updated.length > 0) console.log(`  ${pc.gray("Restart your agent so it loads the skill.")}`);
 }

@@ -1,10 +1,9 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { removableSkills, removeSkills } from "../core/remove.ts";
-import { CliError, DIM, RESET, formatError, note, sanitizeMetadata } from "../lib/cli.ts";
+import { CliError, formatError, note, sanitizeMetadata } from "../lib/cli.ts";
 import { isRunningInAgent } from "../lib/detect-agent.ts";
 import { loadProject } from "../lib/manifest.ts";
-import { parseFlags } from "./args.ts";
 import { afterGlobalChange } from "./sync.ts";
 import type { GlobalOpts } from "./index.ts";
 
@@ -14,21 +13,26 @@ export async function pickAmbiguous(selector: string, ids: string[]): Promise<st
   return p.isCancel(picked) ? null : (picked as string);
 }
 
-export async function runRemove(args: string[], g: GlobalOpts): Promise<number> {
-  const f = parseFlags(args, {
-    booleans: { global: ["-g", "--global"], project: ["-p", "--project"], yes: ["-y", "--yes"], all: ["--all"] },
-    lists: { agent: ["-a", "--agent"], skill: ["-s", "--skill"] },
-  });
-  const all = f.booleans.has("all");
-  const yes = f.booleans.has("yes") || all || isRunningInAgent();
-  let selectors = [...f.positionals, ...(f.lists.get("skill") ?? [])];
+export interface RemoveOptions {
+  global?: boolean;
+  project?: boolean;
+  yes?: boolean;
+  all?: boolean;
+  agent?: string[];
+  skill?: string[];
+}
+
+/** `remove [skills...]`: `names` are the positionals. */
+export async function runRemove(names: string[], opts: RemoveOptions, g: GlobalOpts): Promise<number> {
+  const all = !!opts.all;
+  const yes = !!opts.yes || all || isRunningInAgent();
+  let selectors = [...names, ...(opts.skill ?? [])];
   try {
-    if (f.missing.length > 0) throw new CliError(1, `${f.missing[0]} requires a value`);
-    if (f.booleans.has("global") && f.booleans.has("project")) throw new CliError(1, "--global cannot be combined with --project");
+    if (opts.global && opts.project) throw new CliError(1, "--global cannot be combined with --project");
     // Global by default. With a skill-library.json here, ask (or take -p / -g). Without a prompt
     // the scope must be explicit: guessing wrong would delete a skill from the whole library.
-    let projectScope = f.booleans.has("project");
-    if (!projectScope && !f.booleans.has("global")) {
+    let projectScope = !!opts.project;
+    if (!projectScope && !opts.global) {
       const project = await loadProject(g.cwd);
       if (project?.exists) {
         if (yes || !process.stdin.isTTY) {
@@ -53,8 +57,8 @@ export async function runRemove(args: string[], g: GlobalOpts): Promise<number> 
       }
     }
     const base = { cwd: g.cwd, ...(g.store ? { store: g.store } : {}), project: projectScope };
-    if (all && f.positionals.length > 0) {
-      throw new CliError(1, "Cannot combine --all with specific skill names.", `Use \`skill-library remove --all\` to remove every skill, or omit --all to remove only the named skills.\n   Example: skill-library remove ${f.positionals[0]} -y`);
+    if (all && names.length > 0) {
+      throw new CliError(1, "Cannot combine --all with specific skill names.", `Use \`skill-library remove --all\` to remove every skill, or omit --all to remove only the named skills.\n   Example: skill-library remove ${names[0]} -y`);
     }
     if (!all && selectors.length === 0) {
       if (!process.stdin.isTTY) {
@@ -62,7 +66,7 @@ export async function runRemove(args: string[], g: GlobalOpts): Promise<number> 
       }
       const choices = await removableSkills(base);
       if (choices.length === 0) {
-        console.log(`${DIM}No skills found to remove.${RESET}`);
+        console.log(pc.gray("No skills found to remove."));
         return 0;
       }
       const picked = await p.multiselect({
@@ -90,7 +94,7 @@ export async function runRemove(args: string[], g: GlobalOpts): Promise<number> 
     const res = await removeSkills(all ? [] : selectors, {
       ...base,
       all,
-      ...(f.lists.get("agent") ? { agents: f.lists.get("agent")! } : {}),
+      ...(opts.agent ? { agents: opts.agent } : {}),
       ...(process.stdin.isTTY ? { chooseAmbiguous: pickAmbiguous } : {}),
     });
     for (const n of res.notes) note(n);
@@ -104,7 +108,7 @@ export async function runRemove(args: string[], g: GlobalOpts): Promise<number> 
     for (const r of res.removed) {
       if (r.action === "kept") console.log(`${pc.yellow("!")} ${r.message}`);
       else if (r.action === "agents") console.log(`${pc.green("✓")} Updated agents for ${sanitizeMetadata(r.name)}`);
-      else console.log(`${pc.green("✓")} Removed ${sanitizeMetadata(r.name)} ${DIM}(${r.id})${RESET}`);
+      else console.log(`${pc.green("✓")} Removed ${sanitizeMetadata(r.name)} ${pc.gray(`(${r.id})`)}`);
       if (r.action !== "kept" && r.message) note(r.message);
     }
     if (done.length > 0) {
