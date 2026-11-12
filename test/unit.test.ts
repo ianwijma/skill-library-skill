@@ -17,14 +17,14 @@ import { formatTimestamp, relativeTime } from "../src/lib/time.ts";
 describe("ids", () => {
   test("GitHub over every transport gets the same id", () => {
     const urls = [
-      parseSource("Vercel-Labs/Agent-Skills").url,
-      parseSource("github:vercel-labs/agent-skills").url,
-      parseSource("https://github.com/vercel-labs/agent-skills").url,
-      parseSource("https://github.com/vercel-labs/agent-skills.git").url,
-      "git@github.com:vercel-labs/agent-skills.git",
-      "ssh://git@github.com/vercel-labs/agent-skills.git",
+      parseSource("Anthropics/Skills").url,
+      parseSource("github:anthropics/skills").url,
+      parseSource("https://github.com/anthropics/skills").url,
+      parseSource("https://github.com/anthropics/skills.git").url,
+      "git@github.com:anthropics/skills.git",
+      "ssh://git@github.com/anthropics/skills.git",
     ];
-    for (const u of urls) expect(gitSkillId(u, "react")).toBe("repo://github.com/vercel-labs/agent-skills/react");
+    for (const u of urls) expect(gitSkillId(u, "react")).toBe("repo://github.com/anthropics/skills/react");
   });
 
   test("other hosts keep path case and drop scheme/user/port/.git", () => {

@@ -42,7 +42,6 @@ function sanitizeSubpath(subpath: string): string {
 
 const SOURCE_ALIASES: Record<string, string> = {
   "coinbase/agentWallet": "coinbase/agentic-wallet-skills",
-  "vercel-labs/vercel-skills": "vercel-labs/agent-skills",
 };
 
 function decode(value: string): string {

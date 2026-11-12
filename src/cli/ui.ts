@@ -51,7 +51,7 @@ export function showBanner(): void {
   row("sync", "init <git-url>", "Sync global skills through a git repo");
   row("init", "[name]", "Create a new skill");
   console.log();
-  console.log(`${DIM}try:${RESET} skill-library add vercel-labs/agent-skills`);
+  console.log(`${DIM}try:${RESET} skill-library add anthropics/skills`);
   console.log();
   console.log(`Discover more skills at ${TEXT}https://skills.sh/${RESET}`);
   console.log();
@@ -61,13 +61,13 @@ export function showHelp(): void {
   const examples: Array<[string, string?]> = [
     ["skill-library connect", "install the gateway skill into your agents"],
     ["skill-library connect -a claude-code codex", "only these agents"],
-    ["skill-library add vercel-labs/agent-skills"],
-    ["skill-library add vercel-labs/agent-skills -g", "add to the global library"],
-    ["skill-library add vercel-labs/agent-skills --agent claude-code", "only for Claude Code"],
-    ["skill-library add vercel-labs/agent-skills --skill pr-review commit"],
-    ["skill-library add vercel-labs/agent-skills --json -y", "JSON output"],
+    ["skill-library add anthropics/skills"],
+    ["skill-library add anthropics/skills -g", "add to the global library"],
+    ["skill-library add anthropics/skills --agent claude-code", "only for Claude Code"],
+    ["skill-library add anthropics/skills --skill pdf docx"],
+    ["skill-library add anthropics/skills --json -y", "JSON output"],
     ['skill-library query -a claude-code "fix a failing Next.js build"'],
-    ["skill-library use vercel-labs/agent-skills@vercel-optimize | claude"],
+    ["skill-library use vercel-labs/skills@frontend-design | claude"],
     ["skill-library remove web-design", "remove by name"],
     ["skill-library rm --global frontend-design"],
     ["skill-library list", "list project skills"],
@@ -89,8 +89,8 @@ ${BOLD}Usage:${RESET} skill-library <command> [options]
 
 ${BOLD}Manage Skills:${RESET}
   add <package>        Add skills to the library (alias: a, install <package>, i <package>)
-                       e.g. vercel-labs/agent-skills
-                            https://github.com/vercel-labs/agent-skills
+                       e.g. anthropics/skills
+                            https://github.com/anthropics/skills
                             ./path/to/skills
   use <package>@<skill>
                        Generate a prompt for using one skill without adding it
