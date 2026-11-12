@@ -3,6 +3,14 @@
 <!-- skill-library:start -->
 <a href="https://github.com/ianwijma/skill-library-skill"><img src="https://github.com/ianwijma/skill-library-skill/raw/develop/assets/icon.svg" alt="Skill Library" width="64" height="64" align="right"></a>
 
+### Use these skills on another machine
+
+```sh
+npm i -g skill-library
+export SKILL_LIBRARY_TYPESAFE_API_KEY='<your TypeSafe API key>'
+skill-library sync init {{url}}
+```
+
 ### Powered by Skill Library
 
 - **Zero skills loaded by default:** nothing sits in the agent's context up front.
@@ -10,6 +18,4 @@
 - **Synced:** every machine picks up new and updated skills from this repository.
 
 Learn more: [ianwijma/skill-library-skill](https://github.com/ianwijma/skill-library-skill)
-
-Use them on another machine: `skill-library sync init {{url}}`
 <!-- skill-library:end -->
