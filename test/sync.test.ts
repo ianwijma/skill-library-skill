@@ -448,7 +448,7 @@ describe("sync", () => {
     git(a, a.root, ["clone", "-q", remote, dir]);
     const readme = await fsp.readFile(path.join(dir, "README.md"), "utf8");
     expect(readme).toContain("<!-- skill-library:start -->");
-    expect(readme).toContain("https://github.com/ianwijma/skill-library-skill?utm_source=skill-library-sync");
+    expect(readme).toContain("](https://github.com/ianwijma/skill-library-skill)");
     expect(readme).toContain(`skill-library sync init ${remote}`);
     expect(readme).not.toContain("{{");
   });

@@ -1,17 +1,16 @@
 // The README `sync init` puts in a sync repository: a short note on what the repo is and a link
-// back to Skill Library. The text lives in assets/sync-readme.md (edit it there); `{{title}}`,
-// `{{link}}` and `{{url}}` are filled in here. The part between the markers is "our section":
+// back to Skill Library. The text lives in assets/sync-readme.md (edit it there); `{{title}}`
+// and `{{url}}` are filled in here. The part between the markers is "our section":
 // it is added to a README the user already has, and a later `sync init` updates it in place
 // without touching the rest of their README.
 import template from "../../assets/sync-readme.md";
 
-const PROJECT = "https://github.com/ianwijma/skill-library-skill";
 export const README_START = "<!-- skill-library:start -->";
 export const README_END = "<!-- skill-library:end -->";
 
 /**
- * `owner/repo` (or `host/owner/repo` off GitHub) of a clone URL, for the link's tracking
- * parameters. Credentials, ports and local paths are never included; null when there is no host.
+ * `owner/repo` (or `host/owner/repo` off GitHub) of a clone URL; the README's title is its last
+ * part. Credentials, ports and local paths are never included; null when there is no host.
  */
 export function repoSlug(url: string): string | null {
   let host: string;
@@ -37,19 +36,10 @@ export function repoSlug(url: string): string | null {
   return host.toLowerCase() === "github.com" ? tail : `${host.toLowerCase()}/${tail}`;
 }
 
-/** Link to the project, tagged with the sync repo it was clicked from. */
-export function projectLink(url: string): string {
-  const params = new URLSearchParams({ utm_source: "skill-library-sync", utm_medium: "readme" });
-  const slug = repoSlug(url);
-  if (slug) params.set("utm_campaign", slug);
-  return `${PROJECT}?${params.toString()}`;
-}
-
 function fill(url: string): string {
   const slug = repoSlug(url);
   const values: Record<string, string> = {
     title: slug ? slug.split("/").pop()! : "Agent skills",
-    link: projectLink(url),
     url,
   };
   return template.replace(/\r\n/g, "\n").replace(/\{\{(\w+)\}\}/g, (m, key: string) => values[key] ?? m);

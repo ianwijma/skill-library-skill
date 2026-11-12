@@ -41,8 +41,7 @@ skill-library sync init ssh://git@git.example.com:2222/me/my-skills.git
   `<!-- skill-library:end -->`; the rest of the README is never touched.
   `--readme` says yes without asking, `--no-readme` says no. Without a terminal
   the README is left as it is. A non-Markdown README (`README.rst`, …) is always
-  left alone. The README's link to Skill Library carries `utm_*` parameters
-  naming the sync repo (`owner/repo`; no credentials, nothing for a local path).
+  left alone.
 
 If `sync` is already set up with the same URL, `init` says so and exits
 successfully without changing anything. With a different URL it refuses and
