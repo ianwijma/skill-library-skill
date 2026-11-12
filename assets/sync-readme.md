@@ -1,7 +1,7 @@
 # {{title}}
 
 <!-- skill-library:start -->
-<a href="https://github.com/ianwijma/skill-library-skill"><img src="https://github.com/ianwijma/skill-library-skill/raw/develop/assets/icon.svg" alt="Skill Library" width="64" height="64" align="right"></a>
+<p align="center"><a href="https://github.com/ianwijma/skill-library-skill"><img src="https://github.com/ianwijma/skill-library-skill/raw/develop/assets/icon.svg" alt="Skill Library" width="96" height="96"></a></p>
 
 ### Setup
 
