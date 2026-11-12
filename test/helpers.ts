@@ -83,7 +83,11 @@ export interface FakeNpm {
   log(): Promise<string[]>;
 }
 
-/** A fake npm whose global installs copy the built CLI into a folder inside the sandbox. */
+/**
+ * A fake npm whose global installs copy the built CLI into a folder inside the sandbox. The fake
+ * package.json says `"type": "module"` like the real one: Node before 22.12 doesn't detect that the
+ * extensionless bundle is ESM.
+ */
 export async function fakeNpm(sb: Sandbox): Promise<FakeNpm> {
   const prefix = path.join(sb.root, "npm-prefix");
   const root = path.join(prefix, "lib", "node_modules");
@@ -103,7 +107,7 @@ case "$1" in
     v="\${3#skill-library@}"
     mkdir -p "${pkg}/dist" "${bin}"
     cp "${BIN}" "${pkg}/dist/skill-library"
-    printf '{"version":"%s"}' "$v" > "${pkg}/package.json"
+    printf '{"version":"%s","type":"module"}' "$v" > "${pkg}/package.json"
     ln -sf "${pkg}/dist/skill-library" "${bin}/skill-library"
     echo "$@" >> "${log}" ;;
 esac
@@ -118,7 +122,7 @@ esac
       await fsp.mkdir(path.join(pkg, "dist"), { recursive: true });
       await fsp.mkdir(bin, { recursive: true });
       await fsp.copyFile(BIN, path.join(pkg, "dist", "skill-library"));
-      await fsp.writeFile(path.join(pkg, "package.json"), JSON.stringify({ version }));
+      await fsp.writeFile(path.join(pkg, "package.json"), JSON.stringify({ version, type: "module" }));
       await fsp.symlink(path.join(pkg, "dist", "skill-library"), path.join(bin, "skill-library")).catch(() => {});
     },
     async log() {
