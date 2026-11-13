@@ -12,10 +12,55 @@ npm test            # vitest (builds the bundle first)
 npm run test:e2e        # end-to-end suite, no network (see below)
 npm run test:e2e:live   # live end-to-end suite: real GitHub, skills.sh, TypeSafe
 npm run typecheck   # tsc --noEmit
+npm run lint        # eslint (npm run lint:fix applies the autofixes)
 npm run build       # dist/skill-library (CLI), dist/index.js + dist/api.d.ts (API)
 ```
 
 Design notes and specs are in [docs/](docs/).
+
+### Linting
+
+`npm run lint` runs ESLint ([eslint.config.mjs](eslint.config.mjs)) over the source,
+tests, scripts and config files. The TypeScript files are linted with type
+information from `tsconfig.json`; the `.mjs` scripts and config without it. It
+uses typescript-eslint's `strictTypeChecked` and `stylisticTypeChecked` presets, the
+`@stylistic` formatting rules, and some rules of our own:
+
+- **No single-character names** (`id-length`, min 2). Write `index`, `entry`,
+  `skill`, `left`/`right`, not `i`, `e`, `s`, `a`/`b`. `_` is allowed for a
+  binding that is deliberately unused. Object keys count too.
+- **Room around the code**:
+  - `padding-line-between-statements` requires a blank line before every `return`,
+    after a block of declarations, around `if`/`for`/`while`/`switch`/`try` and
+    other blocks, after the imports, and between top-level functions and exports.
+  - `curly: all` puts every `if`/`for` body in braces on its own line.
+  - Statements go one per line, lines are at most 120 characters (long strings
+    and template literals are exempt), and there is never more than one blank line
+    in a row.
+- **Correctness**: no floating or misused promises, `===` everywhere except
+  `== null`, no shadowing, and no unused variables. Prefix a name with `_` to mark
+  it as deliberately unused.
+- **Conventions**: Node built-ins are imported with the `node:` prefix, type-only
+  exports use `export type`, strings are built with template literals rather than
+  `+`, and backticks are only for strings that interpolate. A wrapped expression
+  starts each continuation line with its operator, except `=`, which stays at the
+  end of the line.
+
+Some preset rules are turned off on purpose:
+- `no-non-null-assertion`: `noUncheckedIndexedAccess` makes `!` the normal way
+  to read regex groups and known keys.
+- `require-await`: many functions are async to fit an interface.
+- In `test/` only, the `no-unsafe-*` / `no-explicit-any` family, because tests
+  `JSON.parse` CLI output freely.
+
+Disable a rule only on the line that needs it, and always give the reason:
+`// eslint-disable-next-line <rule> -- <reason>`.
+
+typescript-eslint still needs the TypeScript 6 compiler API, which TypeScript 7
+(our `tsc`) no longer ships. [scripts/eslint-typescript6.mjs](scripts/eslint-typescript6.mjs)
+points `typescript` at `@typescript/typescript6`, only inside the ESLint process.
+The `overrides` in `package.json` make npm accept TypeScript 7 for typescript-eslint's
+`typescript` peer dependency, which still says `<6.1`.
 
 ### End-to-end tests
 
@@ -68,8 +113,8 @@ reported but never blocks a merge.
 
 ## Pull requests
 
-Open pull requests against `develop`. CI runs the tests, the end-to-end
-tests, the typecheck and the build on every pull request.
+Open pull requests against `develop`. CI runs the lint, the tests, the
+end-to-end tests, the typecheck and the build on every pull request.
 
 ## Releasing
 

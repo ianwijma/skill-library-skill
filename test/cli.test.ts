@@ -2,25 +2,29 @@ import { describe, expect, test } from "vitest";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { VERSION } from "../src/cli/ui.ts";
-import { BIN, fakeNpm, git, gitRepo, project, readJson, registry, run, runFile, sandbox, skillMd, writeFiles } from "./helpers.ts";
+import type { AddressInfo } from "node:net";
+import { fakeNpm, gitRepo, project, readJson, registry, run, sandbox, skillMd, writeFiles } from "./helpers.ts";
 
 describe("root commands", () => {
   test("--version is bare; no args prints the banner and exits 0", async () => {
     const sb = await sandbox();
-    const v = await run(sb, ["--version"]);
-    expect(v.stdout).toBe(`${VERSION}\n`);
+    const version = await run(sb, ["--version"]);
+
+    expect(version.stdout).toBe(`${VERSION}\n`);
     expect((await run(sb, ["-v"])).stdout).toBe(`${VERSION}\n`);
     const none = await run(sb, []);
+
     expect(none.code).toBe(0);
     expect(none.stdout).toContain("skill-library add");
   });
 
   test("help short-circuits; every command has its own help", async () => {
     const sb = await sandbox();
-    const h = await run(sb, ["add", "--help"]);
-    expect(h.code).toBe(0);
-    expect(h.stdout).toContain("Usage: skill-library add|a [options] <package>");
-    expect(h.stdout).not.toContain("Add-ons:");
+    const help = await run(sb, ["add", "--help"]);
+
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain("Usage: skill-library add|a [options] <package>");
+    expect(help.stdout).not.toContain("Add-ons:");
     expect((await run(sb, ["--help"])).stdout).toContain("Add-ons:");
     expect((await run(sb, ["rm", "-h"])).stdout).toContain("skill-library remove|rm [options] [skills...]");
     expect((await run(sb, ["help", "remove"])).stdout).toContain("skill-library remove|rm [options] [skills...]");
@@ -28,17 +32,20 @@ describe("root commands", () => {
 
   test("unknown command on stdout, exit 1; sync needs init", async () => {
     const sb = await sandbox();
-    const r = await run(sb, ["frobnicate"]);
-    expect(r.code).toBe(1);
-    expect(r.stdout).toBe("Unknown command: frobnicate\nRun skill-library --help for usage.\n");
+    const result = await run(sb, ["frobnicate"]);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("Unknown command: frobnicate\nRun skill-library --help for usage.\n");
     expect((await run(sb, ["sync"])).code).toBe(1);
   });
 
   test("init writes the vercel template", async () => {
     const sb = await sandbox();
-    const r = await run(sb, ["init", "my-skill"]);
-    expect(r.code).toBe(0);
+    const result = await run(sb, ["init", "my-skill"]);
+
+    expect(result.code).toBe(0);
     const md = await fsp.readFile(path.join(sb.root, "my-skill", "SKILL.md"), "utf8");
+
     expect(md).toContain("name: my-skill");
     expect((await run(sb, ["init", "my-skill"])).stdout).toContain("Skill already exists at");
     expect(md).not.toContain("always");
@@ -46,10 +53,13 @@ describe("root commands", () => {
 
   test("init --always marks the skill always-on, in either argument order", async () => {
     const sb = await sandbox();
+
     expect((await run(sb, ["init", "--always", "rules"])).code).toBe(0);
     expect((await run(sb, ["init", "other", "--always"])).code).toBe(0);
+
     for (const name of ["rules", "other"]) {
       const md = await fsp.readFile(path.join(sb.root, name, "SKILL.md"), "utf8");
+
       expect(md).toContain("description: A brief description of what this skill does\nmetadata:\n  always: true\n---\n");
     }
   });
@@ -59,18 +69,22 @@ describe("local sources", () => {
   test("project add: in-repo folder read in place, outside folder stored with hash", async () => {
     const sb = await sandbox();
     const dir = await project(sb);
+
     await writeFiles(dir, { "skills/foo/SKILL.md": skillMd("foo", "Foo") });
     await writeFiles(path.join(sb.home, "my-skills"), { "bar/SKILL.md": skillMd("bar", "Bar"), "baz/SKILL.md": skillMd("baz", "Baz") });
     expect((await run(sb, ["add", "-p", "./skills/foo", "-y"], { cwd: dir })).code).toBe(0);
-    const r = await run(sb, ["add", "-p", path.join(sb.home, "my-skills"), "-y", "-a", "claude-code"], { cwd: dir });
-    expect(r.code).toBe(0);
-    const m = await readJson(path.join(dir, "skill-library.json"));
-    expect(Object.keys(m.skills)).toEqual(["home://my-skills/bar", "home://my-skills/baz", "local://skills/foo"]);
-    expect(m.skills["local://skills/foo"]).toEqual({ name: "foo", agents: "all" });
-    expect(m.skills["home://my-skills/bar"]).toEqual({ name: "bar", source: "~/my-skills/bar", hash: expect.stringMatching(/^sha256-[0-9a-f]{64}$/), agents: ["claude-code"] });
+    const result = await run(sb, ["add", "-p", path.join(sb.home, "my-skills"), "-y", "-a", "claude-code"], { cwd: dir });
+
+    expect(result.code).toBe(0);
+    const manifest = await readJson(path.join(dir, "skill-library.json"));
+
+    expect(Object.keys(manifest.skills)).toEqual(["home://my-skills/bar", "home://my-skills/baz", "local://skills/foo"]);
+    expect(manifest.skills["local://skills/foo"]).toEqual({ name: "foo", agents: "all" });
+    expect(manifest.skills["home://my-skills/bar"]).toEqual({ name: "bar", source: "~/my-skills/bar", hash: expect.stringMatching(/^sha256-[0-9a-f]{64}$/), agents: ["claude-code"] });
     const index = await readJson(path.join(sb.store, "index.json"));
+
     expect(index.version).toBe(1);
-    expect(index.skills.map((s: any) => [s.id, s.global])).toEqual([
+    expect(index.skills.map((skill: any) => [skill.id, skill.global])).toEqual([
       ["home://my-skills/bar", false],
       ["home://my-skills/baz", false],
     ]);
@@ -79,9 +93,11 @@ describe("local sources", () => {
   test("list --json shape and statuses; global add flips global, agents union", async () => {
     const sb = await sandbox();
     const dir = await project(sb);
+
     await writeFiles(path.join(sb.home, "s"), { "bar/SKILL.md": skillMd("bar", "Bar") });
     await run(sb, ["add", "-p", "~/s/bar".replace("~", sb.home), "-y", "-a", "codex"], { cwd: dir });
     let rows = JSON.parse((await run(sb, ["list", "-g", "--json"], { cwd: dir })).stdout);
+
     expect(rows[0]).toMatchObject({ name: "bar", scope: "global", status: "untracked", agents: [] });
     await run(sb, ["add", path.join(sb.home, "s", "bar"), "-g", "-y", "-a", "codex"], { cwd: dir });
     await run(sb, ["add", path.join(sb.home, "s", "bar"), "-g", "-y", "-a", "claude-code"], { cwd: dir });
@@ -89,6 +105,7 @@ describe("local sources", () => {
     expect(rows[0]).toMatchObject({ status: "tracked", agents: ["Codex", "Claude Code"], sourceType: "local", sourceUrl: null });
     expect(Object.keys(rows[0]).sort()).toEqual(["agents", "id", "name", "path", "scope", "source", "sourceType", "sourceUrl", "status"]);
     const proj = JSON.parse((await run(sb, ["ls", "--json"], { cwd: dir })).stdout);
+
     expect(proj[0]).toMatchObject({ scope: "project", status: "tracked", agents: ["Codex"] });
     expect(JSON.parse((await run(sb, ["ls", "--json", "-a", "claude-code"], { cwd: dir })).stdout)).toEqual([]);
   });
@@ -96,25 +113,32 @@ describe("local sources", () => {
   test("remove: project drops the reference (stays in store, not global); -g deletes; agent rules", async () => {
     const sb = await sandbox();
     const dir = await project(sb);
+
     await writeFiles(path.join(sb.root, "src"), { "bar/SKILL.md": skillMd("bar", "Bar"), "qux/SKILL.md": skillMd("qux", "Qux") });
     await run(sb, ["add", "-p", path.join(sb.root, "src"), "-y", "-a", "codex", "claude-code"], { cwd: dir });
-    let r = await run(sb, ["remove", "-p", "bar", "-a", "codex", "-y"], { cwd: dir });
-    expect(r.code).toBe(0);
-    let m = await readJson(path.join(dir, "skill-library.json"));
-    expect(Object.values(m.skills).map((e: any) => e.agents)).toEqual([["claude-code"], ["codex", "claude-code"]]);
-    r = await run(sb, ["remove", "-p", "bar", "-y"], { cwd: dir });
-    expect(r.stdout).toContain("Successfully removed 1 skill(s)");
-    m = await readJson(path.join(dir, "skill-library.json"));
-    expect(Object.keys(m.skills)).toHaveLength(1);
+    let result = await run(sb, ["remove", "-p", "bar", "-a", "codex", "-y"], { cwd: dir });
+
+    expect(result.code).toBe(0);
+    let manifest = await readJson(path.join(dir, "skill-library.json"));
+
+    expect(Object.values(manifest.skills).map((entry: any) => entry.agents)).toEqual([["claude-code"], ["codex", "claude-code"]]);
+    result = await run(sb, ["remove", "-p", "bar", "-y"], { cwd: dir });
+    expect(result.stdout).toContain("Successfully removed 1 skill(s)");
+    manifest = await readJson(path.join(dir, "skill-library.json"));
+    expect(Object.keys(manifest.skills)).toHaveLength(1);
     const listed = JSON.parse((await run(sb, ["ls", "-g", "--json"], { cwd: dir })).stdout);
-    expect(listed.find((x: any) => x.name === "bar").status).toBe("untracked");
+
+    expect(listed.find((row: any) => row.name === "bar").status).toBe("untracked");
     const none = await run(sb, ["remove", "-p", "nope", "-y"], { cwd: dir });
+
     expect(none.code).toBe(0);
     expect(none.stdout).toContain("No matching skills found for: nope");
-    const g = await run(sb, ["remove", "-g", "qux", "-y"], { cwd: dir });
-    expect(g.stderr).toContain("still referenced by");
-    expect((await readJson(path.join(sb.store, "index.json"))).skills.map((s: any) => s.id)).not.toContainEqual(expect.stringContaining("qux"));
+    const globalRemove = await run(sb, ["remove", "-g", "qux", "-y"], { cwd: dir });
+
+    expect(globalRemove.stderr).toContain("still referenced by");
+    expect((await readJson(path.join(sb.store, "index.json"))).skills.map((skill: any) => skill.id)).not.toContainEqual(expect.stringContaining("qux"));
     const all = await run(sb, ["remove", "-p", "--all", "bar"], { cwd: dir });
+
     expect(all.code).toBe(1);
     expect(all.stderr).toContain("Cannot combine --all with specific skill names.");
   });
@@ -122,24 +146,29 @@ describe("local sources", () => {
   test("remove -a on an all-agents skill explains instead of exploding the list", async () => {
     const sb = await sandbox();
     const dir = await project(sb);
+
     await writeFiles(path.join(sb.root, "src"), { "bar/SKILL.md": skillMd("bar", "Bar") });
     await run(sb, ["add", "-p", path.join(sb.root, "src", "bar"), "-y"], { cwd: dir });
-    const r = await run(sb, ["remove", "-p", "bar", "-a", "codex", "-y"], { cwd: dir });
-    expect(r.code).toBe(0);
-    expect(r.stdout).toContain("bar is available to all agents; remove it without -a");
+    const result = await run(sb, ["remove", "-p", "bar", "-a", "codex", "-y"], { cwd: dir });
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("bar is available to all agents; remove it without -a");
     expect((await readJson(path.join(dir, "skill-library.json"))).skills).not.toEqual({});
   });
 
   test("without a skill-library.json everything is global: no manifest is created, list and remove use the library", async () => {
     const sb = await sandbox();
     const dir = await project(sb);
+
     await writeFiles(path.join(sb.root, "s"), { "bar/SKILL.md": skillMd("bar", "Bar") });
-    const r = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-y"], { cwd: dir });
-    expect(r.code).toBe(0);
-    expect(r.stderr).not.toContain("-p");
+    const result = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-y"], { cwd: dir });
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).not.toContain("-p");
     await expect(fsp.access(path.join(dir, "skill-library.json"))).rejects.toThrow();
     expect((await readJson(path.join(sb.store, "index.json"))).skills[0].global).toBe(true);
     const ls = JSON.parse((await run(sb, ["list", "--json"], { cwd: dir })).stdout);
+
     expect(ls).toMatchObject([{ name: "bar", scope: "global" }]);
     expect((await run(sb, ["remove", "bar", "-y"], { cwd: dir })).code).toBe(0);
     expect((await readJson(path.join(sb.store, "index.json"))).skills).toEqual([]);
@@ -147,6 +176,7 @@ describe("local sources", () => {
     expect((await run(sb, ["add", "-p", path.join(sb.root, "s", "bar"), "-y"], { cwd: dir })).code).toBe(0);
     expect(Object.keys((await readJson(path.join(dir, "skill-library.json"))).skills)).toHaveLength(1);
     const home = await run(sb, ["add", "-p", path.join(sb.root, "s", "bar"), "-y"], { cwd: sb.home });
+
     expect(home.code).toBe(1);
     expect(home.stderr).toContain("home directory");
   });
@@ -154,9 +184,11 @@ describe("local sources", () => {
   test("with a skill-library.json and no prompt, add and remove need -p or -g", async () => {
     const sb = await sandbox();
     const dir = await project(sb);
+
     await fsp.writeFile(path.join(dir, "skill-library.json"), '{"version":1,"skills":{}}');
     await writeFiles(path.join(sb.root, "s"), { "bar/SKILL.md": skillMd("bar", "Bar"), "baz/SKILL.md": skillMd("baz", "Baz") });
     const unsureAdd = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-y"], { cwd: dir });
+
     expect(unsureAdd.code).toBe(1);
     expect(unsureAdd.stderr).toContain("-p");
     await expect(fsp.access(path.join(sb.store, "index.json"))).rejects.toThrow();
@@ -167,6 +199,7 @@ describe("local sources", () => {
     expect((await run(sb, ["add", "-p", "-g", path.join(sb.root, "s", "baz"), "-y"], { cwd: dir })).code).toBe(1);
 
     const unsure = await run(sb, ["remove", "bar", "-y"], { cwd: dir });
+
     expect(unsure.code).toBe(1);
     expect(unsure.stderr).toContain("-p");
     expect((await readJson(path.join(sb.store, "index.json"))).skills).toHaveLength(2);
@@ -180,30 +213,40 @@ describe("local sources", () => {
   test("non-TTY without -y and several skills fails; inside an agent -y is implied", async () => {
     const sb = await sandbox();
     const dir = await project(sb);
+
     await writeFiles(path.join(sb.root, "src"), { "a/SKILL.md": skillMd("a", "A"), "b/SKILL.md": skillMd("b", "B") });
-    const r = await run(sb, ["add", "-p", path.join(sb.root, "src")], { cwd: dir });
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain("not a TTY");
+    const result = await run(sb, ["add", "-p", path.join(sb.root, "src")], { cwd: dir });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("not a TTY");
     const inAgent = await run(sb, ["add", "-p", path.join(sb.root, "src")], { cwd: dir, env: { CLAUDECODE: "1" } });
+
     expect(inAgent.code).toBe(0);
-    const m = await readJson(path.join(dir, "skill-library.json"));
-    expect(Object.values(m.skills).every((e: any) => e.agents === "all")).toBe(true);
+    const manifest = await readJson(path.join(dir, "skill-library.json"));
+
+    expect(Object.values(manifest.skills).every((entry: any) => entry.agents === "all")).toBe(true);
   });
 
   test("add --json: one JSON value on stdout even with notices; needs -y; rejects -l", async () => {
     const sb = await sandbox();
+
     await writeFiles(path.join(sb.home, "s"), { "bar/SKILL.md": skillMd("bar", "Bar") });
     const dir = await project(sb);
+
     await fsp.writeFile(path.join(dir, "skill-library.json"), '{"version":1,"skills":{}}');
-    const r = await run(sb, ["add", path.join(sb.home, "s", "bar"), "extra", "-g", "--json", "-y"], { cwd: dir, env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
-    expect(r.code).toBe(0);
-    const rows = JSON.parse(r.stdout);
+    const result = await run(sb, ["add", path.join(sb.home, "s", "bar"), "extra", "-g", "--json", "-y"], { cwd: dir, env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
+
+    expect(result.code).toBe(0);
+    const rows = JSON.parse(result.stdout);
+
     expect(rows[0]).toMatchObject({ name: "bar", status: "installed", scope: "global" });
-    expect(r.stderr).toContain("Only the first source is used");
+    expect(result.stderr).toContain("Only the first source is used");
     const unsure = await run(sb, ["add", path.join(sb.home, "s", "bar"), "--json", "-y"], { cwd: dir });
+
     expect(unsure.code).toBe(1);
     expect(unsure.stdout).toBe("[]\n");
     const noYes = await run(sb, ["add", "./s/bar", "--json"], { cwd: sb.home });
+
     expect(noYes.code).toBe(1);
     expect(noYes.stdout).toBe("[]\n");
     expect((await run(sb, ["add", "./s/bar", "--json", "-y", "-l"], { cwd: sb.home })).stdout).toBe("[]\n");
@@ -211,10 +254,11 @@ describe("local sources", () => {
 
   test("invalid agents use vercel's diagnostic", async () => {
     const sb = await sandbox();
-    const r = await run(sb, ["add", "./x", "-a", "nope", "-y"]);
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain("Invalid agents: nope");
-    expect(r.stderr).toContain("Valid agents: ");
+    const result = await run(sb, ["add", "./x", "-a", "nope", "-y"]);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("Invalid agents: nope");
+    expect(result.stderr).toContain("Valid agents: ");
   });
 });
 
@@ -223,20 +267,24 @@ describe("git sources", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "skills", { "skills/react/SKILL.md": skillMd("react", "React rules"), "skills/vue/SKILL.md": skillMd("vue", "Vue rules") });
     const dir = await project(sb);
-    const r = await run(sb, ["add", "-p", repo.url, "-s", "react", "-y"], { cwd: dir });
-    expect(r.code).toBe(0);
+    const result = await run(sb, ["add", "-p", repo.url, "-s", "react", "-y"], { cwd: dir });
+
+    expect(result.code).toBe(0);
     const id = `repo://localhost${repo.bare.replace(/\.git$/, "")}/react`;
-    const m = await readJson(path.join(dir, "skill-library.json"));
-    expect(m.skills[id]).toEqual({ name: "react", source: repo.url, ref: null, path: "skills/react", commit: repo.head, hash: expect.stringMatching(/^sha256-/), agents: "all" });
+    const manifest = await readJson(path.join(dir, "skill-library.json"));
+
+    expect(manifest.skills[id]).toEqual({ name: "react", source: repo.url, ref: null, path: "skills/react", commit: repo.head, hash: expect.stringMatching(/^sha256-/), agents: "all" });
 
     // Upstream moves on; a fresh store still installs exactly the pinned version.
     await repo.commit({ "skills/react/SKILL.md": skillMd("react", "React rules v2") });
     const fresh = { ...sb, env: { ...sb.env, SKILL_LIBRARY_DIR: path.join(sb.root, "store2") } };
     const inst = await run(fresh, ["install"], { cwd: dir });
+
     expect(inst.code).toBe(0);
     expect(inst.stdout).toContain(`Installed ${id}`);
     const rows = JSON.parse((await run(fresh, ["ls", "--json"], { cwd: dir })).stdout);
     const md = await fsp.readFile(path.join(rows[0].path, "SKILL.md"), "utf8");
+
     expect(md).toContain("React rules\n");
     expect(path.basename(rows[0].path)).toBe(repo.head.slice(0, 12));
     expect((await run(fresh, ["install"], { cwd: dir })).stdout).toContain("already installed");
@@ -246,16 +294,19 @@ describe("git sources", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "Solo") });
     const dir = await project(sb);
+
     await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     const file = path.join(dir, "skill-library.json");
-    const m = await readJson(file);
-    const id = Object.keys(m.skills)[0]!;
-    m.skills[id].hash = "sha256-" + "0".repeat(64);
-    await fsp.writeFile(file, JSON.stringify(m));
+    const manifest = await readJson(file);
+    const id = Object.keys(manifest.skills)[0]!;
+
+    manifest.skills[id].hash = `sha256-${"0".repeat(64)}`;
+    await fsp.writeFile(file, JSON.stringify(manifest));
     const fresh = { ...sb, env: { ...sb.env, SKILL_LIBRARY_DIR: path.join(sb.root, "store2") } };
-    const r = await run(fresh, ["install"], { cwd: dir });
-    expect(r.code).toBe(1);
-    expect(r.stdout).toContain("refusing to install");
+    const result = await run(fresh, ["install"], { cwd: dir });
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("refusing to install");
     await expect(fsp.access(path.join(sb.root, "store2", "index.json"))).rejects.toThrow();
   });
 
@@ -263,8 +314,10 @@ describe("git sources", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "nosha", { "SKILL.md": skillMd("solo", "Solo") }, { allowSha: false });
     const dir = await project(sb);
+
     await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     const fresh = { ...sb, env: { ...sb.env, SKILL_LIBRARY_DIR: path.join(sb.root, "store2") } };
+
     expect((await run(fresh, ["install"], { cwd: dir })).code).toBe(0);
   });
 
@@ -272,13 +325,17 @@ describe("git sources", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "Solo") });
     const dir = await project(sb);
+
     await run(sb, ["add", "-p", repo.url, "-y"], { cwd: dir });
     const before = await fsp.readFile(path.join(dir, "skill-library.json"), "utf8");
     const rows = JSON.parse((await run(sb, ["ls", "--json"], { cwd: dir })).stdout);
+
     await fsp.writeFile(path.join(rows[0].path, "SKILL.md"), "tampered");
     const plain = await run(sb, ["install"], { cwd: dir });
+
     expect(plain.stdout).toContain("already installed");
     const forced = await run(sb, ["install", "--force"], { cwd: dir });
+
     expect(forced.code).toBe(0);
     expect(forced.stdout).toContain("Repaired");
     expect(await fsp.readFile(path.join(rows[0].path, "SKILL.md"), "utf8")).toContain("Solo");
@@ -290,24 +347,31 @@ describe("git sources", () => {
     const repo = await gitRepo(sb, "r", { "skills/a/SKILL.md": skillMd("a", "A v1"), "skills/b/SKILL.md": skillMd("b", "B v1") });
     const p1 = await project(sb, "p1");
     const p2 = await project(sb, "p2");
+
     await run(sb, ["add", "-p", repo.url, "-s", "a", "-y"], { cwd: p1 });
     // A commit that only touches another skill is not an update for `a`.
     await repo.commit({ "skills/b/SKILL.md": skillMd("b", "B v2") });
     const chk = await run(sb, ["check"], { cwd: p1 });
+
     expect(chk.code).toBe(0);
     expect(chk.stdout).toContain("a is up to date");
     const v2 = await repo.commit({ "skills/a/SKILL.md": skillMd("a", "A v2") });
+
     await run(sb, ["add", "-p", repo.url, "-s", "a", "-y"], { cwd: p2 });
-    const pin = async (p: string) => Object.values((await readJson(path.join(p, "skill-library.json"))).skills)[0] as any;
+    const pin = async (projectDir: string) => Object.values((await readJson(path.join(projectDir, "skill-library.json"))).skills)[0] as any;
+
     expect((await pin(p1)).commit).toBe(repo.head);
     expect((await pin(p2)).commit).toBe(v2);
     const c1 = await run(sb, ["check"], { cwd: p1 });
+
     expect(c1.code).toBe(1);
     expect(c1.stdout).toContain("a has an update");
-    const u = await run(sb, ["update", "-y"], { cwd: p1 });
-    expect(u.code).toBe(0);
+    const updateResult = await run(sb, ["update", "-y"], { cwd: p1 });
+
+    expect(updateResult.code).toBe(0);
     expect((await pin(p1)).commit).toBe(v2);
     const index = await readJson(path.join(sb.store, "index.json"));
+
     expect(Object.keys(index.skills[0].versions)).toEqual([repo.head.slice(0, 12), v2.slice(0, 12)]);
     expect(index.skills[0].global).toBe(false);
   });
@@ -316,34 +380,41 @@ describe("git sources", () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "r", { "SKILL.md": skillMd("solo", "Old description") });
     const p1 = await project(sb, "p1");
+
     await run(sb, ["add", "-p", repo.url, "-y"], { cwd: p1 });
     await repo.commit({ "SKILL.md": skillMd("solo", "New description") });
     await run(sb, ["add", repo.url, "-g", "-y"], { cwd: p1 });
     const proj = JSON.parse((await run(sb, ["ls", "--json"], { cwd: p1 })).stdout);
     const glob = JSON.parse((await run(sb, ["ls", "-g", "--json"], { cwd: p1 })).stdout);
+
     expect(await fsp.readFile(path.join(proj[0].path, "SKILL.md"), "utf8")).toContain("Old description");
     expect(await fsp.readFile(path.join(glob[0].path, "SKILL.md"), "utf8")).toContain("New description");
     const index = await readJson(path.join(sb.store, "index.json"));
-    expect(Object.values(index.skills[0].versions).map((v: any) => v.description)).toEqual(["Old description", "New description"]);
+
+    expect(Object.values(index.skills[0].versions).map((version: any) => version.description)).toEqual(["Old description", "New description"]);
   });
 
   test("duplicate skill names in one source are refused", async () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "dupes", { "skills/x/SKILL.md": skillMd("same", "one"), "skills/y/SKILL.md": skillMd("same", "two") });
-    const r = await run(sb, ["add", repo.url, "-y", "-g"]);
-    expect(r.code).toBe(1);
-    expect(r.stderr).toContain("Several folders declare the same skill name");
+    const result = await run(sb, ["add", repo.url, "-y", "-g"]);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("Several folders declare the same skill name");
   });
 
   test("this repository's gateway source stores nothing and places the gateway", async () => {
     const sb = await sandbox();
     const repo = await gitRepo(sb, "gw", { "skills/skill-library/SKILL.md": skillMd("skill-library", "gateway") });
+
     await fsp.mkdir(path.join(sb.home, ".claude"), { recursive: true });
-    const r = await run(sb, ["add", repo.url, "-g", "-y"], { env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
-    expect(r.code).toBe(0);
-    expect(r.stdout).toContain("only contains the skill-library gateway");
+    const result = await run(sb, ["add", repo.url, "-g", "-y"], { env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("only contains the skill-library gateway");
     await expect(fsp.access(path.join(sb.store, "index.json"))).rejects.toThrow();
     const placed = await fsp.readFile(path.join(sb.home, ".claude", "skills", "skill-library", "SKILL.md"), "utf8");
+
     expect(placed).toContain("skill-library query -a <your-agent-id>");
   });
 });
@@ -352,10 +423,12 @@ describe("gateway placement", () => {
   test("only add writes agent folders; a symlinked gateway is replaced", async () => {
     const sb = await sandbox();
     const env = { SKILL_LIBRARY_NO_GATEWAY: undefined };
+
     await fsp.mkdir(path.join(sb.home, ".claude"), { recursive: true });
     await fsp.mkdir(path.join(sb.home, ".codex"), { recursive: true });
     // A gateway linked in from elsewhere (e.g. a vercel install): canonical copy + symlink.
     const canonical = path.join(sb.home, ".agents", "skills");
+
     await writeFiles(canonical, {
       "skill-library/SKILL.md": skillMd("skill-library", "old gateway"),
     });
@@ -366,28 +439,34 @@ describe("gateway placement", () => {
     await run(sb, ["list", "-g"], { env });
     expect((await fsp.lstat(path.join(sb.home, ".claude", "skills", "skill-library"))).isSymbolicLink()).toBe(true);
 
-    const r = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-g", "-y"], { env });
-    expect(r.code).toBe(0);
-    expect(r.stderr).toContain("Updated skill-library gateway for");
+    const result = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-g", "-y"], { env });
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain("Updated skill-library gateway for");
     const claudeGw = path.join(sb.home, ".claude", "skills", "skill-library");
+
     expect((await fsp.lstat(claudeGw)).isDirectory()).toBe(true);
-    const a = await fsp.readFile(path.join(claudeGw, "SKILL.md"), "utf8");
-    const b = await fsp.readFile(path.join(canonical, "skill-library", "SKILL.md"), "utf8");
-    expect(a).toBe(b);
-    expect(a).toContain("skill-library query -a <your-agent-id>");
+    const gatewayMd = await fsp.readFile(path.join(claudeGw, "SKILL.md"), "utf8");
+    const canonicalMd = await fsp.readFile(path.join(canonical, "skill-library", "SKILL.md"), "utf8");
+
+    expect(gatewayMd).toBe(canonicalMd);
+    expect(gatewayMd).toContain("skill-library query -a <your-agent-id>");
     // Idempotent: a second add writes nothing.
     const again = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-g", "-y"], { env });
+
     expect(again.stderr).not.toContain("Updated skill-library gateway");
   });
 
   test("a read-only agent dir never fails the add", async () => {
     const sb = await sandbox();
+
     await fsp.mkdir(path.join(sb.home, ".claude", "skills"), { recursive: true });
     await fsp.chmod(path.join(sb.home, ".claude", "skills"), 0o500);
     await writeFiles(path.join(sb.root, "s"), { "bar/SKILL.md": skillMd("bar", "Bar") });
-    const r = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-g", "-y"], { env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
+    const result = await run(sb, ["add", path.join(sb.root, "s", "bar"), "-g", "-y"], { env: { SKILL_LIBRARY_NO_GATEWAY: undefined } });
+
     await fsp.chmod(path.join(sb.home, ".claude", "skills"), 0o700);
-    expect(r.code).toBe(0);
+    expect(result.code).toBe(0);
   });
 });
 
@@ -397,14 +476,18 @@ describe("self", () => {
 
   test("help, unknown subcommands, bad agents, and the old connect", async () => {
     const sb = await sandbox();
+
     expect((await run(sb, ["self"])).stdout).toContain("self <command>");
     const unknown = await run(sb, ["self", "frobnicate"]);
+
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toContain("Unknown self command: frobnicate");
     const bad = await run(sb, ["self", "setup", "-a", "nope"]);
+
     expect(bad.code).toBe(1);
     expect(bad.stderr).toContain("Invalid agents: nope");
     const old = await run(sb, ["connect"]);
+
     expect(old.code).toBe(1);
     expect(old.stderr).toContain("connect was replaced by self setup");
   });
@@ -412,17 +495,21 @@ describe("self", () => {
   test("doctor reports what is missing and where to fix it, changing nothing", async () => {
     const sb = await sandbox();
     const npm = await fakeNpm(sb);
-    const r = await run(sb, ["self", "doctor"], { env: { PATH: npm.path } });
-    expect(r.code).toBe(1);
-    expect(r.stdout).toContain("skill-library isn't installed");
-    expect(r.stdout).toContain("No agents found");
-    expect(r.stdout).toContain("SKILL_LIBRARY_TYPESAFE_API_KEY is not set");
-    expect(r.stdout).toContain("https://console.typesafe.ai/keys");
-    expect(r.stdout).toContain("export SKILL_LIBRARY_TYPESAFE_API_KEY=");
-    const j = JSON.parse((await run(sb, ["self", "doctor", "--json"], { env: { PATH: npm.path } })).stdout);
-    const status = Object.fromEntries(j.checks.map((c: { id: string; status: string }) => [c.id, c.status]));
+    const result = await run(sb, ["self", "doctor"], { env: { PATH: npm.path } });
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("skill-library isn't installed");
+    expect(result.stdout).toContain("No agents found");
+    expect(result.stdout).toContain("SKILL_LIBRARY_TYPESAFE_API_KEY is not set");
+    expect(result.stdout).toContain("https://console.typesafe.ai/keys");
+    expect(result.stdout).toContain("export SKILL_LIBRARY_TYPESAFE_API_KEY=");
+    const doctor = JSON.parse((await run(sb, ["self", "doctor", "--json"], { env: { PATH: npm.path } })).stdout);
+    const status = Object.fromEntries(
+      doctor.checks.map((check: { id: string; status: string }) => [check.id, check.status]),
+    );
+
     expect(status).toEqual({ install: "fail", release: "warn", gateway: "fail", "api-key": "fail", git: "ok" });
-    expect(j.ok).toBe(false);
+    expect(doctor.ok).toBe(false);
     expect(await npm.log()).toEqual([]);
     await expect(fsp.access(path.join(sb.home, ".claude"))).rejects.toThrow();
   });
@@ -431,28 +518,34 @@ describe("self", () => {
     const sb = await sandbox();
     const npm = await fakeNpm(sb);
     const noKey = await run(sb, ["self", "setup"], { env: { PATH: npm.path } });
+
     expect(noKey.code).toBe(1);
     expect(noKey.stdout).toContain("SKILL_LIBRARY_TYPESAFE_API_KEY is not set");
     expect(noKey.stdout).toContain("Nothing was installed");
+
     if (process.getuid?.() !== 0) {
       await fsp.chmod(npm.root, 0o500);
       const locked = await run(sb, ["self", "setup"], { env: { ...KEY, PATH: npm.path } });
+
       await fsp.chmod(npm.root, 0o700);
       expect(locked.code).toBe(1);
       expect(locked.stdout).toContain("isn't writable by you");
       expect(locked.stdout).toContain("resolving-eacces-permissions-errors");
     }
+
     expect(await npm.log()).toEqual([]);
   });
 
   test("setup installs with npm, hands over, installs the gateway, and re-running it updates", async () => {
     const sb = await sandbox();
     const npm = await fakeNpm(sb);
+
     await fsp.mkdir(path.join(sb.home, ".claude"), { recursive: true });
     const reg = await registry({ latest: "99.0.0" });
     const env = { ...KEY, PATH: npm.path, SKILL_LIBRARY_NPM_REGISTRY: reg.url };
 
     const first = await run(sb, ["self", "setup"], { env });
+
     expect(first.code).toBe(0);
     expect(await npm.log()).toEqual(["i -g skill-library@99.0.0"]);
     expect(first.stdout).toContain("Installing 99.0.0");
@@ -462,6 +555,7 @@ describe("self", () => {
     await fsp.access(gatewayFile(sb.home));
 
     const again = await run(sb, ["self", "setup"], { env });
+
     expect(again.code).toBe(0);
     expect(again.stdout).toContain("99.0.0 is installed and the newest release");
     expect(again.stdout).toContain("Already up to date for Claude Code");
@@ -470,6 +564,7 @@ describe("self", () => {
     reg.close();
     const newer = await registry({ latest: "99.1.0" });
     const update = await run(sb, ["self", "setup"], { env: { ...env, SKILL_LIBRARY_NPM_REGISTRY: newer.url } });
+
     newer.close();
     expect(update.code).toBe(0);
     expect(update.stdout).toContain("Updating 99.0.0 → 99.1.0");
@@ -483,6 +578,7 @@ describe("self", () => {
     const env = { ...KEY, PATH: npm.path, SKILL_LIBRARY_NPM_REGISTRY: reg.url };
 
     const none = await run(sb, ["self", "update"], { env });
+
     expect(none.code).toBe(1);
     expect(none.stderr).toContain("isn't installed with npm -g");
 
@@ -492,16 +588,18 @@ describe("self", () => {
     await fsp.mkdir(path.join(sb.home, ".codex"), { recursive: true });
     expect((await run(sb, ["self", "doctor"], { env })).stdout).toContain("outdated for Claude Code");
 
-    const r = await run(sb, ["self", "update"], { env });
+    const result = await run(sb, ["self", "update"], { env });
+
     reg.close();
-    expect(r.code).toBe(0);
+    expect(result.code).toBe(0);
     expect(await npm.log()).toEqual(["i -g skill-library@99.1.0"]);
-    expect(r.stdout).toContain("Updating skill-library 99.0.0 → 99.1.0");
-    expect(r.stdout).toContain("Installed the skill-library skill for Claude Code");
+    expect(result.stdout).toContain("Updating skill-library 99.0.0 → 99.1.0");
+    expect(result.stdout).toContain("Installed the skill-library skill for Claude Code");
     expect(await fsp.readFile(gatewayFile(sb.home), "utf8")).toContain("skill-library query -a <your-agent-id>");
     await expect(fsp.access(path.join(sb.home, ".agents", "skills", "skill-library"))).rejects.toThrow();
 
     const offline = await run(sb, ["self", "update"], { env: { ...env, SKILL_LIBRARY_NPM_REGISTRY: "http://127.0.0.1:1" } });
+
     expect(offline.code).toBe(2);
     expect(offline.stderr).toContain("Couldn't check for a newer release");
   });
@@ -510,33 +608,42 @@ describe("self", () => {
 describe("store index", () => {
   test("an index.json that is not a version 1 index is reported as corrupted", async () => {
     const sb = await sandbox();
+
     await writeFiles(sb.store, { "index.json": "[]" });
-    const r = await run(sb, ["ls", "-g"], { cwd: sb.home });
-    expect(r.code).toBe(2);
-    expect(r.stderr).toContain("index.json is corrupted");
+    const result = await run(sb, ["ls", "-g"], { cwd: sb.home });
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("index.json is corrupted");
   });
 });
 
 describe("use", () => {
   test("prints the prompt without -a; launches the agent with -a and passes its exit code", async () => {
     const sb = await sandbox();
+
     await writeFiles(path.join(sb.root, "src"), { "a/SKILL.md": skillMd("a", "A"), "b/SKILL.md": skillMd("b", "B"), "b/ref.md": "extra" });
     const many = await run(sb, ["use", path.join(sb.root, "src")]);
+
     expect(many.code).toBe(1);
     expect(many.stderr).toContain("This source contains multiple skills");
-    const r = await run(sb, ["use", path.join(sb.root, "src"), "-s", "a"]);
-    expect(r.code).toBe(0);
-    expect(r.stdout).toContain("You are being given a Skill to execute");
-    expect(r.stdout).toContain("<SKILL.md>");
+    const result = await run(sb, ["use", path.join(sb.root, "src"), "-s", "a"]);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("You are being given a Skill to execute");
+    expect(result.stdout).toContain("<SKILL.md>");
     const withFiles = await run(sb, ["use", path.join(sb.root, "src"), "--skill", "b"]);
+
     expect(withFiles.stdout).toContain("Supporting files for this skill were downloaded to:");
     const bin = path.join(sb.root, "bin");
+
     await writeFiles(bin, { claude: '#!/bin/sh\necho "launched:$#"\nexit 7\n' });
     await fsp.chmod(path.join(bin, "claude"), 0o755);
-    const launched = await run(sb, ["use", path.join(sb.root, "src"), "-s", "a", "-a", "claude-code"], { env: { PATH: `${bin}:${process.env.PATH}` } });
+    const launched = await run(sb, ["use", path.join(sb.root, "src"), "-s", "a", "-a", "claude-code"], { env: { PATH: `${bin}:${String(process.env.PATH)}` } });
+
     expect(launched.code).toBe(7);
     expect(launched.stdout).toContain("launched:1");
-    const conflict = await run(sb, ["use", `${path.join(sb.root, "src")}`, "-s", "a", "--bogus"]);
+    const conflict = await run(sb, ["use", path.join(sb.root, "src"), "-s", "a", "--bogus"]);
+
     expect(conflict.code).toBe(1);
     expect(conflict.stderr).toContain("Unknown option: --bogus");
     expect((await run(sb, ["use", "./x", "-a", "cursor"])).stderr).toContain("is not supported yet");
@@ -549,17 +656,17 @@ describe("find", () => {
     const http = await import("node:http");
     const server = http.createServer((req, res) => {
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ skills: [{ id: "o/r/x", slug: "o/r/x", name: "x", source: "o/r", installs: 1234 }], q: req.url }));
+      res.end(JSON.stringify({ skills: [{ id: "o/r/x", slug: "o/r/x", name: "x", source: "o/r", installs: 1234 }], query: req.url }));
     });
-    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-    const port = (server.address() as import("node:net").AddressInfo).port;
-    const r = await run(sb, ["find", "react"], { env: { SKILLS_API_URL: `http://127.0.0.1:${port}` } });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    const result = await run(sb, ["find", "react"], { env: { SKILLS_API_URL: `http://127.0.0.1:${port}` } });
+
     server.close();
-    expect(r.code).toBe(0);
-    expect(r.stdout).toContain("o/r@x");
-    expect(r.stdout).toContain("1.2K installs");
-    expect(r.stdout).toContain("└ https://skills.sh/o/r/x");
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("o/r@x");
+    expect(result.stdout).toContain("1.2K installs");
+    expect(result.stdout).toContain("└ https://skills.sh/o/r/x");
   });
 });
-
-void git;

@@ -19,6 +19,7 @@ export interface Result {
   rawStdout: string;
   rawStderr: string;
   /** stdout parsed as JSON (throws with the output when it isn't). */
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- callers may name the JSON shape
   json<T = any>(): T;
 }
 
@@ -79,8 +80,8 @@ export interface World {
  * bare repositories (file:// URLs and plain paths) are unaffected.
  */
 export const PUSH_BLOCK = [
-  `[url "file:///nonexistent/e2e-push-blocked/"]`,
-  ...["https://", "http://", "ssh://", "git://", "git@"].map((p) => `\tpushInsteadOf = ${p}`),
+  "[url \"file:///nonexistent/e2e-push-blocked/\"]",
+  ...["https://", "http://", "ssh://", "git://", "git@"].map((prefix) => `\tpushInsteadOf = ${prefix}`),
 ];
 
 export function skillMd(name: string, description: string, body = "", extra = ""): string {
@@ -89,6 +90,7 @@ export function skillMd(name: string, description: string, body = "", extra = ""
 
 function systemPath(): string[] {
   const dirs = new Set<string>([path.dirname(process.execPath)]);
+
   for (const cmd of ["git", "npm", "tar", "sh"]) {
     try {
       dirs.add(path.dirname(execFileSync("sh", ["-c", `command -v ${cmd}`], { encoding: "utf8" }).trim()));
@@ -96,16 +98,19 @@ function systemPath(): string[] {
       // not installed; the tests that need it will say so
     }
   }
+
   dirs.add("/usr/bin");
   dirs.add("/bin");
+
   return [...dirs];
 }
 
 async function writeFiles(dir: string, files: Record<string, string>): Promise<void> {
   for (const [rel, content] of Object.entries(files)) {
-    const p = path.join(dir, rel);
-    await fsp.mkdir(path.dirname(p), { recursive: true });
-    await fsp.writeFile(p, content);
+    const filePath = path.join(dir, rel);
+
+    await fsp.mkdir(path.dirname(filePath), { recursive: true });
+    await fsp.writeFile(filePath, content);
   }
 }
 
@@ -113,7 +118,7 @@ interface Shared {
   root: string;
   githubRoot: string;
   gitconfig: string;
-  counter: { n: number };
+  counter: { value: number };
 }
 
 export interface WorldOpts {
@@ -128,43 +133,55 @@ export async function world(opts: WorldOpts = {}): Promise<World> {
   const root = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), "sl-e2e-world-")));
   const githubRoot = path.join(root, "github");
   const gitconfig = path.join(root, "gitconfig");
+
   await fsp.mkdir(githubRoot, { recursive: true });
   await fsp.writeFile(
     gitconfig,
     [
       `[url "file://${githubRoot}/"]`,
-      `\tinsteadOf = https://github.com/`,
-      `\tinsteadOf = git@github.com:`,
-      `\tinsteadOf = ssh://git@github.com/`,
+      "\tinsteadOf = https://github.com/",
+      "\tinsteadOf = git@github.com:",
+      "\tinsteadOf = ssh://git@github.com/",
       ...PUSH_BLOCK,
-      `[init]`,
-      `\tdefaultBranch = main`,
-      `[protocol "file"]`,
-      `\tallow = always`,
-      `[advice]`,
-      `\tdetachedHead = false`,
+      "[init]",
+      "\tdefaultBranch = main",
+      "[protocol \"file\"]",
+      "\tallow = always",
+      "[advice]",
+      "\tdetachedHead = false",
       "",
     ].join("\n"),
   );
   onTestFinished(async () => {
-    if (!process.env.E2E_KEEP) await fsp.rm(root, { recursive: true, force: true });
+    if (!process.env.E2E_KEEP) {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
   });
-  return makeWorld({ root, githubRoot, gitconfig, counter: { n: 0 } }, "machine", opts);
+
+  return makeWorld({ root, githubRoot, gitconfig, counter: { value: 0 } }, "machine", opts);
 }
 
 async function makeWorld(shared: Shared, name: string, opts: WorldOpts): Promise<World> {
   const base = path.join(shared.root, name);
   const home = path.join(base, "home");
   const fakeBin = path.join(base, "fakebin");
+
   await fsp.mkdir(home, { recursive: true });
   await fsp.mkdir(fakeBin, { recursive: true });
   const binDir = opts.binDir ?? e2e().binDir;
 
   const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.toLowerCase().startsWith("npm_")) env[k] = v;
-  for (const k of [...AGENT_ENV, ...CI_ENV, "SKILL_LIBRARY_DIR", "SKILL_LIBRARY_TYPESAFE_API_KEY", "SKILL_LIBRARY_TYPESAFE_API_BASE", "SKILL_LIBRARY_NO_GATEWAY", "SKILLS_API_URL", "GITHUB_TOKEN", "GH_TOKEN", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]) {
-    delete env[k];
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && !key.toLowerCase().startsWith("npm_")) {
+      env[key] = value;
+    }
   }
+
+  for (const key of [...AGENT_ENV, ...CI_ENV, "SKILL_LIBRARY_DIR", "SKILL_LIBRARY_TYPESAFE_API_KEY", "SKILL_LIBRARY_TYPESAFE_API_BASE", "SKILL_LIBRARY_NO_GATEWAY", "SKILLS_API_URL", "GITHUB_TOKEN", "GH_TOKEN", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]) {
+    delete env[key];
+  }
+
   Object.assign(env, {
     HOME: home,
     USERPROFILE: home,
@@ -201,19 +218,26 @@ async function makeWorld(shared: Shared, name: string, opts: WorldOpts): Promise
 
   const git = (cwd: string, args: string[]): string => execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 
-  const run = (args: string[], o: RunOpts = {}): Promise<Result> => {
-    const e = { ...env };
-    for (const [k, v] of Object.entries(o.env ?? {})) {
-      if (v === undefined) delete e[k];
-      else e[k] = v;
+  const run = (args: string[], runOpts: RunOpts = {}): Promise<Result> => {
+    const childEnv = { ...env };
+
+    for (const [key, value] of Object.entries(runOpts.env ?? {})) {
+      if (value === undefined) {
+        delete childEnv[key];
+      } else {
+        childEnv[key] = value;
+      }
     }
-    const bin = o.bin ?? path.join(binDir, "skill-library");
+
+    const bin = runOpts.bin ?? path.join(binDir, "skill-library");
+
     return new Promise((resolve, reject) => {
-      const proc = spawn(bin, args, { cwd: o.cwd ?? base, env: e, stdio: [o.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"] });
+      const proc = spawn(bin, args, { cwd: runOpts.cwd ?? base, env: childEnv, stdio: [runOpts.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"] });
       let stdout = "";
       let stderr = "";
-      proc.stdout!.setEncoding("utf8").on("data", (d: string) => (stdout += d));
-      proc.stderr!.setEncoding("utf8").on("data", (d: string) => (stderr += d));
+
+      proc.stdout!.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+      proc.stderr!.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
       proc.on("error", reject);
       proc.on("close", (code) =>
         resolve({
@@ -226,16 +250,25 @@ async function makeWorld(shared: Shared, name: string, opts: WorldOpts): Promise
             try {
               return JSON.parse(stdout);
             } catch {
-              throw new Error(`stdout is not one JSON value (exit ${code}):\n--- stdout\n${stdout}\n--- stderr\n${stderr}`);
+              throw new Error(`stdout is not one JSON value (exit ${String(code)}):\n--- stdout\n${stdout}\n--- stderr\n${stderr}`);
             }
           },
         }),
       );
-      if (o.stdin !== undefined) proc.stdin!.end(o.stdin);
+
+      if (runOpts.stdin !== undefined) {
+        proc.stdin!.end(runOpts.stdin);
+      }
     });
   };
 
-  const makeRepo = async (bare: string, work: string, url: string, files: Record<string, string>, slug?: string): Promise<Repo> => {
+  const makeRepo = async (
+    bare: string,
+    work: string,
+    url: string,
+    files: Record<string, string>,
+    slug?: string,
+  ): Promise<Repo> => {
     await fsp.mkdir(work, { recursive: true });
     git(work, ["init", "-q", "-b", "main"]);
     await writeFiles(work, files);
@@ -256,11 +289,16 @@ async function makeWorld(shared: Shared, name: string, opts: WorldOpts): Promise
       head: git(work, ["rev-parse", "HEAD"]),
       async commit(more, remove = [], message = "change") {
         await writeFiles(work, more);
-        for (const r of remove) await fsp.rm(path.join(work, r), { recursive: true, force: true });
+
+        for (const relPath of remove) {
+          await fsp.rm(path.join(work, relPath), { recursive: true, force: true });
+        }
+
         git(work, ["add", "-A"]);
         git(work, ["commit", "-q", "--allow-empty", "-m", message]);
         git(work, ["push", "-q", "origin", "HEAD:main"]);
         repo.head = git(work, ["rev-parse", "HEAD"]);
+
         return repo.head;
       },
       tag(tagName) {
@@ -274,10 +312,13 @@ async function makeWorld(shared: Shared, name: string, opts: WorldOpts): Promise
         git(work, ["commit", "-q", "-m", `on ${branchName}`]);
         git(work, ["push", "-q", "origin", branchName]);
         const sha = git(work, ["rev-parse", "HEAD"]);
+
         git(work, ["checkout", "-q", "main"]);
+
         return sha;
       },
     };
+
     return repo;
   };
 
@@ -289,67 +330,82 @@ async function makeWorld(shared: Shared, name: string, opts: WorldOpts): Promise
     binDir,
     env,
     run,
-    async ok(args, o) {
-      const r = await run(args, o);
-      if (r.code !== 0) throw new Error(`skill-library ${args.join(" ")} exited ${r.code}\n--- stdout\n${r.stdout}\n--- stderr\n${r.stderr}`);
-      return r;
+    async ok(args, runOpts) {
+      const result = await run(args, runOpts);
+
+      if (result.code !== 0) {
+        throw new Error(`skill-library ${args.join(" ")} exited ${result.code}\n--- stdout\n${result.stdout}\n--- stderr\n${result.stderr}`);
+      }
+
+      return result;
     },
-    async dir(n) {
-      const d = path.join(base, n);
-      await fsp.mkdir(d, { recursive: true });
-      return d;
+    async dir(dirName) {
+      const dirPath = path.join(base, dirName);
+
+      await fsp.mkdir(dirPath, { recursive: true });
+
+      return dirPath;
     },
     async write(dir, files) {
       await writeFiles(dir, files);
+
       return dir;
     },
-    async repo(n, files) {
-      const id = ++shared.counter.n;
-      const bare = path.join(shared.root, "remotes", `${n}.git`);
-      return makeRepo(bare, path.join(shared.root, "work", `${n}-${id}`), `file://${bare}`, files);
+    async repo(repoName, files) {
+      const id = ++shared.counter.value;
+      const bare = path.join(shared.root, "remotes", `${repoName}.git`);
+
+      return makeRepo(bare, path.join(shared.root, "work", `${repoName}-${id}`), `file://${bare}`, files);
     },
     async github(slug, files) {
-      const id = ++shared.counter.n;
+      const id = ++shared.counter.value;
       const bare = path.join(shared.githubRoot, `${slug}.git`);
+
       return makeRepo(bare, path.join(shared.root, "work", `${slug.replace("/", "-")}-${id}`), `https://github.com/${slug}.git`, files, slug);
     },
-    async emptyRemote(n) {
-      const bare = path.join(shared.root, "remotes", `${n}.git`);
+    async emptyRemote(remoteName) {
+      const bare = path.join(shared.root, "remotes", `${remoteName}.git`);
+
       await fsp.mkdir(bare, { recursive: true });
       git(bare, ["init", "-q", "--bare", "-b", "main"]);
+
       return `file://${bare}`;
     },
     git,
     async fakeAgent(command, code = 0) {
       const log = path.join(base, `${command}.calls`);
+
       // One JSON array per call: the arguments exactly as received.
       await fsp.writeFile(
         path.join(fakeBin, command),
         `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");\nprocess.exit(${code});\n`,
       );
       await fsp.chmod(path.join(fakeBin, command), 0o755);
+
       return {
         async calls() {
           const text = await fsp.readFile(log, "utf8").catch(() => "");
-          return text.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+
+          return text.split("\n").filter(Boolean).map((line) => JSON.parse(line));
         },
       };
     },
-    machine(n) {
-      return makeWorld(shared, n, opts);
+    machine(machineName) {
+      return makeWorld(shared, machineName, opts);
     },
   };
+
   return self;
 }
 
 /** Strip ANSI escapes (some output keeps 256-color codes even with NO_COLOR). */
 export function plain(text: string): string {
-  // eslint-disable-next-line no-control-regex
+  // eslint-disable-next-line no-control-regex -- strips ANSI escapes from CLI output
   return text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 }
 
-export function exists(p: string): Promise<boolean> {
-  return fsp.access(p).then(
+export function exists(filePath: string): Promise<boolean> {
+  return fsp.access(filePath).then(
     () => true,
     () => false,
   );

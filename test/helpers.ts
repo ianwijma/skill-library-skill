@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { promises as fsp } from "node:fs";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -30,10 +31,20 @@ export interface Sandbox {
 export async function sandbox(): Promise<Sandbox> {
   const root = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), "sl-test-")));
   const home = path.join(root, "home");
+
   await fsp.mkdir(home, { recursive: true });
   const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
-  for (const k of [...AGENT_ENV, ...CI_ENV, "SKILL_LIBRARY_TYPESAFE_API_KEY", "SKILL_LIBRARY_TYPESAFE_API_BASE", "GITHUB_TOKEN", "GH_TOKEN"]) delete env[k];
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+
+  for (const key of [...AGENT_ENV, ...CI_ENV, "SKILL_LIBRARY_TYPESAFE_API_KEY", "SKILL_LIBRARY_TYPESAFE_API_BASE", "GITHUB_TOKEN", "GH_TOKEN"]) {
+    delete env[key];
+  }
+
   Object.assign(env, {
     HOME: home,
     XDG_CONFIG_HOME: path.join(home, ".config"),
@@ -53,10 +64,15 @@ export async function sandbox(): Promise<Sandbox> {
     GIT_CONFIG_GLOBAL: path.join(home, ".gitconfig"),
     NO_COLOR: "1",
   });
+
   return { root, home, store: env.SKILL_LIBRARY_DIR!, env };
 }
 
-export function run(sb: Sandbox, args: string[], opts: { cwd?: string; env?: Record<string, string | undefined>; stdin?: string } = {}): Promise<RunResult> {
+export function run(
+  sb: Sandbox,
+  args: string[],
+  opts: { cwd?: string; env?: Record<string, string | undefined>; stdin?: string } = {},
+): Promise<RunResult> {
   return runFile(sb, BIN, args, opts);
 }
 
@@ -67,8 +83,10 @@ export async function registry(tags: Record<string, string>): Promise<{ url: str
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify(tags));
   });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  const port = (server.address() as import("node:net").AddressInfo).port;
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+
   return { url: `http://127.0.0.1:${port}`, close: () => server.close() };
 }
 
@@ -94,9 +112,11 @@ export async function fakeNpm(sb: Sandbox): Promise<FakeNpm> {
   const bin = path.join(prefix, "bin");
   const fakebin = path.join(sb.root, "fakebin");
   const log = path.join(sb.root, "npm.log");
+
   await fsp.mkdir(root, { recursive: true });
   await fsp.mkdir(fakebin, { recursive: true });
   const pkg = path.join(root, "skill-library");
+
   await fsp.writeFile(
     path.join(fakebin, "npm"),
     `#!/bin/sh
@@ -115,6 +135,7 @@ esac
   );
   await fsp.chmod(path.join(fakebin, "npm"), 0o755);
   const gitDir = path.dirname(execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim());
+
   return {
     root,
     path: [fakebin, bin, gitDir].join(path.delimiter),
@@ -127,18 +148,29 @@ esac
     },
     async log() {
       const text = await fsp.readFile(log, "utf8").catch(() => "");
+
       return text.split("\n").filter(Boolean);
     },
   };
 }
 
 /** Run a copy of the CLI at `bin`. */
-export function runFile(sb: Sandbox, bin: string, args: string[], opts: { cwd?: string; env?: Record<string, string | undefined>; stdin?: string } = {}): Promise<RunResult> {
+export function runFile(
+  sb: Sandbox,
+  bin: string,
+  args: string[],
+  opts: { cwd?: string; env?: Record<string, string | undefined>; stdin?: string } = {},
+): Promise<RunResult> {
   const env = { ...sb.env };
-  for (const [k, v] of Object.entries(opts.env ?? {})) {
-    if (v === undefined) delete env[k];
-    else env[k] = v;
+
+  for (const [key, value] of Object.entries(opts.env ?? {})) {
+    if (value === undefined) {
+      delete env[key];
+    } else {
+      env[key] = value;
+    }
   }
+
   return new Promise((resolve, reject) => {
     const proc = spawn(process.execPath, [bin, ...args], {
       cwd: opts.cwd ?? sb.root,
@@ -147,11 +179,15 @@ export function runFile(sb: Sandbox, bin: string, args: string[], opts: { cwd?: 
     });
     let stdout = "";
     let stderr = "";
-    proc.stdout!.setEncoding("utf8").on("data", (d: string) => (stdout += d));
-    proc.stderr!.setEncoding("utf8").on("data", (d: string) => (stderr += d));
+
+    proc.stdout!.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+    proc.stderr!.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
     proc.on("error", reject);
     proc.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
-    if (opts.stdin !== undefined) proc.stdin!.end(opts.stdin);
+
+    if (opts.stdin !== undefined) {
+      proc.stdin!.end(opts.stdin);
+    }
   });
 }
 
@@ -161,9 +197,10 @@ export function skillMd(name: string, description: string, body = ""): string {
 
 export async function writeFiles(dir: string, files: Record<string, string>): Promise<void> {
   for (const [rel, content] of Object.entries(files)) {
-    const p = path.join(dir, rel);
-    await fsp.mkdir(path.dirname(p), { recursive: true });
-    await fsp.writeFile(p, content);
+    const filePath = path.join(dir, rel);
+
+    await fsp.mkdir(path.dirname(filePath), { recursive: true });
+    await fsp.writeFile(filePath, content);
   }
 }
 
@@ -172,27 +209,44 @@ export function git(sb: Sandbox, cwd: string, args: string[]): string {
 }
 
 /** A bare repo (file:// URL) with `files` committed; returns url and the work tree to commit more. */
-export async function gitRepo(sb: Sandbox, name: string, files: Record<string, string>, opts: { allowSha?: boolean } = {}) {
+export async function gitRepo(
+  sb: Sandbox,
+  name: string,
+  files: Record<string, string>,
+  opts: { allowSha?: boolean } = {},
+) {
   const work = path.join(sb.root, "repos", `${name}-work`);
   const bare = path.join(sb.root, "repos", `${name}.git`);
+
   await fsp.mkdir(work, { recursive: true });
   git(sb, work, ["init", "-q", "-b", "main"]);
   await writeFiles(work, files);
   git(sb, work, ["add", "-A"]);
   git(sb, work, ["commit", "-q", "-m", "init"]);
   git(sb, sb.root, ["clone", "-q", "--bare", work, bare]);
-  if (opts.allowSha !== false) git(sb, bare, ["config", "uploadpack.allowAnySHA1InWant", "true"]);
+
+  if (opts.allowSha !== false) {
+    git(sb, bare, ["config", "uploadpack.allowAnySHA1InWant", "true"]);
+  }
+
   git(sb, bare, ["config", "uploadpack.allowFilter", "true"]);
   git(sb, work, ["remote", "add", "origin", bare]);
   const url = `file://${bare}`;
+
   const commit = async (more: Record<string, string>, remove: string[] = []): Promise<string> => {
     await writeFiles(work, more);
-    for (const r of remove) await fsp.rm(path.join(work, r), { recursive: true, force: true });
+
+    for (const relPath of remove) {
+      await fsp.rm(path.join(work, relPath), { recursive: true, force: true });
+    }
+
     git(sb, work, ["add", "-A"]);
     git(sb, work, ["commit", "-q", "-m", "change"]);
     git(sb, work, ["push", "-q", "origin", "main"]);
+
     return git(sb, work, ["rev-parse", "HEAD"]);
   };
+
   return { url, bare, work, head: git(sb, work, ["rev-parse", "HEAD"]), commit };
 }
 
@@ -202,6 +256,8 @@ export async function readJson(file: string): Promise<any> {
 
 export async function project(sb: Sandbox, name = "proj"): Promise<string> {
   const dir = path.join(sb.root, name);
+
   await fsp.mkdir(dir, { recursive: true });
+
   return dir;
 }

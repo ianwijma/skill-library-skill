@@ -26,8 +26,8 @@ export type { AgentsValue } from "./lib/store.ts";
 export { CliError as SkillLibraryError } from "./lib/cli.ts";
 
 /** Each call collects warnings instead of printing them. */
-function quiet<T>(warnings: string[] | undefined, fn: () => Promise<T>): Promise<T> {
-  return withWarnSink((m: string) => warnings?.push(m), fn);
+function quiet<TResult>(warnings: string[] | undefined, fn: () => Promise<TResult>): Promise<TResult> {
+  return withWarnSink((message: string) => warnings?.push(message), fn);
 }
 
 export interface ApiOptions {
@@ -35,7 +35,10 @@ export interface ApiOptions {
   warnings?: string[];
 }
 
-/** Add skills from a source to the global library (`project: true` pins them in skill-library.json). Without `skills`, every discovered skill is added. */
+/**
+ * Add skills from a source to the global library (`project: true` pins them in skill-library.json).
+ * Without `skills`, every discovered skill is added.
+ */
 export function add(source: string, opts: AddOptions & ApiOptions = {}): Promise<AddResult> {
   return quiet(opts.warnings, () => addSkills(source, opts));
 }
@@ -49,7 +52,10 @@ export function list(opts: ListOptions & ApiOptions = {}): Promise<ListResult> {
   return quiet(opts.warnings, () => listSkills(opts));
 }
 
-/** Remove skills by name or id: deletes them from the global library; `project: true` only drops the project's reference. */
+/**
+ * Remove skills by name or id: deletes them from the global library;
+ * `project: true` only drops the project's reference.
+ */
 export function remove(skills: string[], opts: RemoveOptions & ApiOptions = {}): Promise<RemoveResult> {
   return quiet(opts.warnings, () => removeSkills(skills, opts));
 }

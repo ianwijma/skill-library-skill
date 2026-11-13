@@ -8,22 +8,28 @@ import { plain, type Result } from "./harness.ts";
 /** A usage error (missing value, unknown command, unexpected argument …): a non-zero exit and a
  *  message that names the offending option or argument. Short and long names count as one option:
  *  `expectUsageError(r, "-a", "--agent")` passes when either is named. */
-export function expectUsageError(r: Result, ...names: string[]): void {
-  expect(r.code, `expected a usage error\n${r.stdout}${r.stderr}`).not.toBe(0);
-  const out = r.stdout + r.stderr;
-  if (names.length > 0) expect(names.some((n) => out.includes(n)), `expected one of ${names.join(", ")} in:\n${out}`).toBe(true);
+export function expectUsageError(result: Result, ...names: string[]): void {
+  expect(result.code, `expected a usage error\n${result.stdout}${result.stderr}`).not.toBe(0);
+  const out = result.stdout + result.stderr;
+
+  if (names.length > 0) {
+    expect(names.some((name) => out.includes(name)), `expected one of ${names.join(", ")} in:\n${out}`).toBe(true);
+  }
 }
 
 /** With --json, stdout is never half a document: either nothing, or one JSON value. */
-export function expectJsonOrNothing(r: Result): void {
-  if (r.stdout.trim() !== "") expect(() => JSON.parse(r.stdout), r.stdout).not.toThrow();
+export function expectJsonOrNothing(result: Result): void {
+  if (result.stdout.trim() !== "") {
+    expect(() => JSON.parse(result.stdout), result.stdout).not.toThrow();
+  }
 }
 
 /** An unknown option is named, and is either ignored with a warning (the command still runs) or
  *  rejected as a usage error. Returns true when the command ran. */
-export function expectUnknownOption(r: Result, option: string): boolean {
-  expect(r.stdout + r.stderr, `expected ${option} to be named`).toContain(option);
-  return r.code === 0;
+export function expectUnknownOption(result: Result, option: string): boolean {
+  expect(result.stdout + result.stderr, `expected ${option} to be named`).toContain(option);
+
+  return result.code === 0;
 }
 
 // --- help ------------------------------------------------------------------------------------
@@ -65,7 +71,7 @@ export const HELP_SPECS: HelpSpec[] = [
   { cmd: "sync status", options: [] },
 ];
 
-const ALL_OPTIONS = [...new Set(HELP_SPECS.flatMap((s) => s.options))];
+const ALL_OPTIONS = [...new Set(HELP_SPECS.flatMap((helpSpec) => helpSpec.options))];
 const mentions = (text: string, option: string) => new RegExp(`(?<![\\w-])${option}(?![\\w-])`).test(text);
 
 /** `<cmd> --help` is that command's own help: a usage line for the command, every one of its
@@ -73,8 +79,16 @@ const mentions = (text: string, option: string) => new RegExp(`(?<![\\w-])${opti
 export function expectCommandHelp(out: string, spec: HelpSpec): void {
   const text = plain(out);
   const usage = new RegExp(`^\\s*(?:usage:?\\s*)?\`?skill-library ${spec.cmd.replace(/ /g, "\\s+")}(?:[\\s\`|]|$)`, "im");
+
   expect(text, `usage line for ${spec.cmd}`).toMatch(usage);
-  for (const o of spec.options) expect(mentions(text, o), `${spec.cmd} help should mention ${o}`).toBe(true);
-  const foreign = ALL_OPTIONS.filter((o) => !spec.options.includes(o) && !GLOBAL.includes(o) && mentions(text, o));
+
+  for (const option of spec.options) {
+    expect(mentions(text, option), `${spec.cmd} help should mention ${option}`).toBe(true);
+  }
+
+  const foreign = ALL_OPTIONS.filter(
+    (option) => !spec.options.includes(option) && !GLOBAL.includes(option) && mentions(text, option),
+  );
+
   expect(foreign, `${spec.cmd} help mentions other commands' options`).toEqual([]);
 }

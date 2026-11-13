@@ -13,15 +13,19 @@ export function selfCommand(ctx: Ctx) {
     .addCommand(setupCommand(ctx))
     .addCommand(updateCommand(ctx))
     .addCommand(doctorCommand(ctx));
+
   self
     .addHelpText("after", subcommandOptions(self))
     .addHelpText("after", examples([["npx skill-library self setup", "start here"], ["skill-library self setup -a claude-code codex", "only these agents"], ["skill-library self doctor --json"]]));
   withSubcommands(self, ctx, (rest) => {
     if (rest.length === 0 || rest[0] === "help") {
       self.outputHelp();
+
       return 0;
     }
-    throw new CliError(1, `Unknown self command: ${rest[0]}`, "Run skill-library self for the list.");
+
+    throw new CliError(1, `Unknown self command: ${rest[0]!}`, "Run skill-library self for the list.");
   });
+
   return self;
 }

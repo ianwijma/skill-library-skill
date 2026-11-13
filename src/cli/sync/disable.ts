@@ -13,8 +13,10 @@ export function disableCommand(ctx: Ctx) {
 }
 
 /** `sync disable`. */
-async function runSyncDisable(g: GlobalOpts): Promise<number> {
-  const cfg = await setSyncEnabled(false, baseOf(g));
+async function runSyncDisable(globalOpts: GlobalOpts): Promise<number> {
+  const cfg = await setSyncEnabled(false, baseOf(globalOpts));
+
   console.log(`Sync disabled. Nothing is pulled from or pushed to ${cfg.url} until you run skill-library sync enable`);
+
   return 0;
 }

@@ -8,27 +8,40 @@ export const SKIP_BASENAMES = new Set([".git", "node_modules", "__pycache__", ".
 /** Relative POSIX paths of the regular files a skill folder contributes (copier and hasher agree). */
 export async function skillFiles(root: string): Promise<string[]> {
   const out: string[] = [];
+
   async function walk(rel: string): Promise<void> {
     const entries = await fsp.readdir(path.join(root, rel), { withFileTypes: true });
-    for (const e of entries) {
-      if (SKIP_BASENAMES.has(e.name)) continue;
-      const relPath = rel === "" ? e.name : `${rel}/${e.name}`;
-      if (e.isDirectory()) await walk(relPath);
-      else if (e.isFile()) out.push(relPath);
+
+    for (const entry of entries) {
+      if (SKIP_BASENAMES.has(entry.name)) {
+        continue;
+      }
+
+      const relPath = rel === "" ? entry.name : `${rel}/${entry.name}`;
+
+      if (entry.isDirectory()) {
+        await walk(relPath);
+      } else if (entry.isFile()) {
+        out.push(relPath);
+      }
     }
   }
+
   await walk("");
+
   return out;
 }
 
-function compareBytes(a: Buffer, b: Buffer): number {
-  return Buffer.compare(a, b);
+function compareBytes(left: Buffer, right: Buffer): number {
+  return Buffer.compare(left, right);
 }
 
-function u64(n: number): Buffer {
-  const b = Buffer.alloc(8);
-  b.writeBigUInt64BE(BigInt(n));
-  return b;
+function u64(value: number): Buffer {
+  const bytes = Buffer.alloc(8);
+
+  bytes.writeBigUInt64BE(BigInt(value));
+
+  return bytes;
 }
 
 /**
@@ -38,31 +51,39 @@ function u64(n: number): Buffer {
  * Result: "sha256-<lowercase hex>".
  */
 export async function hashSkillDir(root: string): Promise<string> {
-  const files = (await skillFiles(root)).map((p) => Buffer.from(p, "utf8")).sort(compareBytes);
-  const h = createHash("sha256");
-  for (const p of files) {
-    const content = await fsp.readFile(path.join(root, p.toString("utf8")));
-    h.update(u64(p.length));
-    h.update(p);
-    h.update(u64(content.length));
-    h.update(content);
+  const files = (await skillFiles(root)).map((relPath) => Buffer.from(relPath, "utf8")).sort(compareBytes);
+  const hasher = createHash("sha256");
+
+  for (const pathBytes of files) {
+    const content = await fsp.readFile(path.join(root, pathBytes.toString("utf8")));
+
+    hasher.update(u64(pathBytes.length));
+    hasher.update(pathBytes);
+    hasher.update(u64(content.length));
+    hasher.update(content);
   }
-  return `sha256-${h.digest("hex")}`;
+
+  return `sha256-${hasher.digest("hex")}`;
 }
 
 /** Hash of in-memory files (same format), used by tests and the fixed test vector. */
 export function hashFiles(files: Record<string, string | Buffer>): string {
   const entries = Object.entries(files)
-    .map(([p, c]) => [Buffer.from(p, "utf8"), Buffer.isBuffer(c) ? c : Buffer.from(c, "utf8")] as const)
-    .sort((a, b) => compareBytes(a[0], b[0]));
-  const h = createHash("sha256");
-  for (const [p, c] of entries) {
-    h.update(u64(p.length));
-    h.update(p);
-    h.update(u64(c.length));
-    h.update(c);
+    .map(([relPath, content]) => [
+      Buffer.from(relPath, "utf8"),
+      Buffer.isBuffer(content) ? content : Buffer.from(content, "utf8"),
+    ] as const)
+    .sort((left, right) => compareBytes(left[0], right[0]));
+  const hasher = createHash("sha256");
+
+  for (const [pathBytes, content] of entries) {
+    hasher.update(u64(pathBytes.length));
+    hasher.update(pathBytes);
+    hasher.update(u64(content.length));
+    hasher.update(content);
   }
-  return `sha256-${h.digest("hex")}`;
+
+  return `sha256-${hasher.digest("hex")}`;
 }
 
 export function hexOf(hash: string): string {

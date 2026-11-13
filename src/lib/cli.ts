@@ -20,30 +20,45 @@ export function msgOf(err: unknown): string {
 
 /** Render an error the way vercel's diagnostics do: the message, then the fix on its own line(s). */
 export function formatError(err: unknown): string {
-  if (err instanceof CliError) return err.fix ? `${err.message}\n${err.fix}` : err.message;
+  if (err instanceof CliError) {
+    return err.fix ? `${err.message}\n${err.fix}` : err.message;
+  }
+
   return msgOf(err);
 }
 
 const sinks = new AsyncLocalStorage<(message: string) => void>();
 
-/** Run `fn` with warnings routed to `sink` instead of stderr (per async context, so overlapping API calls stay separate). */
+/**
+ * Run `fn` with warnings routed to `sink` instead of stderr
+ * (per async context, so overlapping API calls stay separate).
+ */
 export function withWarnSink<T>(sink: (message: string) => void, fn: () => Promise<T>): Promise<T> {
   return sinks.run(sink, fn);
 }
 
 export function warn(message: string): void {
   const sink = sinks.getStore();
-  if (sink) sink(message);
-  else console.error(`${pc.yellow("warning:")} ${message}`);
+
+  if (sink) {
+    sink(message);
+  } else {
+    console.error(`${pc.yellow("warning:")} ${message}`);
+  }
 }
 
 /** Notices that must never reach stdout (JSON mode keeps stdout to one value). */
 export function note(message: string): void {
   const sink = sinks.getStore();
-  if (sink) sink(message);
-  else console.error(message);
+
+  if (sink) {
+    sink(message);
+  } else {
+    console.error(message);
+  }
 }
 
+/* eslint-disable no-control-regex -- stripping terminal control characters is the point of this function */
 /** Strip terminal escapes from untrusted strings (port of vercel's sanitize.ts, MIT). */
 export function stripTerminalEscapes(str: string): string {
   return str
@@ -54,6 +69,7 @@ export function stripTerminalEscapes(str: string): string {
     .replace(/[\x80-\x9f]/g, "")
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
 }
+/* eslint-enable no-control-regex */
 
 export function sanitizeMetadata(str: string): string {
   return stripTerminalEscapes(str).replace(/[\r\n]+/g, " ").trim();

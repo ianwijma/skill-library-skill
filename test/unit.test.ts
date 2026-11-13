@@ -26,7 +26,10 @@ describe("ids", () => {
       "git@github.com:anthropics/skills.git",
       "ssh://git@github.com/anthropics/skills.git",
     ];
-    for (const u of urls) expect(gitSkillId(u, "react")).toBe("repo://github.com/anthropics/skills/react");
+
+    for (const url of urls) {
+      expect(gitSkillId(url, "react")).toBe("repo://github.com/anthropics/skills/react");
+    }
   });
 
   test("other hosts keep path case and drop scheme/user/port/.git", () => {
@@ -37,6 +40,7 @@ describe("ids", () => {
 
   test("local ids: project, home, path", () => {
     const home = os.homedir();
+
     expect(localSkillId("/work/proj/skills/foo", "/work/proj")).toBe("local://skills/foo");
     expect(localSkillId("/work/proj", "/work/proj")).toBe("local://.");
     expect(localSkillId(path.join(home, "my-skills/foo"), null)).toBe("home://my-skills/foo");
@@ -60,6 +64,7 @@ describe("hash", () => {
 
   test("dir hash = file hash, skips junk, non-ASCII and binary safe", async () => {
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "sl-hash-"));
+
     await fsp.mkdir(path.join(dir, "a"), { recursive: true });
     await fsp.mkdir(path.join(dir, "node_modules"), { recursive: true });
     await fsp.writeFile(path.join(dir, "SKILL.md"), "hello\n");
@@ -115,38 +120,45 @@ describe("agent rules (§4)", () => {
   });
 });
 
-function sk(p: Partial<ScopedSkill> & { id: string; name: string }): ScopedSkill {
-  return { description: "d", scope: "global", kind: "stored", dir: "/x", agents: "all", status: "installed", source: "", sourceType: "git", ...p };
+function sk(partial: Partial<ScopedSkill> & { id: string; name: string }): ScopedSkill {
+  return { description: "d", scope: "global", kind: "stored", dir: "/x", agents: "all", status: "installed", source: "", sourceType: "git", ...partial };
 }
 
 describe("query candidate order (§5.1)", () => {
   test("missing project winner still shadows the global skill", () => {
-    const r = selectCandidates([sk({ id: "p", name: "foo", scope: "project", status: "missing", dir: null }), sk({ id: "g", name: "foo" })], undefined);
-    expect(r.candidates).toEqual([]);
-    expect(r.notInstalled).toBe(1);
+    const selection = selectCandidates([sk({ id: "p", name: "foo", scope: "project", status: "missing", dir: null }), sk({ id: "g", name: "foo" })], undefined);
+
+    expect(selection.candidates).toEqual([]);
+    expect(selection.notInstalled).toBe(1);
   });
   test("Claude-only project winner + -a codex still shadows global", () => {
-    const r = selectCandidates([sk({ id: "p", name: "foo", scope: "project", agents: ["claude-code"] }), sk({ id: "g", name: "foo" })], "codex");
-    expect(r.candidates).toEqual([]);
+    const selection = selectCandidates([sk({ id: "p", name: "foo", scope: "project", agents: ["claude-code"] }), sk({ id: "g", name: "foo" })], "codex");
+
+    expect(selection.candidates).toEqual([]);
   });
   test("local:// beats referenced beats global; same-priority clash keeps both", () => {
     const local = sk({ id: "l", name: "foo", scope: "project", kind: "local" });
     const ref = sk({ id: "r", name: "foo", scope: "project" });
     const g1 = sk({ id: "g1", name: "bar" });
     const g2 = sk({ id: "g2", name: "bar" });
-    const r = selectCandidates([ref, local, g1, g2, sk({ id: "g3", name: "foo" })], undefined);
-    expect(r.candidates.map((c) => c.id).sort()).toEqual(["g1", "g2", "l"]);
+    const selection = selectCandidates([ref, local, g1, g2, sk({ id: "g3", name: "foo" })], undefined);
+
+    expect(selection.candidates.map((candidate) => candidate.id).sort()).toEqual(["g1", "g2", "l"]);
   });
 });
 
 describe("global name clashes", () => {
   const syncUrl = "https://github.com/me/my-skills.git";
+
   test("remote beats own beats machine-only", () => {
     const remote = sk({ id: "repo://github.com/typesafe-ai/skills/typesafe-ai", name: "typesafe-ai" });
     const own = sk({ id: "repo://github.com/me/my-skills/typesafe-ai", name: "typesafe-ai" });
     const machine = sk({ id: "home://skills/typesafe-ai", name: "typesafe-ai", sourceType: "local" });
-    expect(selectCandidates([own, machine, remote], undefined, syncUrl).candidates.map((c) => c.id)).toEqual([remote.id]);
-    expect(selectCandidates([own, machine], undefined, syncUrl).candidates.map((c) => c.id)).toEqual([own.id]);
+
+    expect(selectCandidates([own, machine, remote], undefined, syncUrl).candidates.map((candidate) => candidate.id))
+      .toEqual([remote.id]);
+    expect(selectCandidates([own, machine], undefined, syncUrl).candidates.map((candidate) => candidate.id))
+      .toEqual([own.id]);
     expect(globalKindOf(own, syncUrl)).toBe("own");
     expect(globalKindOf(own, null)).toBe("remote");
     expect(globalKindOf(machine, syncUrl)).toBe("machine-only");
@@ -155,7 +167,8 @@ describe("global name clashes", () => {
 
 describe("store", () => {
   test("version key prefix collision gets a longer key, never merges", () => {
-    const record = { versions: { "abcdefabcdef": { commit: "abcdefabcdef0000000000000000000000000000", hash: "sha256-1", name: "n", description: "", addedAt: "" } } } as unknown as StoreRecord;
+    const record = { versions: { abcdefabcdef: { commit: "abcdefabcdef0000000000000000000000000000", hash: "sha256-1", name: "n", description: "", addedAt: "" } } } as unknown as StoreRecord;
+
     expect(versionKeyFor(record, { commit: "abcdefabcdef0000000000000000000000000000", hash: "sha256-1" })).toBe("abcdefabcdef");
     expect(versionKeyFor(record, { commit: "abcdefabcdef1111111111111111111111111111", hash: "sha256-2" })).toBe("abcdefabcdef1111");
     expect(versionKeyFor(undefined, { hash: "sha256-0123456789abcdef" })).toBe("h-0123456789ab");
@@ -163,6 +176,7 @@ describe("store", () => {
 
   test("project root lookup: nested first use, ancestor manifest, $HOME", async () => {
     const root = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), "sl-root-")));
+
     await fsp.mkdir(path.join(root, "a", "b"), { recursive: true });
     expect(findProjectRoot(path.join(root, "a", "b"))).toEqual({ root: path.join(root, "a", "b"), exists: false });
     await fsp.writeFile(path.join(root, "a", "skill-library.json"), '{"version":1,"skills":{}}');
@@ -171,11 +185,12 @@ describe("store", () => {
   });
 
   test("update/check scope defaults", () => {
-    const proj = { manifest: { version: 1 as const, skills: { x: { agents: "all" as const } } } } as never;
+    const proj = { manifest: { version: 1 as const, skills: { demo: { agents: "all" as const } } } } as never;
     const empty = { manifest: { version: 1 as const, skills: {} } } as never;
+
     expect(resolveScopes({}, proj)).toEqual(["project"]);
     expect(resolveScopes({}, empty)).toEqual(["global"]);
-    expect(resolveScopes({ skills: ["x"] }, proj)).toEqual(["project", "global"]);
+    expect(resolveScopes({ skills: ["demo"] }, proj)).toEqual(["project", "global"]);
     expect(resolveScopes({ global: true, project: true }, null)).toEqual(["project", "global"]);
   });
 });
@@ -183,11 +198,13 @@ describe("store", () => {
 describe("gateway", () => {
   test("embedded gateway is the repo's skill-library SKILL.md", async () => {
     const md = gatewaySkillMd();
+
     expect(parseFrontmatter(md).data.name).toBe("skill-library");
     expect(md).toContain("skill-library query -a <your-agent-id>");
     // The description must carry the trigger and the command itself (agents often never load the
     // body) and stay within the Agent Skills spec limit of 1024 characters.
     const description = parseFrontmatter(md).data.description as string;
+
     expect(description).toMatch(/^TRIGGER/);
     expect(description).toContain("skill-library query -a <your-agent-id>");
     expect(description.length).toBeLessThanOrEqual(1024);
@@ -195,7 +212,8 @@ describe("gateway", () => {
   });
   test("gateway names only the query command and nothing about sync or the store", () => {
     const md = gatewaySkillMd();
-    const commands = [...md.matchAll(/skill-library ([a-z-]+)/g)].map((m) => m[1]);
+    const commands = [...md.matchAll(/skill-library ([a-z-]+)/g)].map((match) => match[1]);
+
     expect(new Set(commands)).toEqual(new Set(["query"]));
     // --json and the tuning flags are for scripts and people; the agent only needs -a.
     expect(md).not.toMatch(/--json|--threshold|--top|\{"matches"/);
@@ -205,6 +223,7 @@ describe("gateway", () => {
 
 describe("time formatting", () => {
   const now = new Date("2026-11-10T12:00:00Z");
+
   test("relative time", () => {
     expect(relativeTime(new Date("2026-11-10T11:59:30Z"), now)).toBe("just now");
     expect(relativeTime(new Date("2026-11-10T11:55:00Z"), now)).toBe("5 minutes ago");
@@ -239,6 +258,7 @@ describe("sync README", () => {
     expect(shareableUrl("git@github.com:me/skills.git")).toBe("git@github.com:me/skills.git");
     expect(shareableUrl("https://github.com/me/skills.git")).toBe("https://github.com/me/skills.git");
     const readme = newReadme("https://user:TOKEN@github.com/me/skills.git");
+
     expect(readme).not.toContain("TOKEN");
     expect(readme).toContain("sync init https://github.com/me/skills.git");
     expect(readme).toMatch(/^# <a .*<\/a> me's Skills\n/);
@@ -252,7 +272,6 @@ describe("sync README", () => {
     expect(readmeTitle("file:///home/me/skills.git", "")).toBe("My Skills");
     expect(readmeTitle("https://git.example.com/skills.git")).toBe("My Skills");
   });
-
 });
 
 describe("newerRelease", () => {

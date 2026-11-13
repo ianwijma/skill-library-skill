@@ -13,10 +13,14 @@ export function enableCommand(ctx: Ctx) {
 }
 
 /** `sync enable`: start syncing again, and sync now. */
-async function runSyncEnable(g: GlobalOpts): Promise<number> {
-  await setSyncEnabled(true, baseOf(g));
+async function runSyncEnable(globalOpts: GlobalOpts): Promise<number> {
+  await setSyncEnabled(true, baseOf(globalOpts));
   console.log("Sync enabled");
-  const r = await runSync(baseOf(g));
-  if (r) printResult(r);
-  return r && r.errors.length > 0 ? 1 : 0;
+  const result = await runSync(baseOf(globalOpts));
+
+  if (result) {
+    printResult(result);
+  }
+
+  return result && result.errors.length > 0 ? 1 : 0;
 }

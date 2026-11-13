@@ -24,28 +24,41 @@ export function syncCommand(ctx: Ctx) {
     .addCommand(enableCommand(ctx))
     .addCommand(disableCommand(ctx))
     .addCommand(statusCommand(ctx));
+
   sync
     .addHelpText("after", subcommandOptions(sync))
     .addHelpText("after", examples([["skill-library sync init git@bitbucket.org:me/my-skills.git", "start syncing"], ["skill-library sync", "sync now"], ["skill-library sync status"]]));
   withSubcommands(sync, ctx, (rest) => {
     if (rest[0] === "help") {
       sync.outputHelp();
+
       return 0;
     }
-    if (rest.length > 0) throw new CliError(1, `Unknown sync command: ${rest[0]}`, SYNC_USAGE);
+
+    if (rest.length > 0) {
+      throw new CliError(1, `Unknown sync command: ${rest[0]!}`, SYNC_USAGE);
+    }
+
     return runSyncNow(sync.opts(), ctx.globals());
   });
+
   return sync;
 }
 
 /** `sync`: pull, install, update and push now. `background` (internal) is what `query` starts. */
-async function runSyncNow(opts: { background?: boolean }, g: GlobalOpts): Promise<number> {
+async function runSyncNow(opts: { background?: boolean }, globalOpts: GlobalOpts): Promise<number> {
   if (opts.background) {
     // Started by `query`: no output, failures are kept in the status file.
-    await runSync({ ...baseOf(g), background: true }).catch(() => null);
+    await runSync({ ...baseOf(globalOpts), background: true }).catch(() => null);
+
     return 0;
   }
-  const r = await runSync(baseOf(g));
-  if (r) printResult(r);
-  return r && r.errors.length > 0 ? 1 : 0;
+
+  const result = await runSync(baseOf(globalOpts));
+
+  if (result) {
+    printResult(result);
+  }
+
+  return result && result.errors.length > 0 ? 1 : 0;
 }

@@ -7,21 +7,27 @@ import { showLogo } from "./ui.ts";
 import { type Ctx, examples, newCommand, warnUnknownOptions } from "./command.ts";
 import type { GlobalOpts } from "./index.ts";
 
-function runInit(name: string | undefined, opts: { always?: boolean }, g: GlobalOpts): number {
+function runInit(name: string | undefined, opts: { always?: boolean }, globalOpts: GlobalOpts): number {
   showLogo();
   console.log();
   const always = !!opts.always;
-  const cwd = g.cwd;
+  const cwd = globalOpts.cwd;
   const hasName = name !== undefined;
   const skillName = name || basename(cwd);
   const skillDir = hasName ? join(cwd, skillName) : cwd;
   const skillFile = join(skillDir, "SKILL.md");
   const displayPath = hasName ? `${skillName}/SKILL.md` : "SKILL.md";
+
   if (existsSync(skillFile)) {
     console.log(`Skill already exists at ${pc.gray(displayPath)}`);
+
     return 0;
   }
-  if (hasName) mkdirSync(skillDir, { recursive: true });
+
+  if (hasName) {
+    mkdirSync(skillDir, { recursive: true });
+  }
+
   writeFileSync(
     skillFile,
     `---
@@ -52,7 +58,11 @@ Describe when this skill should be used.
   console.log(pc.gray("Next steps:"));
   console.log(`  1. Edit ${displayPath} to define your skill instructions`);
   console.log("  2. Update the name and description in the frontmatter");
-  if (always) console.log(`  ${pc.gray("metadata.always: true — every query returns this skill, without scoring")}`);
+
+  if (always) {
+    console.log(`  ${pc.gray("metadata.always: true — every query returns this skill, without scoring")}`);
+  }
+
   console.log();
   console.log(pc.gray("Publishing:"));
   console.log(`  ${pc.gray("GitHub:")}  Push to a repo, then skill-library add <owner>/<repo>`);
@@ -60,6 +70,7 @@ Describe when this skill should be used.
   console.log();
   console.log("Browse existing skills for inspiration at https://skills.sh/");
   console.log();
+
   return 0;
 }
 
