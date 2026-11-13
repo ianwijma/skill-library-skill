@@ -45,8 +45,8 @@ async function runInstall(opts: InstallOptions, globalOpts: GlobalOpts): Promise
     console.log(pc.gray(`Restoring ${res.skills.length} skill(s) from skill-library.json into the library`));
 
     for (const skill of res.skills) {
-      const label
-        = skill.status === "present" || skill.status === "local"
+      const label =
+        skill.status === "present" || skill.status === "local"
           ? `${pc.dim("•")} ${skill.id} ${pc.gray(`(${skill.status === "local" ? "in this repository" : "already installed"})`)}`
           : skill.status === "would-install"
             ? `${pc.cyan("→")} Would restore ${skill.id}`

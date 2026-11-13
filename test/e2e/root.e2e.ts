@@ -86,7 +86,7 @@ describe("root", () => {
     const viaEnv = path.join(testWorld.root, "lib-env");
 
     await testWorld.ok(["add", path.join(src, "a"), "-g", "-y", "--store", viaFlag]);
-    await testWorld.ok(["--store=" + viaEq, "add", path.join(src, "a"), "-g", "-y"]);
+    await testWorld.ok([`--store=${viaEq}`, "add", path.join(src, "a"), "-g", "-y"]);
     await testWorld.ok(["add", path.join(src, "a"), "-g", "-y"], { env: { SKILL_LIBRARY_DIR: viaEnv } });
 
     for (const store of [viaFlag, viaEq, viaEnv]) {

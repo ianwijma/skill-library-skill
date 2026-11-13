@@ -17,10 +17,10 @@ async function globals(testWorld: World): Promise<Record<string, any>> {
 }
 
 /** Library + sync state are consistent and settled (nothing uncommitted or unpushed). */
-async function settled(...ws: World[]): Promise<void> {
-  for (const member of ws) {
-    await validateAll(member);
-    await validateSync(member, { settled: true });
+async function settled(...machines: World[]): Promise<void> {
+  for (const machine of machines) {
+    await validateAll(machine);
+    await validateSync(machine, { settled: true });
   }
 }
 

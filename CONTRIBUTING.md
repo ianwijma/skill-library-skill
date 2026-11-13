@@ -21,7 +21,8 @@ Design notes and specs are in [docs/](docs/).
 ### Linting
 
 `npm run lint` runs ESLint ([eslint.config.mjs](eslint.config.mjs)) over the source,
-tests, scripts and config files, with type information from `tsconfig.json`. It
+tests, scripts and config files. The TypeScript files are linted with type
+information from `tsconfig.json`; the `.mjs` scripts and config without it. It
 uses typescript-eslint's `strictTypeChecked` and `stylisticTypeChecked` presets, the
 `@stylistic` formatting rules, and some rules of our own:
 
@@ -39,6 +40,11 @@ uses typescript-eslint's `strictTypeChecked` and `stylisticTypeChecked` presets,
 - **Correctness**: no floating or misused promises, `===` everywhere except
   `== null`, no shadowing, and no unused variables. Prefix a name with `_` to mark
   it as deliberately unused.
+- **Conventions**: Node built-ins are imported with the `node:` prefix, type-only
+  exports use `export type`, strings are built with template literals rather than
+  `+`, and backticks are only for strings that interpolate. A wrapped expression
+  starts each continuation line with its operator, except `=`, which stays at the
+  end of the line.
 
 Some preset rules are turned off on purpose:
 - `no-non-null-assertion`: `noUncheckedIndexedAccess` makes `!` the normal way

@@ -160,10 +160,11 @@ export async function validateStore(testWorld: World, store = testWorld.store): 
       at("unknown id prefix");
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- index.json is untrusted file content
-    if (!["git", "folder", "file"].includes(record.source?.type)) {
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- index.json is untrusted file content
-      at(`source.type ${record.source?.type}`);
+    // index.json is untrusted file content: `source` may be missing.
+    const sourceType = (record.source as { type?: string } | undefined)?.type;
+
+    if (!sourceType || !["git", "folder", "file"].includes(sourceType)) {
+      at(`source.type ${String(sourceType)}`);
     }
 
     if (record.source.type === "git" && !record.id.startsWith("repo://")) {

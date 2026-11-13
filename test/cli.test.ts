@@ -300,7 +300,7 @@ describe("git sources", () => {
     const manifest = await readJson(file);
     const id = Object.keys(manifest.skills)[0]!;
 
-    manifest.skills[id].hash = "sha256-" + "0".repeat(64);
+    manifest.skills[id].hash = `sha256-${"0".repeat(64)}`;
     await fsp.writeFile(file, JSON.stringify(manifest));
     const fresh = { ...sb, env: { ...sb.env, SKILL_LIBRARY_DIR: path.join(sb.root, "store2") } };
     const result = await run(fresh, ["install"], { cwd: dir });

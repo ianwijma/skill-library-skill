@@ -400,7 +400,7 @@ async function makeWorld(shared: Shared, name: string, opts: WorldOpts): Promise
 
 /** Strip ANSI escapes (some output keeps 256-color codes even with NO_COLOR). */
 export function plain(text: string): string {
-  // eslint-disable-next-line no-control-regex
+  // eslint-disable-next-line no-control-regex -- strips ANSI escapes from CLI output
   return text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 }
 

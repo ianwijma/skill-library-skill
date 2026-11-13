@@ -79,11 +79,9 @@ function buildAgents(): Record<string, AgentConfig> {
   const autohandHome = process.env.AUTOHAND_HOME?.trim() || join(home, ".autohand");
   const grokHome = process.env.GROK_HOME?.trim() || join(home, ".grok");
   const sarvamHome = process.env.SARVAM_HOME?.trim() || join(home, ".sarvam");
-  const reasonixHome
-    = process.env.REASONIX_HOME?.trim()
-      || (platform() === "win32"
-        ? join(process.env.APPDATA?.trim() || join(home, "AppData", "Roaming"), "reasonix")
-        : join(home, ".reasonix"));
+  const appDataHome = process.env.APPDATA?.trim() || join(home, "AppData", "Roaming");
+  const reasonixDefault = platform() === "win32" ? join(appDataHome, "reasonix") : join(home, ".reasonix");
+  const reasonixHome = process.env.REASONIX_HOME?.trim() || reasonixDefault;
   const zedAppDataHome = process.env.APPDATA?.trim();
   const zedFlatpakConfigHome = process.env.FLATPAK_XDG_CONFIG_HOME?.trim();
 

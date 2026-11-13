@@ -15,12 +15,12 @@ import { CliError, msgOf } from "./cli.ts";
 
 export const DEFAULT_BASE_URL = "https://api.typesafe.ai";
 export const MODEL = "jev-latest";
-export const QUESTION_TEMPLATE
-  = "Would reading the skill `skill.name`, described below, improve how the assistant handles `state.task`?";
-export const CRITERIA_TRUE
-  = "The skill is directly relevant to the task and would change or guide how it is done";
-export const CRITERIA_FALSE
-  = "The skill is unrelated, redundant, or would not meaningfully help";
+export const QUESTION_TEMPLATE =
+  "Would reading the skill `skill.name`, described below, improve how the assistant handles `state.task`?";
+export const CRITERIA_TRUE =
+  "The skill is directly relevant to the task and would change or guide how it is done";
+export const CRITERIA_FALSE =
+  "The skill is unrelated, redundant, or would not meaningfully help";
 
 const MAX_RETRIES = 3;
 const ATTEMPT_TIMEOUT_MS = 30_000;

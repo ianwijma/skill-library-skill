@@ -241,8 +241,8 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>, waitMs
     const holder = await readHolder(file);
 
     if (holder === "gone") {
-      continue;
-    } // released between our attempt and the read: try again
+      continue; // released between our attempt and the read: try again
+    }
 
     if (holder?.host === os.hostname() && typeof holder.pid === "number" && !pidAlive(holder.pid)) {
       if (Date.now() >= deadline) {

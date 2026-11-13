@@ -28,7 +28,9 @@ export interface FakeServer {
 
 async function serve(handler: (req: Recorded) => Reply | Promise<Reply>): Promise<FakeServer> {
   const requests: Recorded[] = [];
-  const server = http.createServer(async (req, res) => {
+
+  // Node ignores the handler's promise, so run it explicitly and mark it as handled.
+  const respond = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     const chunks: Buffer[] = [];
 
     for await (const chunk of req) {
@@ -58,6 +60,10 @@ async function serve(handler: (req: Recorded) => Reply | Promise<Reply>): Promis
       res.writeHead(500, { "content-type": "text/plain" });
       res.end(String(err));
     }
+  };
+
+  const server = http.createServer((req, res) => {
+    void respond(req, res);
   });
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

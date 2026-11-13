@@ -288,7 +288,7 @@ jobs:
           # Prereleases go to the `next` dist-tag so `npm i skill-library` stays on stable.
           if [[ "$PRERELEASE" == "true" ]]; then args+=(--tag next); fi
           if [[ "$DRY_RUN" == "true" ]]; then args+=(--dry-run); fi
-          # prepublishOnly runs typecheck, tests, build, and `npm pack --dry-run`.
+          # prepublishOnly runs lint, typecheck, tests, build, and `npm pack --dry-run`.
           npm publish "${args[@]}"
 
       - name: Create GitHub Release

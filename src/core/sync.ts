@@ -104,22 +104,22 @@ export function syncPaths(store: string): { clone: string; config: string; statu
 // ---------------------------------------------------------------------------
 
 function parseConfig(text: string, file: string): SyncConfig {
-  let data: Partial<SyncConfig>;
+  let rawConfig: Partial<SyncConfig>;
 
   try {
-    data = JSON.parse(text) as Partial<SyncConfig>;
+    rawConfig = JSON.parse(text) as Partial<SyncConfig>;
   } catch {
     throw new CliError(2, `${file} is corrupted — fix or delete it`);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- parsed from a file on disk; may be anything
-  if (typeof data !== "object" || data === null || typeof data.url !== "string" || typeof data.enabled !== "boolean") {
+  if (typeof rawConfig !== "object" || rawConfig === null || typeof rawConfig.url !== "string" || typeof rawConfig.enabled !== "boolean") {
     throw new CliError(2, `${file} is corrupted — fix or delete it`);
   }
 
-  const managed = Array.isArray(data.managed) ? data.managed.filter((item): item is string => typeof item === "string") : [];
+  const managed = Array.isArray(rawConfig.managed) ? rawConfig.managed.filter((managedId): managedId is string => typeof managedId === "string") : [];
 
-  return { url: data.url, enabled: data.enabled, managed };
+  return { url: rawConfig.url, enabled: rawConfig.enabled, managed };
 }
 
 export async function readSyncConfig(store: string): Promise<SyncConfig | null> {
@@ -144,10 +144,10 @@ async function writeSyncConfig(store: string, cfg: SyncConfig): Promise<void> {
 
 function readStatusSync(store: string): SyncStatusFile {
   try {
-    const data = JSON.parse(readFileSync(syncPaths(store).status, "utf8")) as SyncStatusFile;
+    const rawStatus = JSON.parse(readFileSync(syncPaths(store).status, "utf8")) as SyncStatusFile;
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- parsed from disk; may be anything
-    return typeof data === "object" && data !== null ? data : {};
+    return typeof rawStatus === "object" && rawStatus !== null ? rawStatus : {};
   } catch {
     return {};
   }
@@ -244,9 +244,9 @@ export function mergeManifests(base: Manifest, ours: Manifest, theirs: Manifest)
   for (const id of ids) {
     const baseCanon = canon(base.skills[id]);
     const oursCanon = canon(ours.skills[id]);
-    const pick = oursCanon === baseCanon
-      ? theirs.skills[id]
-      : canon(theirs.skills[id]) === baseCanon ? ours.skills[id] : theirs.skills[id];
+    // Take theirs, unless only ours changed this entry since the base.
+    const onlyOursChanged = oursCanon !== baseCanon && canon(theirs.skills[id]) === baseCanon;
+    const pick = onlyOursChanged ? ours.skills[id] : theirs.skills[id];
 
     if (pick !== undefined) {
       out.skills[id] = pick;
@@ -266,11 +266,11 @@ async function manifestAt(clone: string, rev: string): Promise<Manifest> {
   }
 
   try {
-    const data = JSON.parse(text) as Manifest;
+    const rawManifest = JSON.parse(text) as Manifest;
     const skills: Record<string, ManifestEntry> = {};
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- parsed from git; `skills` may be missing
-    for (const [id, entry] of Object.entries(data.skills ?? {})) {
+    for (const [id, entry] of Object.entries(rawManifest.skills ?? {})) {
       skills[id] = validateEntry(`${rev}:${MANIFEST}`, id, entry);
     }
 
@@ -290,8 +290,8 @@ async function pull(clone: string, url: string): Promise<void> {
   const remote = `refs/remotes/origin/${await branchOf(clone)}`;
 
   if (!(await ok(["rev-parse", "--verify", "-q", remote], clone))) {
-    return;
-  } // nothing pushed yet
+    return; // nothing pushed yet
+  }
 
   if (!(await hasHead(clone))) {
     await git(["reset", "-q", "--hard", remote], { cwd: clone });
@@ -300,8 +300,8 @@ async function pull(clone: string, url: string): Promise<void> {
   }
 
   if (await ok(["merge-base", "--is-ancestor", remote, "HEAD"], clone)) {
-    return;
-  } // up to date or ahead
+    return; // up to date or ahead
+  }
 
   if (await ok(["merge-base", "--is-ancestor", "HEAD", remote], clone)) {
     await git(["merge", "-q", "--ff-only", remote], { cwd: clone });
@@ -487,8 +487,9 @@ async function applyRepo(
     for (const ownSkill of own) {
       const dir = await stagingDir(store);
 
-      staged.push({ own: ownSkill, dir, hash: "", tree: null, name: ownSkill.name, description: "" });
-      const stagedSkill = staged[staged.length - 1]!;
+      const stagedSkill = { own: ownSkill, dir, hash: "", tree: null as string | null, name: ownSkill.name, description: "" };
+
+      staged.push(stagedSkill);
 
       await copySkill(ownSkill.dir, dir, "folder");
       stagedSkill.hash = await hashSkillDir(dir);
@@ -516,8 +517,8 @@ async function applyRepo(
           : undefined;
 
         if (!record || !key) {
-          continue;
-        } // install failed; already reported
+          continue; // install failed; already reported
+        }
 
         if (!record.global) {
           added.push(nameOf(index, id));
@@ -823,8 +824,8 @@ export async function runSync(opts: RunSyncOptions = {}): Promise<SyncResult | n
   }
 }
 
-export type InitSyncOutcome
-  = | {
+export type InitSyncOutcome =
+  | {
     alreadySetUp: false;
     result: SyncResult;
     /** Names written into the empty repo: git skills, plus the folder skills chosen to share. */
@@ -917,8 +918,8 @@ function machineOnlySkills(index: StoreIndex): ShareCandidate[] {
     const version = record.versions[record.current];
 
     if (!record.global || !version || record.source.type === "git") {
-      continue;
-    } // own skills are git-sourced too
+      continue; // own skills are git-sourced too
+    }
 
     out.push({ id: record.id, name: version.name, description: version.description });
   }
@@ -1017,17 +1018,17 @@ export async function initSync(url: string, opts: InitSyncOptions = {}): Promise
   return { alreadySetUp: false, result: result!, seeded, machineOnly, readme };
 }
 
-export type UpdateSyncUrlOutcome
-  = | { unchanged: true; url: string }
-    | {
-      unchanged: false;
-      previousUrl: string;
-      result: SyncResult;
-      /** Set when the old repository could not be pulled first (local commits were still carried over). */
-      oldPullError?: string;
-      /** What happened to the new repository's README (null: left as it was). */
-      readme: ReadmeOutcome;
-    };
+export type UpdateSyncUrlOutcome =
+  | { unchanged: true; url: string }
+  | {
+    unchanged: false;
+    previousUrl: string;
+    result: SyncResult;
+    /** Set when the old repository could not be pulled first (local commits were still carried over). */
+    oldPullError?: string;
+    /** What happened to the new repository's README (null: left as it was). */
+    readme: ReadmeOutcome;
+  };
 
 /**
  * `skill-library sync update <git-url>`: point the clone at a new repository, push everything
@@ -1303,8 +1304,8 @@ export async function recordGlobalChange(
       const ownSkill = ownById.get(id);
 
       if (!manifest.skills[id] && !ownSkill && !cfg.managed.includes(id)) {
-        continue;
-      } // machine-only: not in the repo
+        continue; // machine-only: not in the repo
+      }
 
       names.push(id.split("/").pop() ?? id);
       delete manifest.skills[id];

@@ -227,7 +227,9 @@ describe("missing project skills keep their real name", () => {
 
     await run(other, ["add", path.join(sb.root, "g", "react"), "-g", "-y"]);
     const bodies: any[] = [];
-    const server = http.createServer(async (req, res) => {
+
+    // Node ignores the handler's promise, so run it explicitly and mark it as handled.
+    const respond = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
       const chunks: Buffer[] = [];
 
       for await (const chunk of req) {
@@ -237,6 +239,10 @@ describe("missing project skills keep their real name", () => {
       bodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ model: "m", answers: {}, usage: {} }));
+    };
+
+    const server = http.createServer((req, res) => {
+      void respond(req, res);
     });
 
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

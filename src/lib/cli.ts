@@ -58,21 +58,18 @@ export function note(message: string): void {
   }
 }
 
+/* eslint-disable no-control-regex -- stripping terminal control characters is the point of this function */
 /** Strip terminal escapes from untrusted strings (port of vercel's sanitize.ts, MIT). */
 export function stripTerminalEscapes(str: string): string {
   return str
-    // eslint-disable-next-line no-control-regex -- stripping terminal control characters is the intent
     .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, "")
-    // eslint-disable-next-line no-control-regex -- stripping terminal control characters is the intent
     .replace(/\x1b[P^_][\s\S]*?(?:\x1b\\)/g, "")
-    // eslint-disable-next-line no-control-regex -- stripping terminal control characters is the intent
     .replace(/\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, "")
-    // eslint-disable-next-line no-control-regex -- stripping terminal control characters is the intent
     .replace(/\x1b[\x20-\x7e]/g, "")
     .replace(/[\x80-\x9f]/g, "")
-    // eslint-disable-next-line no-control-regex -- stripping terminal control characters is the intent
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
 }
+/* eslint-enable no-control-regex */
 
 export function sanitizeMetadata(str: string): string {
   return stripTerminalEscapes(str).replace(/[\r\n]+/g, " ").trim();

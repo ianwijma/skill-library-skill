@@ -9,7 +9,7 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig(
   {
-    ignores: ["dist/**", "node_modules/**", "third_party/**", "skills/**"],
+    ignores: ["dist/**", "coverage/**", "node_modules/**", "third_party/**", "skills/**"],
   },
 
   js.configs.recommended,
@@ -32,7 +32,9 @@ export default defineConfig(
       globals: globals.node,
       parserOptions: {
         projectService: {
-          allowDefaultProject: ["eslint.config.mjs", "vitest.config.ts", "vitest.e2e.config.ts", "scripts/*.mjs"],
+          // Outside tsconfig.json's include; .mjs files are linted without type information (below).
+          allowDefaultProject: ["vitest.config.ts", "vitest.e2e.config.ts"],
+          defaultProject: "tsconfig.json",
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -43,19 +45,27 @@ export default defineConfig(
     rules: {
       // Correctness
       eqeqeq: ["error", "always", { null: "ignore" }],
-      "no-empty": ["error", { allowEmptyCatch: false }],
       "no-self-compare": "error",
       "no-template-curly-in-string": "error",
       "no-unreachable-loop": "error",
       "array-callback-return": "error",
-      "no-irregular-whitespace": ["error", { skipRegExps: false }],
-      "prefer-const": "error",
-      "no-var": "error",
-      "no-shadow": "off",
       "@typescript-eslint/no-shadow": "error",
+      "no-duplicate-imports": ["error", { allowSeparateTypeImports: true }],
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: "^(fs|path|os|child_process|crypto|url|util|stream|events|http|https|net|module)(/.*)?$",
+              message: "Import Node built-ins with the node: prefix.",
+            },
+          ],
+        },
+      ],
       "@typescript-eslint/no-unused-vars": [
         "error",
         {
+          args: "all",
           argsIgnorePattern: "^_",
           varsIgnorePattern: "^_",
           caughtErrors: "all",
@@ -64,8 +74,6 @@ export default defineConfig(
           ignoreRestSiblings: true,
         },
       ],
-      "@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: true }],
-      "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { arguments: false } }],
       "@typescript-eslint/return-await": ["error", "in-try-catch"],
       "@typescript-eslint/switch-exhaustiveness-check": ["error", { considerDefaultExhaustiveForUnions: true }],
       "@typescript-eslint/prefer-nullish-coalescing": [
@@ -76,8 +84,9 @@ export default defineConfig(
       // TypeScript
       "@typescript-eslint/consistent-type-imports": ["error", { fixStyle: "inline-type-imports" }],
       "@typescript-eslint/no-import-type-side-effects": "error",
+      "@typescript-eslint/consistent-type-exports": ["error", { fixMixedExportsWithInlineTypeSpecifier: true }],
+      "@typescript-eslint/prefer-readonly": "error",
       "@typescript-eslint/array-type": ["error", { default: "array-simple" }],
-      "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
       // Required by noUncheckedIndexedAccess for regex groups and known keys.
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/restrict-template-expressions": [
@@ -97,10 +106,10 @@ export default defineConfig(
 
       // Layout and spacing
       curly: ["error", "all"],
-      "@stylistic/quotes": ["error", "double", { avoidEscape: true }],
+      // Backticks only for interpolation; build strings with templates, not `+`.
+      "@stylistic/quotes": ["error", "double", { avoidEscape: true, allowTemplateLiterals: "never" }],
+      "prefer-template": "error",
       "@stylistic/brace-style": ["error", "1tbs", { allowSingleLine: false }],
-      "@stylistic/nonblock-statement-body-position": ["error", "below"],
-      "@stylistic/max-statements-per-line": ["error", { max: 1 }],
       "@stylistic/max-len": [
         "error",
         {
@@ -111,11 +120,9 @@ export default defineConfig(
           ignoreRegExpLiterals: true,
         },
       ],
-      "@stylistic/no-multiple-empty-lines": ["error", { max: 1, maxBOF: 0, maxEOF: 0 }],
-      "@stylistic/padded-blocks": ["error", "never"],
-      "@stylistic/lines-between-class-members": ["error", "always", { exceptAfterSingleLine: true }],
       "@stylistic/newline-per-chained-call": ["error", { ignoreChainWithDepth: 3 }],
-      "@stylistic/operator-linebreak": ["error", "before"],
+      // Operators lead continuation lines, but `=` stays at the end so the assignment reads first.
+      "@stylistic/operator-linebreak": ["error", "before", { overrides: { "=": "after" } }],
       "@stylistic/padding-line-between-statements": [
         "error",
         { blankLine: "always", prev: "*", next: "return" },

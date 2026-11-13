@@ -31,7 +31,7 @@ function buildUsePrompt(input: { skillMd: string; supportDir?: string; hasSuppor
     sections.push(`Supporting files for this skill were downloaded to:\n${input.supportDir}\n\nWhen the SKILL.md references relative paths, read them from that directory.`);
   }
 
-  return sections.join("\n\n") + "\n";
+  return `${sections.join("\n\n")}\n`;
 }
 
 /** The agents `use --agent` can start. */

@@ -62,7 +62,7 @@
     "@types/node": "^22.18.0",
     "@types/semver": "^7.8.0",
     "@typesafe-ai/sdk": "^0.6.0",
-    "@typescript/typescript6": "^6.0.2",
+    "@typescript/typescript6": "~6.0.2",
     "commander": "~15.1.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.14.0",
@@ -97,9 +97,6 @@
       "typescript": "$typescript"
     },
     "@typescript-eslint/tsconfig-utils": {
-      "typescript": "$typescript"
-    },
-    "ts-api-utils": {
       "typescript": "$typescript"
     }
   }

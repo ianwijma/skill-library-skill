@@ -64,9 +64,9 @@ describe("list", () => {
     const names = text.split("\n").filter((line) => /^\S/.test(line) && line !== "Global Skills").map((line) => line.split(/\s+/)[0]);
 
     expect(names).toEqual(["alpha", "gitty", "mid", "zeta"]);
-    expect(text).toContain("Agents: Codex  Source: " + path.join(src, "zeta"));
-    expect(text).toContain("Agents: all agents  Source: " + path.join(src, "mid"));
-    expect(text).toContain("Agents: Codex, Claude Code  Source: " + gh.url);
+    expect(text).toContain(`Agents: Codex  Source: ${path.join(src, "zeta")}`);
+    expect(text).toContain(`Agents: all agents  Source: ${path.join(src, "mid")}`);
+    expect(text).toContain(`Agents: Codex, Claude Code  Source: ${gh.url}`);
     // Library paths are shown relative to the working folder when inside it, else to ~.
     expect(text).toContain("./home/.local/share/skill-library/skills/");
     expect((await testWorld.ok(["ls"], { cwd: await testWorld.dir("elsewhere") })).stdout).toContain("~/.local/share/skill-library/skills/");

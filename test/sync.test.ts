@@ -5,7 +5,7 @@ import { initSync, mergeManifests, updateSyncUrl } from "../src/core/sync.ts";
 import type { Manifest } from "../src/lib/manifest.ts";
 import { git, gitRepo, readJson, run, sandbox, skillMd, writeFiles, type Sandbox } from "./helpers.ts";
 
-// eslint-disable-next-line no-control-regex
+// eslint-disable-next-line no-control-regex -- strips ANSI color escapes from CLI output
 const plain = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, "");
 
 /** An empty bare repository to sync through (file:// URL, so it behaves like any remote host). */

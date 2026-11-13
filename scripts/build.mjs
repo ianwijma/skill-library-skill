@@ -83,7 +83,7 @@ for (const [name, dir] of [...pkgs.entries()].sort()) {
   sections.push("", "=".repeat(78), `${name}@${pkg.version} (${pkg.license ?? "unknown"})`, "-".repeat(78), text);
 }
 
-writeFileSync(path.join(root, "ThirdPartyNotices.txt"), sections.join("\n") + "\n");
+writeFileSync(path.join(root, "ThirdPartyNotices.txt"), `${sections.join("\n")}\n`);
 
 if (!existsSync(path.join(dist, "api.d.ts"))) {
   throw new Error("dist/api.d.ts was not emitted");

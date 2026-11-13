@@ -77,8 +77,8 @@ export function nextVersion(current, bump, releaseType, prereleaseIdentifier = D
   // Already a candidate of the same version: the next candidate (a new identifier
   // starts again at .0, e.g. 1.3.0-beta.3 → 1.3.0-rc.0).
   const parsed = semver.parse(current);
-  const next
-    = parsed && parsed.prerelease.length > 0 && `${parsed.major}.${parsed.minor}.${parsed.patch}` === target
+  const next =
+    parsed && parsed.prerelease.length > 0 && `${parsed.major}.${parsed.minor}.${parsed.patch}` === target
       ? semver.inc(current, "prerelease", identifier)
       : `${target}-${identifier}.0`;
 

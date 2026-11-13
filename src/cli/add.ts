@@ -208,8 +208,8 @@ export async function runAdd(sources: string[], opts: AddOptions, globalOpts: Gl
         }
 
         spinner?.stop(`Found ${picked.length} skill(s)`);
-        const message
-          = kind === "gateway"
+        const message =
+          kind === "gateway"
             ? "This source only contains the skill-library gateway. Install it into your agents' skills folders?"
             : `Add ${picked.map((skill) => skill.name).join(", ")} to the ${scope === "project" ? "project" : "global library"}?`;
         const ok = await prompts.confirm({ message });
@@ -283,7 +283,7 @@ export async function runAdd(sources: string[], opts: AddOptions, globalOpts: Gl
           return [];
         }
 
-        return found.filter((skill) => (picked).includes(skill.name));
+        return found.filter((skill) => picked.includes(skill.name));
       },
     });
     spinner?.stop("Done");
