@@ -1,7 +1,15 @@
 // The README `sync init` / `sync update` put in a sync repository: what the repo is, how to set it
 // up, and a link back to Skill Library. The text lives in assets/sync-readme.md (edit it there);
-// `{{title}}` and `{{url}}` are filled in here.
+// `{{title}}` and `{{url}}` are filled in here. Next to it, the AGENTS.md that teaches agents opened
+// in the repo to craft skills (assets/sync-agents.md, used as is), and a CLAUDE.md that imports it.
+import agentsTemplate from "../../assets/sync-agents.md";
 import template from "../../assets/sync-readme.md";
+
+/** The AGENTS.md `sync init` / `sync update` add to a sync repo that has none. */
+export const AGENTS_MD = `${agentsTemplate.replace(/\r\n/g, "\n").replace(/\s*$/, "")}\n`;
+
+/** The CLAUDE.md added with it: Claude Code skips AGENTS.md in some setups, an import always works. */
+export const CLAUDE_MD = "@AGENTS.md\n";
 
 /** A clone URL as a URL: `user@host:path` (scp-style, which URL() rejects) reads as `ssh://user@host/path`. */
 function toUrl(url: string): URL | null {

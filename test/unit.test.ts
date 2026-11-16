@@ -239,6 +239,26 @@ describe("time formatting", () => {
   });
 });
 
+describe("built-in skills", () => {
+  test("follow the agentskills.io rules that create-skills teaches", async () => {
+    const root = path.join(import.meta.dirname, "..", "assets", "builtin");
+    const folders = (await fsp.readdir(root)).sort();
+
+    expect(folders).toEqual(["create-skills", "find-skills"]);
+
+    for (const folder of folders) {
+      const text = await fsp.readFile(path.join(root, folder, "SKILL.md"), "utf8");
+      const { data } = parseFrontmatter(text);
+
+      expect(data.name).toBe(folder);
+      expect(String(data.name)).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+      expect(String(data.description).length).toBeGreaterThan(0);
+      expect(String(data.description).length).toBeLessThanOrEqual(1024);
+      expect(text.split("\n").length).toBeLessThan(500);
+    }
+  });
+});
+
 describe("sync README", () => {
   test("repoOwner reads the owner and ignores credentials and local paths", () => {
     expect(repoOwner("git@github.com:me/skills.git")).toBe("me");

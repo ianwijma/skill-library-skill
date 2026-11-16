@@ -1,7 +1,9 @@
 // Built-in skills ship inside the skill-library package (assets/builtin, copied to dist/builtin by
 // the build). `query` returns them like any other skill, with the path of their SKILL.md; they
 // can't be removed or updated, and change only when skill-library itself is updated.
-// find-skills is adapted from vercel-labs/skills skills/find-skills/SKILL.md (MIT).
+// find-skills is adapted from vercel-labs/skills skills/find-skills/SKILL.md (MIT). create-skills is
+// our own; it follows the agentskills.io spec and Anthropic's skill authoring best practices, and takes
+// the baseline-first testing idea from obra/superpowers writing-skills (MIT).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -251,12 +251,12 @@ describe("missing project skills keep their real name", () => {
 
     server.close();
     expect(result.stderr).toContain("1 project skill is not installed");
-    // Only the built-in find-skills is scored; the shadowed global react never is.
+    // Only the built-ins are scored; the shadowed global react never is.
     const names = bodies.flatMap((body) =>
       Object.values(body.questions).map((question: any) => question.instructions.skill.name),
     );
 
-    expect(names).toEqual(["find-skills"]);
+    expect(names).toEqual(["create-skills", "find-skills"]);
   });
 });
 

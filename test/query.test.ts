@@ -89,9 +89,10 @@ describe("query", () => {
 
     expect(body.model).toBe("jev-latest");
     expect(body.state).toEqual({ task: "fix the buttons" });
-    // Three library skills, then the built-in find-skills.
-    expect(Object.keys(body.questions).sort()).toEqual(["s0", "s1", "s2", "s3"]);
-    expect(body.questions.s3.instructions.skill.name).toBe("find-skills");
+    // Three library skills, then the built-ins create-skills and find-skills.
+    expect(Object.keys(body.questions).sort()).toEqual(["s0", "s1", "s2", "s3", "s4"]);
+    expect(body.questions.s3.instructions.skill.name).toBe("create-skills");
+    expect(body.questions.s4.instructions.skill.name).toBe("find-skills");
     const question = Object.values(body.questions as Record<string, any>).find((candidate) => candidate.instructions.skill.name === "a-skill");
 
     expect(question).toEqual({
@@ -240,7 +241,7 @@ describe("query", () => {
     const mock = await startMock(byName({ "a-skill": 0.9, "b-skill": 0.9, "codex-only": 0.9 }));
     const claude = await runQuery(sb, ["task", "-a", "claude-code"], mock);
 
-    expect(Object.values(mock.bodies[0].questions).map((question: any) => question.instructions.skill.name)).toEqual(["a-skill", "b-skill", "find-skills"]);
+    expect(Object.values(mock.bodies[0].questions).map((question: any) => question.instructions.skill.name)).toEqual(["a-skill", "b-skill", "create-skills", "find-skills"]);
     expect(claude.stdout).not.toContain("codex-only");
     const codex = await runQuery(sb, ["task", "-a", "codex"], mock);
 
@@ -260,7 +261,7 @@ describe("query", () => {
     const empty = await runQuery(sb, ["task"], mock);
 
     expect(empty.stdout).toBe("No matching skills. Continue without one.\n");
-    expect(Object.values(mock.bodies[0].questions).map((question: any) => question.instructions.skill.name)).toEqual(["find-skills"]);
+    expect(Object.values(mock.bodies[0].questions).map((question: any) => question.instructions.skill.name)).toEqual(["create-skills", "find-skills"]);
     await seed(sb);
     const res = await runQuery(sb, ["-"], mock, { stdin: "task from stdin" });
 

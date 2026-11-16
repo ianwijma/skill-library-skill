@@ -81,14 +81,14 @@ This deletes them from the library. Your agents keep the gateway skill.
 | `remove [skills]` | Delete from the library. `-p`: only drop the project's reference (the skill stays in the library). In a folder with a `skill-library.json` you're asked which you mean; scripts and agents pass `-p` or `-g`. |
 | `find [query]` | Search [skills.sh](https://skills.sh). |
 | `update` / `check` | Pull newer versions from each skill's source / report them. |
-| `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. Built-in skills ship with skill-library and come back like any other; today that's `find-skills`, which searches skills.sh for new skills. They can't be removed or updated on their own. |
+| `query "<task>"` | Find the skills for a task. Prints the `SKILL.md` paths to read. Built-in skills ship with skill-library and come back like any other: `find-skills` searches skills.sh for new skills, and `create-skills` guides an agent through writing, testing and publishing a skill of your own. They can't be removed or updated on their own. |
 | `install` | Restore a project's skills from `skill-library.json`, at the pinned versions. |
 | `self setup` | Install or update skill-library (`npm i -g`) and install the gateway skill into your agents, after checking the machine first. Re-run it any time. `-a <agents>` for only some agents. |
 | `self update` | Update skill-library (`npm i -g`) and refresh the gateway skill in the agents that already have it. |
 | `self doctor` | Check that everything skill-library needs is in place (installed and on `PATH`, newest release, gateway skill, API key, `git`). Changes nothing; exit 1 when something needs fixing. `--json` for scripts. |
 | `use <source>@<skill>` | Print a prompt for one skill without adding it (`| claude`), or start an agent with `-a`. |
 | `init [name]` | Create a new `SKILL.md`. `--always` makes every query return it, without scoring. |
-| `sync init <git-url>` | Keep your global skills in a git repository (any host) and sync them across machines automatically. `sync update` / `sync disable` / `sync enable` / `sync status`. |
+| `sync init <git-url>` | Keep your global skills in a git repository (any host) and sync them across machines automatically. The repo gets an `AGENTS.md` (and a `CLAUDE.md` importing it), so any agent you open there knows how to craft skills. `sync update` / `sync disable` / `sync enable` / `sync status`. |
 
 `skill-library --help` lists every command; `skill-library <command> --help` (or `skill-library help <command>`) shows that command's options. Details: [CLI spec](docs/02-cli-spec.md).
 

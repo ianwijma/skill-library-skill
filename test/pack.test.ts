@@ -24,6 +24,7 @@ describe("packed package", () => {
     expect(files).toContain("dist/index.js");
     expect(files).toContain("dist/api.d.ts");
     expect(files).toContain("dist/builtin/find-skills/SKILL.md");
+    expect(files).toContain("dist/builtin/create-skills/SKILL.md");
     expect(files).toContain("LICENSE");
     expect(files).toContain("ThirdPartyNotices.txt");
     expect(files.some((file) => file.startsWith("src/") || file.startsWith("test/") || file.startsWith("skills/"))).toBe(false);

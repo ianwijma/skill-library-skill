@@ -16,7 +16,7 @@ import { parseSkillFile, requireStagedSkill } from "../lib/discover.ts";
 import { assertSafeGitArgs, git, treeAt } from "../lib/git.ts";
 import { hashSkillDir } from "../lib/hash.ts";
 import { gitSkillId, isReservedSkillName, safeSlug, skillDirFor } from "../lib/ids.ts";
-import { newReadme, repoOwner } from "../lib/sync-readme.ts";
+import { AGENTS_MD, CLAUDE_MD, newReadme, repoOwner } from "../lib/sync-readme.ts";
 import { MANIFEST, readManifest, serializeManifest, validateEntry, type Manifest, type ManifestEntry } from "../lib/manifest.ts";
 import {
   copySkill,
@@ -834,6 +834,8 @@ export type InitSyncOutcome =
     machineOnly: string[];
     /** What happened to the repo's README (null: left as it was). */
     readme: ReadmeOutcome;
+    /** Agent instruction files added to the repo (AGENTS.md, CLAUDE.md); empty when it had them. */
+    agentFiles: string[];
   }
   | { alreadySetUp: true; url: string };
 
@@ -852,10 +854,12 @@ export interface InitSyncOptions extends BaseOptions, ReadmeOptions {
   chooseShare?: (candidates: ShareCandidate[]) => Promise<string[]>;
 }
 
-/** README handling shared by `sync init` and `sync update`. */
+/** README and AGENTS.md handling shared by `sync init` and `sync update`. */
 export interface ReadmeOptions {
   /** false: leave the repo's README alone (`--no-readme`). Default true. */
   readme?: boolean;
+  /** false: don't add AGENTS.md / CLAUDE.md (`--no-agents-md`). Default true. */
+  agentsMd?: boolean;
   /**
    * Called only when the repo already has a README (other than ours, as is): return true to
    * replace it. Default: keep it. A repo without a README always gets one.
@@ -908,6 +912,31 @@ async function seedReadme(
   await commitAll(clone, `skill-library: ${action === "created" ? "add" : "replace"} README`);
 
   return { action, file };
+}
+
+/**
+ * Give the repo an AGENTS.md (assets/sync-agents.md) so an agent opened in it knows how to craft
+ * skills, plus a CLAUDE.md that imports it. Only added when missing: an existing AGENTS.md is the
+ * owner's, and CLAUDE.md comes only with our AGENTS.md and only when the repo has none. Commits;
+ * the caller pushes. Returns the files added.
+ */
+async function seedAgentFiles(clone: string, opts: ReadmeOptions): Promise<string[]> {
+  if (opts.agentsMd === false || (await exists(path.join(clone, "AGENTS.md")))) {
+    return [];
+  }
+
+  const added = ["AGENTS.md"];
+
+  await writeFileAtomic(path.join(clone, "AGENTS.md"), AGENTS_MD);
+
+  if (!(await exists(path.join(clone, "CLAUDE.md"))) && !(await exists(path.join(clone, ".claude", "CLAUDE.md")))) {
+    await writeFileAtomic(path.join(clone, "CLAUDE.md"), CLAUDE_MD);
+    added.push("CLAUDE.md");
+  }
+
+  await commitAll(clone, `skill-library: add ${added.join(" and ")}`);
+
+  return added;
 }
 
 /** Global skills from a local folder or file: they live only on this machine until shared. */
@@ -1011,11 +1040,12 @@ export async function initSync(url: string, opts: InitSyncOptions = {}): Promise
   }
 
   const readme = await seedReadme(paths.clone, trimmed, opts);
+  const agentFiles = await seedAgentFiles(paths.clone, opts);
 
   await writeSyncConfig(store, cfg);
   const result = await runSync({ store });
 
-  return { alreadySetUp: false, result: result!, seeded, machineOnly, readme };
+  return { alreadySetUp: false, result: result!, seeded, machineOnly, readme, agentFiles };
 }
 
 export type UpdateSyncUrlOutcome =
@@ -1028,6 +1058,8 @@ export type UpdateSyncUrlOutcome =
     oldPullError?: string;
     /** What happened to the new repository's README (null: left as it was). */
     readme: ReadmeOutcome;
+    /** Agent instruction files added to the new repository (see InitSyncOutcome). */
+    agentFiles: string[];
   };
 
 /**
@@ -1131,12 +1163,13 @@ export async function updateSyncUrl(
       result.added = result.added.filter((skillName) => !moved.has(skillName));
       // The clone now holds the new repository's files: give it the README for its URL.
       const readme = await seedReadme(clone, trimmed, opts, previousUrl);
+      const agentFiles = await seedAgentFiles(clone, opts);
 
-      if (readme) {
+      if (readme || agentFiles.length > 0) {
         result.pushed = (await push(clone, trimmed)) || result.pushed;
       }
 
-      return { unchanged: false, previousUrl, result, readme, ...(oldPullError ? { oldPullError } : {}) };
+      return { unchanged: false, previousUrl, result, readme, agentFiles, ...(oldPullError ? { oldPullError } : {}) };
     });
 
     if (!outcome.unchanged) {
