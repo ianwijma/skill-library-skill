@@ -38,6 +38,16 @@ skill-library sync init ssh://git@git.example.com:2222/me/my-skills.git
   When it already has one (`README.md`, `README.rst`, …), `init` asks whether
   to replace it; without a terminal it is kept. `--no-readme` leaves the README
   alone either way. Credentials in the clone URL never reach the README.
+- Gives the repo an `AGENTS.md` (template:
+  [`assets/sync-agents.md`](../assets/sync-agents.md)) when it has none, so an
+  agent opened in the repo knows how to craft skills: the layout, the rules a
+  skill must follow, how to test one in a scratch library, and how to publish.
+  It points the agent at the built-in `create-skills` skill for the full
+  workflow. A `CLAUDE.md` containing `@AGENTS.md` comes with it, unless the repo
+  already has a `CLAUDE.md` (Claude Code doesn't read AGENTS.md in every
+  setup). An existing `AGENTS.md` or `CLAUDE.md` is never replaced.
+  `--no-agents-md` adds neither. `sync update` does the same for the new
+  repository.
 
 If `sync` is already set up with the same URL, `init` says so and exits
 successfully without changing anything. With a different URL it refuses and
@@ -112,6 +122,8 @@ workflow (history, reviews per skill) better than editing in the sync repo.
 ```
 my-skills/
   README.md                  # what this repo is (added by `sync init`, see above)
+  AGENTS.md                  # how agents craft skills here (added by `sync init`)
+  CLAUDE.md                  # `@AGENTS.md`, for Claude Code
   skill-library.json         # skills from other repos: source + ref + path + pinned commit + hash + agents
   skills/
     my-checklist/SKILL.md    # your own skills, stored in the repo itself

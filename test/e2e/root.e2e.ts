@@ -161,7 +161,7 @@ describe("root", () => {
     const qr = await testWorld.ok(["query", "anything about skill", "--json", ...storeArgs, "--verbose"], { env: { SKILL_LIBRARY_TYPESAFE_API_BASE: ts.url, SKILL_LIBRARY_TYPESAFE_API_KEY: "k" } });
 
     expect(qr.stderr).toContain("verbose:");
-    expect(ts.lastAsked()).toEqual(["a", "find-skills"]); // solo is project-only; b is always-on
+    expect(ts.lastAsked()).toEqual(["a", "create-skills", "find-skills"]); // solo is project-only; b is always-on
     const queryOutput = qr.json();
 
     expect(queryOutput.matches.map((match: any) => match.name)).toContain("b");

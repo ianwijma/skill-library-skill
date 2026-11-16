@@ -6,7 +6,7 @@ import { msgOf, note, sanitizeMetadata } from "../../lib/cli.ts";
 import { isRunningInAgent } from "../../lib/detect-agent.ts";
 import type { GlobalOpts } from "../index.ts";
 
-export const SYNC_USAGE = "Usage: skill-library sync [init <git-url> [--share <skill...>] [--no-readme] | update <git-url> [--no-readme] | share <skill...> | enable | disable | status]";
+export const SYNC_USAGE = "Usage: skill-library sync [init <git-url> [--share <skill...>] [--no-readme] [--no-agents-md] | update <git-url> [--no-readme] [--no-agents-md] | share <skill...> | enable | disable | status]";
 
 function shadowLine(name: string): string {
   return `${sanitizeMetadata(name)} from the sync repo now shadows another global ${sanitizeMetadata(name)}; see skill-library list -g and remove the one you don't want`;
@@ -14,6 +14,11 @@ function shadowLine(name: string): string {
 
 export function readmeLine(outcome: NonNullable<ReadmeOutcome>): string {
   return pc.gray(`${outcome.action === "created" ? "Added" : "Replaced"} the repository's ${outcome.file}.`);
+}
+
+/** The line for the agent instruction files `sync init` / `sync update` added. */
+export function agentFilesLine(files: string[]): string {
+  return pc.gray(`Added ${files.join(" and ")} to the repository, so agents opened in it know how to craft skills.`);
 }
 
 export function printResult(result: SyncResult): void {
@@ -55,13 +60,17 @@ export function canPrompt(): boolean {
 }
 
 /** init / update: a repo without a README gets ours; one with a README is replaced only when you
- *  say so (no terminal to ask in: kept). `readme: false` (--no-readme) leaves the README alone. */
-export function readmeOptions(readme: boolean | undefined): ReadmeOptions {
+ *  say so (no terminal to ask in: kept). `readme: false` (--no-readme) leaves the README alone;
+ *  `agentsMd: false` (--no-agents-md) adds no AGENTS.md / CLAUDE.md. */
+export function readmeOptions(readme: boolean | undefined, agentsMd?: boolean): ReadmeOptions {
+  const agents: ReadmeOptions = agentsMd === false ? { agentsMd: false } : {};
+
   if (readme === false) {
-    return { readme: false };
+    return { readme: false, ...agents };
   }
 
   return {
+    ...agents,
     confirmReadme: async (files) => {
       if (!canPrompt()) {
         return false;

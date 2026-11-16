@@ -19,7 +19,7 @@ async function setup(): Promise<{
 
   onTestFinished(() => ts.close());
   // Keep the built-in out of the way unless a test scores it.
-  ts.scores = { "find-skills": 0.01 };
+  ts.scores = { "create-skills": 0.01, "find-skills": 0.01 };
   const src = await testWorld.dir("src");
   const runQuery = (args: string[], opts: RunOpts = {}) =>
     testWorld.run(["query", ...args], { ...opts, env: { SKILL_LIBRARY_TYPESAFE_API_BASE: ts.url, SKILL_LIBRARY_TYPESAFE_API_KEY: "k", ...opts.env } });
@@ -104,7 +104,7 @@ describe("query", () => {
     expect(req.body.state).toEqual({ task: "design a postgres schema" });
     const keys = Object.keys(req.body.questions);
 
-    expect(keys.sort()).toEqual(["s0", "s1", "s2", "s3"]);
+    expect(keys.sort()).toEqual(["s0", "s1", "s2", "s3", "s4"]);
 
     for (const qn of Object.values<any>(req.body.questions)) {
       expect(qn.type).toBe("noul");
@@ -113,7 +113,7 @@ describe("query", () => {
       expect(Object.keys(qn.criteria).sort()).toEqual(["false", "true"]);
     }
 
-    expect(ts.lastAsked()).toEqual(["docker", "find-skills", "frontend", "postgres"]);
+    expect(ts.lastAsked()).toEqual(["create-skills", "docker", "find-skills", "frontend", "postgres"]);
     const body = JSON.stringify(req.body);
 
     expect(body).not.toContain(testWorld.root);
@@ -146,7 +146,7 @@ describe("query", () => {
     const { testWorld, ts, runQuery, src } = await setup();
 
     await addGlobal(testWorld, src, CATALOG);
-    ts.scores = { frontend: 1, postgres: 0.6, docker: 0.3, "find-skills": 0 };
+    ts.scores = { frontend: 1, postgres: 0.6, docker: 0.3, "create-skills": 0.1, "find-skills": 0 };
 
     const names = async (args: string[]) => {
       const result = await runQuery(["task", "--json", ...args]);
@@ -157,7 +157,7 @@ describe("query", () => {
     };
 
     expect(await names([])).toEqual(["frontend"]);
-    expect(await names(["--threshold", "0"])).toEqual(["frontend", "postgres", "docker", "find-skills"]);
+    expect(await names(["--threshold", "0"])).toEqual(["frontend", "postgres", "docker", "create-skills", "find-skills"]);
     expect(await names(["--threshold", "0.5"])).toEqual(["frontend", "postgres"]);
     expect(await names(["--threshold=0.3"])).toEqual(["frontend", "postgres", "docker"]);
     expect(await names(["--threshold", "1"])).toEqual(["frontend"]);
@@ -238,12 +238,12 @@ describe("query", () => {
       return { asked: ts.lastAsked(), got: result.json().matches.map((match: any) => match.name).sort() };
     };
 
-    expect(await asked(["-a", "codex"])).toEqual({ asked: ["codexy", "find-skills", "general"], got: ["codexy", "general"] });
-    expect(await asked(["--agent", "claude-code"])).toEqual({ asked: ["claudy", "find-skills", "general"], got: ["claudy", "general"] });
-    expect(await asked(["--agent=cursor"])).toEqual({ asked: ["claudy", "find-skills", "general"], got: ["claudy", "general"] });
-    expect(await asked(["-a", "opencode"])).toEqual({ asked: ["find-skills", "general"], got: ["general"] });
+    expect(await asked(["-a", "codex"])).toEqual({ asked: ["codexy", "create-skills", "find-skills", "general"], got: ["codexy", "general"] });
+    expect(await asked(["--agent", "claude-code"])).toEqual({ asked: ["claudy", "create-skills", "find-skills", "general"], got: ["claudy", "general"] });
+    expect(await asked(["--agent=cursor"])).toEqual({ asked: ["claudy", "create-skills", "find-skills", "general"], got: ["claudy", "general"] });
+    expect(await asked(["-a", "opencode"])).toEqual({ asked: ["create-skills", "find-skills", "general"], got: ["general"] });
     // Without -a every skill is a candidate.
-    expect((await asked([])).asked).toEqual(["claudy", "codexy", "find-skills", "general"]);
+    expect((await asked([])).asked).toEqual(["claudy", "codexy", "create-skills", "find-skills", "general"]);
 
     const before = ts.requests.length;
     const bad = await runQuery(["help me", "-a", "nope"]);
@@ -303,7 +303,7 @@ describe("query", () => {
       ["style", 1, true],
       ["frontend", 0.9, false],
     ]);
-    expect(ts.lastAsked()).toEqual(["find-skills", "frontend", "notalways", "postgres"]);
+    expect(ts.lastAsked()).toEqual(["create-skills", "find-skills", "frontend", "notalways", "postgres"]);
     const text = await runQuery(["task"]);
 
     expect(text.stdout).toContain("rules (always)\n└ ");
@@ -324,12 +324,12 @@ describe("query", () => {
   test("built-in find-skills: scored like any skill, shadowed by a library skill named find-skills; skipped without a key", async () => {
     const { testWorld, ts, runQuery, src } = await setup();
 
-    ts.scores = { "find-skills": 0.9 };
-    // Empty library: only the built-in is scored.
+    ts.scores = { "create-skills": 0, "find-skills": 0.9 };
+    // Empty library: only the built-ins are scored.
     const empty = await runQuery(["find me a skill", "--json"]);
 
     expect(empty.json().matches.map((match: any) => [match.id, match.scope])).toEqual([["builtin://find-skills", "builtin"]]);
-    expect(ts.lastAsked()).toEqual(["find-skills"]);
+    expect(ts.lastAsked()).toEqual(["create-skills", "find-skills"]);
     // Without a key, built-ins alone never make one required.
     const nokey = await testWorld.run(["query", "find me a skill"], { env: { SKILL_LIBRARY_TYPESAFE_API_BASE: ts.url } });
 
@@ -343,7 +343,7 @@ describe("query", () => {
     expect(matches).toHaveLength(1);
     expect(matches[0].scope).toBe("global");
     expect(matches[0].description).toBe("My own skill finder");
-    expect(ts.lastAsked()).toEqual(["find-skills"]);
+    expect(ts.lastAsked()).toEqual(["create-skills", "find-skills"]);
     expect(Object.values<any>(ts.requests.at(-1)!.body.questions)[0].instructions.skill.description).toBe("My own skill finder");
   });
 
@@ -366,7 +366,7 @@ describe("query", () => {
     ]);
     expect(out.matches[0].path).toBe(path.join(proj, "skills", "shared", "SKILL.md"));
     expect(out.matches[0].id).toBe("local://skills/shared");
-    expect(ts.lastAsked()).toEqual(["find-skills", "other", "shared"]);
+    expect(ts.lastAsked()).toEqual(["create-skills", "find-skills", "other", "shared"]);
     const text = await runQuery(["task"], { cwd: proj });
 
     expect(text.stdout).toContain("shared (90%, project)\n");
@@ -400,7 +400,7 @@ describe("query", () => {
     expect(result.code).toBe(0);
     expect(result.stderr).toContain("skill 'docker'");
     expect(result.stderr).toContain("has an empty description; excluded from query");
-    expect(ts.lastAsked()).toEqual(["find-skills", "frontend", "postgres"]);
+    expect(ts.lastAsked()).toEqual(["create-skills", "find-skills", "frontend", "postgres"]);
   });
 
   test("nothing passes: the no-match line (text and JSON)", async () => {

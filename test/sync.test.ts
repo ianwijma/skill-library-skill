@@ -565,7 +565,7 @@ describe("sync", () => {
     const kept = await run(machineA, ["sync", "init", up.url]); // no terminal to ask in: kept
 
     expect(kept.code, kept.stderr + kept.stdout).toBe(0);
-    expect(await fsp.readdir(await peekClone(machineA, up.url))).toEqual([".git", "README.rst"]);
+    expect(await fsp.readdir(await peekClone(machineA, up.url))).toEqual([".git", "AGENTS.md", "CLAUDE.md", "README.rst"]);
 
     const machineB = await sandbox();
     let asked: string[] = [];
@@ -578,8 +578,54 @@ describe("sync", () => {
     expect(!outcome.alreadySetUp && outcome.readme).toEqual({ action: "replaced", file: "README.md" });
     const dir = await peekClone(machineB, up.url);
 
-    expect((await fsp.readdir(dir)).sort()).toEqual([".git", "README.md"]);
+    expect((await fsp.readdir(dir)).sort()).toEqual([".git", "AGENTS.md", "CLAUDE.md", "README.md"]);
     expect(await fsp.readFile(path.join(dir, "README.md"), "utf8")).toContain(`sync init ${up.url}`);
+  });
+
+  test("init adds AGENTS.md and a CLAUDE.md that imports it; --no-agents-md leaves them out", async () => {
+    const machineA = await sandbox();
+    const remote = await emptyRemote(machineA);
+    const res = await run(machineA, ["sync", "init", remote]);
+
+    expect(res.code, res.stderr + res.stdout).toBe(0);
+    expect(res.stdout).toContain("Added AGENTS.md and CLAUDE.md to the repository");
+    const dir = await peekClone(machineA, remote);
+    const agents = await fsp.readFile(path.join(dir, "AGENTS.md"), "utf8");
+
+    expect(agents).toMatch(/^# AGENTS\.md\n/);
+    expect(agents).toContain("create-skills");
+    expect(await fsp.readFile(path.join(dir, "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
+    // Pushed: a second machine's clone has them too.
+    const machineB = await sandbox();
+
+    expect((await run(machineB, ["sync", "init", remote])).code).toBe(0);
+    expect(await fsp.readdir(await peekClone(machineB, remote))).toEqual(expect.arrayContaining(["AGENTS.md", "CLAUDE.md"]));
+
+    const machineC = await sandbox();
+    const bare = await emptyRemote(machineC);
+
+    expect((await run(machineC, ["sync", "init", bare, "--no-agents-md"])).code).toBe(0);
+    expect(await fsp.readdir(await peekClone(machineC, bare))).not.toContain("AGENTS.md");
+  });
+
+  test("an existing AGENTS.md or CLAUDE.md is the owner's: never replaced", async () => {
+    const machineA = await sandbox();
+    const own = await gitRepo(machineA, "own-agents", { "AGENTS.md": "Mine\n" });
+
+    expect((await run(machineA, ["sync", "init", own.url])).code).toBe(0);
+    const dir = await peekClone(machineA, own.url);
+
+    expect(await fsp.readFile(path.join(dir, "AGENTS.md"), "utf8")).toBe("Mine\n");
+    expect(await fsp.readdir(dir)).not.toContain("CLAUDE.md");
+
+    const machineB = await sandbox();
+    const claude = await gitRepo(machineB, "own-claude", { "CLAUDE.md": "Mine\n" });
+
+    expect((await run(machineB, ["sync", "init", claude.url])).code).toBe(0);
+    const clone = await peekClone(machineB, claude.url);
+
+    expect(await fsp.readFile(path.join(clone, "CLAUDE.md"), "utf8")).toBe("Mine\n");
+    expect(await fsp.readdir(clone)).toContain("AGENTS.md");
   });
 
   test("update gives the new repository its README", async () => {

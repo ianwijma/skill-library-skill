@@ -64,6 +64,7 @@ describe("sync init", () => {
     expect(init.stdout).toContain("Kept machine-only (not synced): copy");
     expect(init.stdout).toContain("Share one with skill-library sync share <name>");
     expect(init.stdout).toContain("Added the repository's README.md.");
+    expect(init.stdout).toContain("Added AGENTS.md and CLAUDE.md to the repository");
     expect(init.stdout).toContain(`with ${remote} (pushed)`);
     expect(init.stdout).toContain("Sync runs on its own from now on");
     await settled(machineA);
@@ -78,7 +79,7 @@ describe("sync init", () => {
 
     expect(Object.values(files.manifest!.skills).map((entry) => entry.path).sort()).toEqual(["skills/alpha", "skills/beta"]);
     expect(files.skills).toEqual([]);
-    expect(files.files).toEqual(["README.md", "skill-library.json"]);
+    expect(files.files).toEqual(["AGENTS.md", "CLAUDE.md", "README.md", "skill-library.json"]);
     const readme = await fsp.readFile(path.join(files.dir, "README.md"), "utf8");
 
     expect(readme).toContain("Skill Library");
@@ -160,8 +161,9 @@ describe("sync init", () => {
     const machineA = await world();
     const bare = await machineA.emptyRemote("no-readme");
 
-    await machineA.ok(["sync", "init", bare, "--no-readme"]);
+    await machineA.ok(["sync", "init", bare, "--no-readme", "--no-agents-md"]);
     expect((await remoteFiles(machineA, bare)).files).not.toContain("README.md");
+    expect((await remoteFiles(machineA, bare)).files).not.toContain("AGENTS.md");
     await settled(machineA);
 
     const machineB = await machineA.machine("b");
@@ -189,7 +191,7 @@ describe("sync init", () => {
 
     expect(lastSegments(seeded.manifest)).toEqual(["solo"]);
     expect(seeded.skills).toEqual([]);
-    expect(seeded.files).toEqual(["README.md", "skill-library.json"]);
+    expect(seeded.files).toEqual(["AGENTS.md", "CLAUDE.md", "README.md", "skill-library.json"]);
     expect((await readJson(path.join(machineC.store, "sync.json"))).url).toBe(remote);
     await settled(machineC);
 
